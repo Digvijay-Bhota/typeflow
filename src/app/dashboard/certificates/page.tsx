@@ -15,27 +15,12 @@ export default async function CertificatesDashboard() {
     orderBy: { issuedAt: "desc" },
   });
 
-  if (certificates.length === 0) {
-    return (
-      <div className="animate-fade-in mx-auto flex w-full max-w-5xl flex-col gap-6">
-        <h1 className="mb-2 text-4xl font-black tracking-tight">Your Certificates</h1>
-        <EmptyState
-          title="No Certificates Earned Yet"
-          description="Complete a verified typing test with at least 40 WPM and 95% accuracy to earn your first official TypeFlow certificate."
-          icon={<Award className="h-10 w-10 text-emerald-500" />}
-          actionText="Take a Verified Test"
-          actionHref="/typing-test"
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="animate-fade-in mx-auto flex w-full max-w-5xl flex-col gap-10 pb-12">
       <div>
         <h1 className="mb-2 text-4xl font-black tracking-tight">Your Certificates</h1>
         <p className="text-muted">
-          Manage, verify, and download your earned TypeFlow credentials.
+          Manage, verify, and track your progress toward official TypeFlow credentials.
         </p>
       </div>
 
@@ -114,6 +99,53 @@ export default async function CertificatesDashboard() {
             </div>
           </div>
         ))}
+
+        {/* LOCKED CERTIFICATE STATE */}
+        <div className="from-surface to-surface-elevated border-border relative overflow-hidden rounded-3xl border bg-gradient-to-br p-6 opacity-60 shadow-sm grayscale transition-all duration-500 hover:opacity-100 hover:grayscale-0">
+          <div className="relative z-10 mb-6 flex items-start justify-between">
+            <div className="border-muted bg-background rounded-xl border p-3">
+              <Award className="text-muted h-6 w-6" />
+            </div>
+            <span className="bg-background border-border text-muted rounded-full border px-3 py-1.5 text-xs font-bold tracking-wider uppercase">
+              Locked
+            </span>
+          </div>
+
+          <div className="relative z-10 mb-8 space-y-4">
+            <h3 className="text-muted text-xl font-bold tracking-tight">Pro Typist</h3>
+            <div className="flex gap-4">
+              <div>
+                <p className="text-muted mb-1 text-[10px] font-bold tracking-widest uppercase">
+                  Req. Speed
+                </p>
+                <p className="text-muted text-2xl font-black">
+                  80{" "}
+                  <span className="text-xs font-bold tracking-widest uppercase">WPM</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-muted mb-1 text-[10px] font-bold tracking-widest uppercase">
+                  Req. Accuracy
+                </p>
+                <p className="text-muted text-2xl font-black">
+                  98 <span className="text-lg">%</span>
+                </p>
+              </div>
+            </div>
+            <p className="text-muted mt-4 text-xs font-medium">
+              Complete a verified session hitting these metrics to unlock this tier.
+            </p>
+          </div>
+
+          <div className="border-border relative z-10 flex items-center gap-2 border-t pt-4">
+            <Link
+              href="/typing-test"
+              className="bg-accent hover:bg-accent/80 text-accent-foreground flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-center text-xs font-bold tracking-wider uppercase transition-colors"
+            >
+              Attempt Now
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );
