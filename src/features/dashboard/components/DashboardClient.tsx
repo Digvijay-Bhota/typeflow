@@ -80,7 +80,8 @@ export function DashboardClient({ stats, user }: { stats: DashboardStats; user: 
   return (
     <div className="animate-fade-in mx-auto flex w-full max-w-6xl flex-col gap-10 pb-12">
       {/* HERO SECTION */}
-      <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+      <div className="relative flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+        <div className="bg-accent/10 absolute -z-10 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full blur-[120px]"></div>
         <div>
           <h1 className="mb-2 text-4xl font-black tracking-tight">
             Welcome back, {user?.displayName || "Typist"}
@@ -108,7 +109,7 @@ export function DashboardClient({ stats, user }: { stats: DashboardStats; user: 
 
       {/* KPI METRICS */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-        <div className="bg-surface border-border flex flex-col rounded-3xl border p-6 shadow-sm">
+        <div className="group bg-surface hover:bg-surface-elevated hover:border-accent/30 border-border flex flex-col rounded-3xl border p-6 shadow-sm transition-all duration-300">
           <span className="text-muted mb-3 flex items-center gap-2 text-xs font-bold tracking-widest uppercase">
             <Zap className="text-accent h-4 w-4" /> Avg Speed
           </span>
@@ -122,7 +123,7 @@ export function DashboardClient({ stats, user }: { stats: DashboardStats; user: 
             {Math.abs(wpmTrend)} WPM
           </span>
         </div>
-        <div className="bg-surface border-border flex flex-col rounded-3xl border p-6 shadow-sm">
+        <div className="group bg-surface hover:bg-surface-elevated hover:border-accent/30 border-border flex flex-col rounded-3xl border p-6 shadow-sm transition-all duration-300">
           <span className="text-muted mb-3 flex items-center gap-2 text-xs font-bold tracking-widest uppercase">
             <Trophy className="h-4 w-4 text-yellow-500" /> Best WPM
           </span>
@@ -133,7 +134,7 @@ export function DashboardClient({ stats, user }: { stats: DashboardStats; user: 
             All Time High
           </span>
         </div>
-        <div className="bg-surface border-border flex flex-col rounded-3xl border p-6 shadow-sm">
+        <div className="group bg-surface hover:bg-surface-elevated hover:border-accent/30 border-border flex flex-col rounded-3xl border p-6 shadow-sm transition-all duration-300">
           <span className="text-muted mb-3 flex items-center gap-2 text-xs font-bold tracking-widest uppercase">
             <Target className="h-4 w-4 text-emerald-500" /> Accuracy
           </span>
@@ -142,14 +143,14 @@ export function DashboardClient({ stats, user }: { stats: DashboardStats; user: 
           </span>
           <span className="text-muted mt-2 text-xs font-bold uppercase">Lifetime</span>
         </div>
-        <div className="bg-surface border-border flex flex-col rounded-3xl border p-6 shadow-sm">
+        <div className="group bg-surface hover:bg-surface-elevated hover:border-accent/30 border-border flex flex-col rounded-3xl border p-6 shadow-sm transition-all duration-300">
           <span className="text-muted mb-3 flex items-center gap-2 text-xs font-bold tracking-widest uppercase">
             <Keyboard className="h-4 w-4 text-blue-400" /> Tests
           </span>
           <span className="text-foreground text-4xl font-black">{stats.totalTests}</span>
           <span className="text-muted mt-2 text-xs font-bold uppercase">Completed</span>
         </div>
-        <div className="bg-surface border-border flex flex-col rounded-3xl border p-6 shadow-sm">
+        <div className="group bg-surface hover:bg-surface-elevated hover:border-accent/30 border-border flex flex-col rounded-3xl border p-6 shadow-sm transition-all duration-300">
           <span className="text-muted mb-3 flex items-center gap-2 text-xs font-bold tracking-widest uppercase">
             <Flame className="h-4 w-4 text-orange-500" /> Streak
           </span>
@@ -158,7 +159,7 @@ export function DashboardClient({ stats, user }: { stats: DashboardStats; user: 
           </span>
           <span className="text-muted mt-2 text-xs font-bold uppercase">Active Days</span>
         </div>
-        <div className="bg-surface border-border flex flex-col rounded-3xl border p-6 shadow-sm">
+        <div className="group bg-surface hover:bg-surface-elevated hover:border-accent/30 border-border flex flex-col rounded-3xl border p-6 shadow-sm transition-all duration-300">
           <span className="text-muted mb-3 flex items-center gap-2 text-xs font-bold tracking-widest uppercase">
             <Clock className="h-4 w-4 text-purple-400" /> Time
           </span>
