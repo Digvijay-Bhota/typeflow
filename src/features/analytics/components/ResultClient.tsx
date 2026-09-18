@@ -287,19 +287,33 @@ export function ResultClient({ result }: { result: any }) {
             </h3>
             <p className="text-lg font-medium">
               {(() => {
-                if (chartData.length > 5) {
-                  const startWpm =
-                    chartData.slice(0, 3).reduce((a, b) => a + b.wpm, 0) / 3;
-                  const endWpm = chartData.slice(-3).reduce((a, b) => a + b.wpm, 0) / 3;
-                  if (endWpm > startWpm + 5)
-                    return `You accelerated as the test went on, starting at ${Math.round(startWpm)} WPM and finishing at ${Math.round(endWpm)} WPM.`;
-                  if (endWpm < startWpm - 5)
-                    return `Your speed dropped toward the end (from ${Math.round(startWpm)} WPM to ${Math.round(endWpm)} WPM). Try to maintain pacing.`;
-                  return "Excellent pacing. You maintained a highly steady speed from start to finish.";
+                if (chartData.length >= 9) {
+                  // Robust calculation dividing the test into thirds (Start, Middle, End)
+                  const third = Math.floor(chartData.length / 3);
+
+                  const startSegment = chartData.slice(0, third);
+                  const endSegment = chartData.slice(chartData.length - third);
+
+                  const startWpm = startSegment.reduce((a, b) => a + b.wpm, 0) / third;
+                  const endWpm = endSegment.reduce((a, b) => a + b.wpm, 0) / third;
+                  const variance = Math.abs(startWpm - endWpm);
+
+                  if (variance < 3) {
+                    return `Incredible pacing. You maintained a rock-solid speed (variance < 3 WPM) throughout the entire duration.`;
+                  }
+                  if (endWpm > startWpm + 5) {
+                    return `You accelerated significantly as you warmed up, starting at ${Math.round(startWpm)} WPM and pushing to ${Math.round(endWpm)} WPM during the final stretch.`;
+                  }
+                  if (endWpm < startWpm - 5) {
+                    return `Your stamina dropped towards the end (from ${Math.round(startWpm)} WPM down to ${Math.round(endWpm)} WPM). Try to establish a more sustainable initial rhythm.`;
+                  }
+                  return `Good consistency. Your speed remained largely stable from start to finish.`;
                 }
+
+                // Fallback for extremely short tests
                 return accuracy === 100
-                  ? "Perfect accuracy! Now try pushing your speed slightly higher."
-                  : "Focus on accuracy and your speed will follow naturally.";
+                  ? "Perfect accuracy! Now try pushing your raw speed slightly higher on the next test."
+                  : "Focus purely on hitting the correct keys—your muscle memory and speed will naturally follow.";
               })()}
             </p>
           </div>
