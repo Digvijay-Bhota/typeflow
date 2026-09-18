@@ -182,7 +182,6 @@ describe("Session & Result Service Integration (Mocked DB)", () => {
       expect(res.shareUrl).not.toContain(res.claimToken);
     });
 
-
     it("should reject submission if integrityToken does not match", async () => {
       const mockSession = {
         id: "s1",
@@ -196,8 +195,26 @@ describe("Session & Result Service Integration (Mocked DB)", () => {
         submitResult({
           sessionId: "s1",
           integrityToken: "wrong-token",
-          metrics: { wpm: 60, rawWpm: 60, accuracy: 1, correctChars: 150, incorrectChars: 0, totalChars: 150, correctedErrors: 0, uncorrectedErrors: 0, consistency: 0.9 },
-          integritySignals: { pasteAttempts: 0, copyAttempts: 0, focusLossCount: 0, visibilityChanges: 0, suspiciousPattern: false, intervalWpms: [], selectionAttempts: 0 },
+          metrics: {
+            wpm: 60,
+            rawWpm: 60,
+            accuracy: 1,
+            correctChars: 150,
+            incorrectChars: 0,
+            totalChars: 150,
+            correctedErrors: 0,
+            uncorrectedErrors: 0,
+            consistency: 0.9,
+          },
+          integritySignals: {
+            pasteAttempts: 0,
+            copyAttempts: 0,
+            focusLossCount: 0,
+            visibilityChanges: 0,
+            suspiciousPattern: false,
+            intervalWpms: [],
+            selectionAttempts: 0,
+          },
         })
       ).rejects.toThrow("Invalid integrity token");
     });
@@ -220,8 +237,26 @@ describe("Session & Result Service Integration (Mocked DB)", () => {
           sessionId: "s1",
           integrityToken: "t1",
           clientElapsedMs: 30000,
-          metrics: { wpm: 60, rawWpm: 60, accuracy: 1, correctChars: 150, incorrectChars: 0, totalChars: 150, correctedErrors: 0, uncorrectedErrors: 0, consistency: 0.9 },
-          integritySignals: { pasteAttempts: 0, copyAttempts: 0, focusLossCount: 0, visibilityChanges: 0, suspiciousPattern: false, intervalWpms: [], selectionAttempts: 0 },
+          metrics: {
+            wpm: 60,
+            rawWpm: 60,
+            accuracy: 1,
+            correctChars: 150,
+            incorrectChars: 0,
+            totalChars: 150,
+            correctedErrors: 0,
+            uncorrectedErrors: 0,
+            consistency: 0.9,
+          },
+          integritySignals: {
+            pasteAttempts: 0,
+            copyAttempts: 0,
+            focusLossCount: 0,
+            visibilityChanges: 0,
+            suspiciousPattern: false,
+            intervalWpms: [],
+            selectionAttempts: 0,
+          },
         })
       ).rejects.toThrow(/duration exceeded grace period/);
     });
@@ -244,8 +279,26 @@ describe("Session & Result Service Integration (Mocked DB)", () => {
           sessionId: "s1",
           integrityToken: "t1",
           clientElapsedMs: 30000,
-          metrics: { wpm: 60, rawWpm: 60, accuracy: 1, correctChars: 150, incorrectChars: 0, totalChars: 150, correctedErrors: 0, uncorrectedErrors: 0, consistency: 0.9 },
-          integritySignals: { pasteAttempts: 0, copyAttempts: 0, focusLossCount: 0, visibilityChanges: 0, suspiciousPattern: false, intervalWpms: [], selectionAttempts: 0 },
+          metrics: {
+            wpm: 60,
+            rawWpm: 60,
+            accuracy: 1,
+            correctChars: 150,
+            incorrectChars: 0,
+            totalChars: 150,
+            correctedErrors: 0,
+            uncorrectedErrors: 0,
+            consistency: 0.9,
+          },
+          integritySignals: {
+            pasteAttempts: 0,
+            copyAttempts: 0,
+            focusLossCount: 0,
+            visibilityChanges: 0,
+            suspiciousPattern: false,
+            intervalWpms: [],
+            selectionAttempts: 0,
+          },
         })
       ).rejects.toThrow(/Session has expired/);
     });

@@ -88,58 +88,61 @@ export function TypingTest({
     fetchSession();
   }, [fetchSession]);
 
-  const submitResult = useCallback(async (s: TypingEngineState) => {
-    if (!session || submittingRef.current) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setSubmitError(null);
-    finalStateRef.current = s;
-    try {
-      const res = await fetch("/api/result", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: session.sessionId,
-          integrityToken: session.integrityToken,
-          clientElapsedMs: s.elapsedMs,
-          metrics: {
-            wpm: s.wpm,
-            rawWpm: s.rawWpm,
-            accuracy: s.accuracy,
-            correctChars: s.correctCharacters,
-            incorrectChars: s.incorrectCharacters,
-            totalChars: s.totalCharacters,
-            correctedErrors: s.correctedErrors,
-            uncorrectedErrors: s.uncorrectedErrors,
-            consistency: s.consistency,
-          },
-          errorMap: s.keyErrors,
-          integritySignals: s.integritySignals,
-          ...(trustTier === "CERTIFICATE" &&
-            s.eventTrace && { eventTrace: s.eventTrace }),
-        }),
-      });
+  const submitResult = useCallback(
+    async (s: TypingEngineState) => {
+      if (!session || submittingRef.current) return;
+      submittingRef.current = true;
+      setSubmitting(true);
+      setSubmitError(null);
+      finalStateRef.current = s;
+      try {
+        const res = await fetch("/api/result", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: session.sessionId,
+            integrityToken: session.integrityToken,
+            clientElapsedMs: s.elapsedMs,
+            metrics: {
+              wpm: s.wpm,
+              rawWpm: s.rawWpm,
+              accuracy: s.accuracy,
+              correctChars: s.correctCharacters,
+              incorrectChars: s.incorrectCharacters,
+              totalChars: s.totalCharacters,
+              correctedErrors: s.correctedErrors,
+              uncorrectedErrors: s.uncorrectedErrors,
+              consistency: s.consistency,
+            },
+            errorMap: s.keyErrors,
+            integritySignals: s.integritySignals,
+            ...(trustTier === "CERTIFICATE" &&
+              s.eventTrace && { eventTrace: s.eventTrace }),
+          }),
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.claimToken) {
-          sessionStorage.setItem("tf_claim_token", data.claimToken);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.claimToken) {
+            sessionStorage.setItem("tf_claim_token", data.claimToken);
+          }
+          router.push(data.shareUrl);
+        } else {
+          const errText = await res.text();
+          console.error("Result submission failed", errText);
+          setSubmitError("Failed to save result. Please try again.");
+          submittingRef.current = false;
         }
-        router.push(data.shareUrl);
-      } else {
-        const errText = await res.text();
-        console.error("Result submission failed", errText);
-        setSubmitError("Failed to save result. Please try again.");
+      } catch (e) {
+        console.error(e);
+        setSubmitError("Network error. Please try again.");
         submittingRef.current = false;
+      } finally {
+        setSubmitting(false);
       }
-    } catch (e) {
-      console.error(e);
-      setSubmitError("Network error. Please try again.");
-      submittingRef.current = false;
-    } finally {
-      setSubmitting(false);
-    }
-  }, [session, router, trustTier]);
+    },
+    [session, router, trustTier]
+  );
 
   // ── Engine ────────────────────────────────────────────────────────────────
   const { state, chars, handleKey, handleBackspace } = useTypingEngine({
@@ -221,25 +224,25 @@ export function TypingTest({
       )}
 
       {isCompleted && (
-        <div className="py-12 flex flex-col items-center gap-4 text-center">
+        <div className="flex flex-col items-center gap-4 py-12 text-center">
           <div className="text-muted">
             {submitting ? "Saving result..." : "Test complete."}
           </div>
           {submitError && (
-             <div className="text-destructive flex flex-col items-center gap-3">
-                <span>{submitError}</span>
-                <button
-                  onClick={() => {
-                     if (finalStateRef.current) {
-                        submitResult(finalStateRef.current);
-                     }
-                  }}
-                  className="px-4 py-2 bg-tf-neutral-800 text-tf-neutral-100 rounded-md hover:bg-tf-neutral-700 transition disabled:opacity-50"
-                  disabled={submitting}
-                >
-                  Retry Submission
-                </button>
-             </div>
+            <div className="text-destructive flex flex-col items-center gap-3">
+              <span>{submitError}</span>
+              <button
+                onClick={() => {
+                  if (finalStateRef.current) {
+                    submitResult(finalStateRef.current);
+                  }
+                }}
+                className="bg-tf-neutral-800 text-tf-neutral-100 hover:bg-tf-neutral-700 rounded-md px-4 py-2 transition disabled:opacity-50"
+                disabled={submitting}
+              >
+                Retry Submission
+              </button>
+            </div>
           )}
         </div>
       )}

@@ -4,10 +4,10 @@ import { NextRequest } from "next/server";
 import { submitResult } from "@/server/services/session.service";
 
 vi.mock("@/server/services/session.service", () => ({
-  submitResult: vi.fn().mockResolvedValue({ shareUrl: "/result/share123" })
+  submitResult: vi.fn().mockResolvedValue({ shareUrl: "/result/share123" }),
 }));
 vi.mock("@/server/middleware/rateLimit", () => ({
-  rateLimit: vi.fn().mockResolvedValue({ success: true })
+  rateLimit: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 describe("POST /api/result", () => {
@@ -20,20 +20,32 @@ describe("POST /api/result", () => {
       sessionId: "123e4567-e89b-12d3-a456-426614174000",
       clientElapsedMs: 60000,
       metrics: {
-        wpm: 60, rawWpm: 60, accuracy: 1, correctChars: 300, incorrectChars: 0,
-        totalChars: 300, correctedErrors: 0, uncorrectedErrors: 0, consistency: 0.9
+        wpm: 60,
+        rawWpm: 60,
+        accuracy: 1,
+        correctChars: 300,
+        incorrectChars: 0,
+        totalChars: 300,
+        correctedErrors: 0,
+        uncorrectedErrors: 0,
+        consistency: 0.9,
       },
       errorMap: {},
       integritySignals: {
-         pasteAttempts: 0, copyAttempts: 0, focusLossCount: 0, visibilityChanges: 0,
-         suspiciousPattern: false, intervalWpms: [60], selectionAttempts: 0
-      }
+        pasteAttempts: 0,
+        copyAttempts: 0,
+        focusLossCount: 0,
+        visibilityChanges: 0,
+        suspiciousPattern: false,
+        intervalWpms: [60],
+        selectionAttempts: 0,
+      },
     };
 
     const req = new NextRequest("http://localhost/api/result", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-forwarded-for": "127.0.0.1" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     const res = await POST(req);
@@ -49,20 +61,32 @@ describe("POST /api/result", () => {
       integrityToken: "valid-token-123",
       clientElapsedMs: 60000,
       metrics: {
-        wpm: 60, rawWpm: 60, accuracy: 1, correctChars: 300, incorrectChars: 0,
-        totalChars: 300, correctedErrors: 0, uncorrectedErrors: 0, consistency: 0.9
+        wpm: 60,
+        rawWpm: 60,
+        accuracy: 1,
+        correctChars: 300,
+        incorrectChars: 0,
+        totalChars: 300,
+        correctedErrors: 0,
+        uncorrectedErrors: 0,
+        consistency: 0.9,
       },
       errorMap: {},
       integritySignals: {
-         pasteAttempts: 0, copyAttempts: 0, focusLossCount: 0, visibilityChanges: 0,
-         suspiciousPattern: false, intervalWpms: [60], selectionAttempts: 0
-      }
+        pasteAttempts: 0,
+        copyAttempts: 0,
+        focusLossCount: 0,
+        visibilityChanges: 0,
+        suspiciousPattern: false,
+        intervalWpms: [60],
+        selectionAttempts: 0,
+      },
     };
 
     const req = new NextRequest("http://localhost/api/result", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-forwarded-for": "127.0.0.1" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
 
     const res = await POST(req);
