@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  /* Legacy aliases to prevent breakage during refactoring */
+  --color-tf-bg-50: var(--background);
+  --color-tf-bg-100: var(--surface);
+  --color-tf-bg-900: var(--surface-elevated);
+  --color-tf-bg-950: var(--background);
+  --color-tf-text-50: var(--foreground);
+  --color-tf-text-200: var(--border);
+  --color-tf-text-500: var(--text-muted);
+  --color-tf-text-600: var(--text-secondary);
+  --color-tf-text-800: var(--border);
+  --color-tf-text-900: var(--text-primary);
+  --color-tf-primary-400: var(--accent);
+  --color-tf-primary-500: var(--accent);
+  --color-tf-primary-600: var(--accent);
+  
+  --font-family-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  --font-family-sans: "Inter", system-ui, sans-serif;
+}
+
+@layer base {
+  :root {
+    --background: oklch(98% 0 0);
+    --foreground: oklch(14% 0 0);
+    --surface: oklch(100% 0 0);
+    --surface-elevated: oklch(100% 0 0);
+    --surface-muted: oklch(95% 0 0);
+    --border: oklch(90% 0 0);
+    --text-primary: oklch(14% 0 0);
+    --text-secondary: oklch(40% 0 0);
+    --text-muted: oklch(60% 0 0);
+    
+    --success: oklch(65% 0.15 150);
+    --warning: oklch(75% 0.15 80);
+    --danger: oklch(60% 0.20 25);
+    --info: oklch(65% 0.15 250);
+
+    /* Default Standard Context */
+    --accent: oklch(65% 0.15 200); /* Teal/Cyan */
+    --accent-foreground: oklch(98% 0 0);
+    --accent-soft: oklch(95% 0.05 200);
+  }
+
+  .dark {
+    --background: oklch(14% 0 0);
+    --foreground: oklch(98% 0 0);
+    --surface: oklch(18% 0 0);
+    --surface-elevated: oklch(22% 0 0);
+    --surface-muted: oklch(20% 0 0);
+    --border: oklch(25% 0 0);
+    --text-primary: oklch(98% 0 0);
+    --text-secondary: oklch(75% 0 0);
+    --text-muted: oklch(60% 0 0);
+
+    /* Default Standard Context Dark */
+    --accent: oklch(75% 0.15 200); 
+    --accent-foreground: oklch(14% 0 0);
+    --accent-soft: oklch(22% 0.05 200);
+  }
+
+  /* --- Context Themes --- */
+  
+  .theme-code {
+    --accent: oklch(70% 0.20 260); /* Blue/Purple */
+    --accent-soft: oklch(95% 0.05 260);
+  }
+  .dark .theme-code {
+    --accent: oklch(75% 0.20 260); 
+    --accent-soft: oklch(22% 0.05 260);
+    --background: oklch(10% 0 0); /* Darker for code */
+  }
+
+  .theme-certificate {
+    --accent: oklch(60% 0.15 160); /* Emerald */
+    --accent-soft: oklch(95% 0.05 160);
+  }
+  .dark .theme-certificate {
+    --accent: oklch(70% 0.15 160); 
+    --accent-soft: oklch(20% 0.05 160);
+  }
+
+  .theme-pro {
+    --accent: oklch(65% 0.20 300); /* Violet/Premium */
+    --accent-soft: oklch(95% 0.05 300);
+  }
+  .dark .theme-pro {
+    --accent: oklch(75% 0.20 300); 
+    --accent-soft: oklch(22% 0.05 300);
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased transition-colors duration-300;
+  }
+}
+
+@layer utilities {
+  .char-pending {
+    @apply text-muted transition-colors duration-150;
+  }
+  .char-correct {
+    @apply text-foreground transition-colors duration-75;
+  }
+  .char-incorrect {
+    @apply text-danger bg-danger/10 rounded-sm transition-colors duration-75 border-b-2 border-danger;
+  }
+  .typing-caret {
+    @apply bg-accent transition-all duration-75;
+  }
+  .animate-caret-blink {
+    animation: blink 1s step-end infinite;
+  }
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}

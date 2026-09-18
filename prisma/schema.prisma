@@ -1,0 +1,607 @@
+// TypeFlow Prisma Schema
+// Database: PostgreSQL via Supabase
+// ORM: Prisma 6.x
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  USER
+  PRO
+  ADMIN
+}
+
+enum TypingMode {
+  TIMED
+  WORDS
+  ZEN
+  CODE
+  CERTIFICATE
+  PRACTICE
+}
+
+enum TrustTier {
+  FREE
+  CERTIFICATE
+  B2B_ASSESSMENT
+}
+
+enum Language {
+  ENGLISH
+  HINDI
+  CODE
+}
+
+enum CodeLanguage {
+  JAVASCRIPT
+  TYPESCRIPT
+  PYTHON
+  JAVA
+  CPP
+  SQL
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum PassageMode {
+  NORMAL
+  CODE
+  PRACTICE
+  CERTIFICATE
+}
+
+enum TestSessionStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  ABANDONED
+}
+
+enum IntegrityStatus {
+  VERIFIED
+  REVIEW
+  INVALID
+}
+
+enum CertificateStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  RAZORPAY
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+}
+
+enum SubscriptionStatus {
+  PENDING_CREATION
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  RECRUITER
+  REVIEWER
+  MEMBER
+}
+
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  CLOSED
+  ARCHIVED
+}
+
+enum CandidateStatus {
+  INVITED
+  STARTED
+  COMPLETED
+  EXPIRED
+  DISQUALIFIED
+}
+
+enum AttemptStatus {
+  STARTED
+  COMPLETED
+  ABANDONED
+  INVALIDATED
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id                String    @id @default(uuid()) @db.Uuid
+  /// Supabase auth UUID — matches auth.users.id
+  authId            String    @unique @db.Uuid
+  email             String    @unique
+  displayName       String?   @db.VarChar(100)
+  avatarUrl         String?
+  role              UserRole  @default(USER)
+  leaderboardOptOut Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  testSessions     TestSession[]
+  testResults      TestResult[]
+  certificates     Certificate[]
+  payments         Payment[]
+  subscription     Subscription?
+  practiceSessions PracticeSession[]
+  keyStats         UserKeyStat[]
+  orgMemberships   OrganizationMember[]
+  auditLogs        AuditLog[]
+
+  @@index([email])
+  @@index([authId])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// ─── Passage ──────────────────────────────────────────────────────────────────
+
+model Passage {
+  id                String        @id @default(uuid()) @db.Uuid
+  content           String        @db.Text
+  language          Language      @default(ENGLISH)
+  category          String?       @db.VarChar(100)
+  difficulty        Difficulty    @default(INTERMEDIATE)
+  mode              PassageMode   @default(NORMAL)
+  wordCount         Int
+  charCount         Int
+  codeLanguage      CodeLanguage?
+  /// Source attribution (e.g., "Original content", "MIT License — projectX")
+  sourceAttribution String?       @db.VarChar(500)
+  isActive          Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+
+  testSessions TestSession[]
+
+  @@index([language, mode, difficulty, isActive])
+  @@index([codeLanguage, isActive])
+  @@map("passages")
+}
+
+// ─── TestSession ──────────────────────────────────────────────────────────────
+
+model TestSession {
+  id             String            @id @default(uuid()) @db.Uuid
+  /// Cryptographically random session nonce/token sent to client — used to prevent replay attacks and validate submission
+  integrityToken String            @unique @db.VarChar(128)
+  userId         String?           @db.Uuid
+  passageId      String            @db.Uuid
+  mode           TypingMode
+  language       Language
+  codeLanguage   CodeLanguage?
+  /// Defines verification strictness (FREE, CERTIFICATE, B2B_ASSESSMENT)
+  trustTier      TrustTier         @default(FREE)
+  /// Duration in seconds (null for word-based tests)
+  duration       Int?
+  /// Word count (null for timed tests)
+  wordCount      Int?
+  status         TestSessionStatus @default(PENDING)
+  createdAt      DateTime          @default(now())
+  expiresAt      DateTime
+  startedAt      DateTime?
+  completedAt    DateTime?
+
+  user              User?              @relation(fields: [userId], references: [id])
+  passage           Passage            @relation(fields: [passageId], references: [id])
+  result            TestResult?
+  assessmentAttempt AssessmentAttempt?
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([trustTier])
+  @@map("test_sessions")
+}
+
+// ─── TestResult ───────────────────────────────────────────────────────────────
+
+model TestResult {
+  id        String  @id @default(uuid()) @db.Uuid
+  /// Opaque public share identifier
+  shareId   String  @unique @db.VarChar(21)
+  sessionId String  @unique @db.Uuid
+  userId    String? @db.Uuid
+
+  // ── Server-calculated metrics (never trust client) ──
+  /// Words per minute (standard: correctChars / 5 / minutes)
+  wpm         Float
+  /// Raw WPM before error penalty
+  rawWpm      Float
+  /// Net WPM = WPM - (uncorrectedErrors / minutes)
+  netWpm      Float
+  /// Accuracy ratio 0–1
+  accuracy    Float
+  /// Consistency: stddev-based score 0–1
+  consistency Float?
+
+  // ── Character counts ──
+  correctChars      Int
+  incorrectChars    Int
+  totalChars        Int
+  correctedErrors   Int
+  uncorrectedErrors Int
+  totalKeystrokes   Int?
+
+  /// Aggregated error map: { [key: string]: { expected: string, count: number } }
+  errorMap Json?
+
+  /// Specific metrics for code typing (punctuation accuracy, indentation accuracy, etc.)
+  codeMetrics Json?
+
+  // ── Integrity ──
+  integrityStatus  IntegrityStatus @default(VERIFIED)
+  /// Integrity signals submitted by client (stored for review, not acted on alone)
+  integritySignals Json?
+  /// Compact typed-character/event trace submitted at end of high-trust tests
+  eventTrace       Json?
+
+  /// Server-generated unguessable token for guest claiming
+  claimToken String? @unique @db.VarChar(128)
+
+  // ── Duration ──
+  /// Elapsed time in milliseconds (server-side clock)
+  elapsedMs Int
+  /// Duration in seconds (from session)
+  duration  Int?
+
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session     TestSession          @relation(fields: [sessionId], references: [id])
+  user        User?                @relation(fields: [userId], references: [id])
+  certificate Certificate?
+  candidate   AssessmentCandidate?
+
+  @@index([userId, createdAt])
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([shareId])
+  @@index([integrityStatus])
+  @@index([netWpm, accuracy, duration, createdAt])
+  @@index([integrityStatus, userId, netWpm(sort: Desc), accuracy(sort: Desc), duration(sort: Asc), createdAt(sort: Asc)])
+  @@map("test_results")
+}
+
+// ─── PracticeSession ──────────────────────────────────────────────────────────
+
+model PracticeSession {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  mode         String   @db.VarChar(50)
+  focusKeys    String[] @db.VarChar(10)
+  language     Language @default(ENGLISH)
+  exerciseType String   @db.VarChar(100)
+  durationMs   Int
+  completedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([completedAt])
+  @@map("practice_sessions")
+}
+
+// ─── UserKeyStat ─────────────────────────────────────────────────────────────
+
+model UserKeyStat {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  /// The key character (e.g., "a", "B", ";")
+  key              String   @db.VarChar(10)
+  errorCount       Int      @default(0)
+  correctedCount   Int      @default(0)
+  totalOccurrences Int      @default(0)
+  /// Cached accuracy rate (0–1)
+  accuracyRate     Float    @default(1.0)
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, key])
+  @@index([userId, accuracyRate])
+  @@map("user_key_stats")
+}
+
+// ─── Certificate ─────────────────────────────────────────────────────────────
+
+model Certificate {
+  id               String            @id @default(uuid()) @db.Uuid
+  /// Human-readable: TF-2026-XXXXXX
+  certificateId    String            @unique @db.VarChar(20)
+  /// HMAC-SHA256 of (certificateId + userId + issuedAt + secret)
+  verificationHash String            @db.VarChar(128)
+  userId           String            @db.Uuid
+  resultId         String            @unique @db.Uuid
+  status           CertificateStatus @default(PENDING_PAYMENT)
+
+  // Snapshot values at issuance (immutable after ACTIVE)
+  testType String   @db.VarChar(100)
+  language Language
+  duration Int
+  wpm      Float
+  rawWpm   Float
+  accuracy Float
+
+  pdfUrl String?
+  /// QR code data (URL to verify page)
+  qrData String? @db.VarChar(500)
+
+  issuedAt      DateTime  @default(now())
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  revokedReason String?   @db.VarChar(500)
+
+  updatedAt DateTime @updatedAt
+
+  user    User       @relation(fields: [userId], references: [id])
+  result  TestResult @relation(fields: [resultId], references: [id])
+  payment Payment?
+
+  @@index([userId])
+  @@index([certificateId])
+  @@index([verificationHash])
+  @@index([status])
+  @@map("certificates")
+}
+
+// ─── Payment ─────────────────────────────────────────────────────────────────
+
+model Payment {
+  id             String  @id @default(uuid()) @db.Uuid
+  userId         String  @db.Uuid
+  certificateId  String? @unique @db.Uuid
+  subscriptionId String? @db.Uuid
+
+  provider       PaymentProvider @default(RAZORPAY)
+  /// Provider-specific order ID (e.g., Razorpay order_id)
+  orderId        String          @unique @db.VarChar(200)
+  /// Provider-specific payment ID (set after payment completion)
+  paymentId      String?         @db.VarChar(200)
+  status         PaymentStatus   @default(PENDING)
+  amount         Int // in smallest currency unit (paise for INR)
+  currency       String          @default("INR") @db.VarChar(10)
+  /// Idempotency key — prevents double-processing of webhooks
+  idempotencyKey String          @unique @db.VarChar(200)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id])
+  certificate   Certificate?   @relation(fields: [certificateId], references: [id])
+  paymentEvents PaymentEvent[]
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([status])
+  @@map("payments")
+}
+
+model PaymentEvent {
+  id              String          @id @default(uuid()) @db.Uuid
+  paymentId       String          @db.Uuid
+  provider        PaymentProvider
+  providerEventId String          @unique @db.VarChar(200)
+  eventType       String          @db.VarChar(100)
+  payload         Json
+  receivedAt      DateTime        @default(now())
+  processedAt     DateTime?
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+  @@index([providerEventId])
+  @@map("payment_events")
+}
+
+// ─── Subscription ────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                     String             @id @default(uuid()) @db.Uuid
+  userId                 String             @unique @db.Uuid
+  provider               PaymentProvider    @default(RAZORPAY)
+  /// Provider-specific subscription ID (e.g., Razorpay sub_XXXXXXX)
+  providerSubscriptionId String?            @unique @db.VarChar(200)
+  /// Provider-specific plan ID
+  providerPlanId         String?            @db.VarChar(200)
+  plan                   SubscriptionPlan   @default(FREE)
+  status                 SubscriptionStatus @default(PENDING_CREATION)
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAt               DateTime?
+  cancelledAt            DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  user               User                @relation(fields: [userId], references: [id])
+  subscriptionEvents SubscriptionEvent[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([providerSubscriptionId])
+  @@map("subscriptions")
+}
+
+model SubscriptionEvent {
+  id                     String          @id @default(uuid()) @db.Uuid
+  subscriptionId         String?         @db.Uuid // Optional to allow storing unmatched webhooks
+  provider               PaymentProvider
+  /// Unique event identifier for idempotency
+  providerEventId        String          @unique @db.VarChar(200)
+  providerSubscriptionId String?         @db.VarChar(200) // Tracks the provider ID even if local subscription doesn't exist yet
+  eventType              String          @db.VarChar(100)
+  payload                Json
+  receivedAt             DateTime        @default(now())
+  processedAt            DateTime?
+
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([subscriptionId])
+  @@index([providerEventId])
+  @@index([providerSubscriptionId])
+  @@map("subscription_events")
+}
+
+// ─── Organization (B2B foundation) ───────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique @db.VarChar(200)
+  name      String   @db.VarChar(200)
+  domain    String?  @db.VarChar(255)
+  plan      String   @default("STARTER") @db.VarChar(50)
+  ownerId   String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members     OrganizationMember[]
+  assessments Assessment[]
+
+  @@index([ownerId])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id       String           @id @default(uuid()) @db.Uuid
+  orgId    String           @db.Uuid
+  userId   String           @db.Uuid
+  role     OrganizationRole @default(MEMBER)
+  joinedAt DateTime         @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+// ─── Assessment (B2B) ────────────────────────────────────────────────────────
+
+model Assessment {
+  id                String           @id @default(uuid()) @db.Uuid
+  orgId             String           @db.Uuid
+  title             String           @db.VarChar(300)
+  description       String?          @db.Text
+  testMode          TypingMode       @default(TIMED)
+  language          Language         @default(ENGLISH)
+  codeLanguage      String?          @db.VarChar(50)
+  duration          Int // seconds
+  wpmThreshold      Int?
+  accuracyThreshold Float?
+  maxAttempts       Int              @default(1)
+  status            AssessmentStatus @default(DRAFT)
+  expiresAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  organization Organization          @relation(fields: [orgId], references: [id])
+  candidates   AssessmentCandidate[]
+
+  @@index([orgId])
+  @@index([status])
+  @@map("assessments")
+}
+
+model AssessmentCandidate {
+  id            String          @id @default(uuid()) @db.Uuid
+  assessmentId  String          @db.Uuid
+  email         String          @db.VarChar(320)
+  name          String?         @db.VarChar(200)
+  /// Opaque invite token for candidate link
+  inviteTokenHash String          @unique @db.VarChar(128)
+  status        CandidateStatus @default(INVITED)
+  expiresAt     DateTime?
+  reviewerNotes String?         @db.Text
+  resultId      String?         @unique @db.Uuid
+  invitedAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  assessment Assessment          @relation(fields: [assessmentId], references: [id])
+  attempts   AssessmentAttempt[]
+  result     TestResult?         @relation(fields: [resultId], references: [id])
+
+  @@index([assessmentId, invitedAt(sort: Desc), id(sort: Desc)])
+  @@index([inviteTokenHash])
+  @@index([email])
+  @@map("assessment_candidates")
+}
+
+model AssessmentAttempt {
+  id          String        @id @default(uuid()) @db.Uuid
+  candidateId String        @db.Uuid
+  attemptNumber Int           @default(1)
+  sessionId   String?       @unique @db.Uuid
+  status      AttemptStatus @default(STARTED)
+  startedAt   DateTime      @default(now())
+  completedAt DateTime?
+
+  candidate AssessmentCandidate @relation(fields: [candidateId], references: [id])
+  session   TestSession?        @relation(fields: [sessionId], references: [id])
+
+  @@unique([candidateId, attemptNumber])
+  @@index([candidateId])
+  @@map("assessment_attempts")
+}
+
+// ─── AuditLog ─────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  action     String   @db.VarChar(100)
+  resource   String   @db.VarChar(100)
+  resourceId String?  @db.VarChar(100)
+  /// Hashed IP address (privacy-preserving)
+  ipHash     String?  @db.VarChar(128)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action, resource])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
