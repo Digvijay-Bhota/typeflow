@@ -76,7 +76,21 @@ export function getServerEnv(): z.infer<typeof serverSchema> {
   if (!_serverEnv) {
     _serverEnv = parseEnv(
       serverSchema,
-      process.env as Record<string, string | undefined>,
+      {
+        SUPABASE_URL: process.env.SUPABASE_URL,
+        SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        DATABASE_URL: process.env.DATABASE_URL,
+        DIRECT_URL: process.env.DIRECT_URL,
+        RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID,
+        RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET,
+        RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET,
+        RAZORPAY_PLAN_ID_PRO_MONTHLY: process.env.RAZORPAY_PLAN_ID_PRO_MONTHLY,
+        RAZORPAY_PLAN_ID_PRO_YEARLY: process.env.RAZORPAY_PLAN_ID_PRO_YEARLY,
+        APP_URL: process.env.APP_URL,
+        NODE_ENV: process.env.NODE_ENV,
+        SESSION_SECRET: process.env.SESSION_SECRET,
+      },
       "server"
     );
   }

@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { getServerEnv } from "./lib/env";
 
 export async function middleware(request: NextRequest) {
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const nonce = btoa(crypto.randomUUID());
 
   const isDev = process.env.NODE_ENV === "development";
   const cspHeader = `
