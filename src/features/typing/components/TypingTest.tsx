@@ -198,7 +198,7 @@ export function TypingTest({
       )}
 
       {!isCompleted && session && (
-        <TypingArea
+        <TypingArea language={initialLanguage ?? ""}
           chars={chars}
           currentIndex={state.currentIndex}
           errorMap={state.errorMap}

@@ -1,7 +1,6 @@
 import React from "react";
 import { notFound } from "next/navigation";
 import { db as prisma } from "@/server/db";
-import { getAuthenticatedUser } from "@/server/services/auth.service";
 import { ResultClient } from "@/features/analytics/components/ResultClient";
 
 export default async function ResultPage({
@@ -29,13 +28,12 @@ export default async function ResultPage({
     notFound();
   }
 
-  const user = await getAuthenticatedUser();
-  const isOwner = user?.id === result.userId;
+  
 
   return (
     <div className="bg-background min-h-screen">
       <div className="mx-auto max-w-7xl px-4 py-12">
-        <ResultClient result={result} isOwner={isOwner} />
+        <ResultClient result={result}  />
       </div>
     </div>
   );
