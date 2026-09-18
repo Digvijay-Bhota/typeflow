@@ -23,7 +23,8 @@ export function ActivityHeatmap({ data }: ActivityHeatmapProps) {
   for (let i = 0; i < days.length; i++) {
     currentWeek.push(days[i]);
     const day = days[i];
-    if (day && (day.getDay() === 0 || i === days.length - 1)) { // Sunday or last day
+    if (day && (day.getDay() === 0 || i === days.length - 1)) {
+      // Sunday or last day
       weeks.push(currentWeek);
       currentWeek = [];
     }
@@ -38,7 +39,7 @@ export function ActivityHeatmap({ data }: ActivityHeatmapProps) {
   };
 
   return (
-    <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
+    <div className="custom-scrollbar w-full overflow-x-auto pb-4">
       <div className="inline-flex gap-1">
         {weeks.map((week, wIdx) => (
           <div key={wIdx} className="flex flex-col gap-1">
@@ -51,7 +52,7 @@ export function ActivityHeatmap({ data }: ActivityHeatmapProps) {
                   key={dIdx}
                   title={`${dateStr}: ${count} tests`}
                   className={cn(
-                    "w-3 h-3 rounded-sm border transition-colors hover:border-foreground cursor-crosshair",
+                    "hover:border-foreground h-3 w-3 cursor-crosshair rounded-sm border transition-colors",
                     getIntensityClass(count)
                   )}
                 />
@@ -60,19 +61,19 @@ export function ActivityHeatmap({ data }: ActivityHeatmapProps) {
           </div>
         ))}
       </div>
-      <div className="flex justify-between items-center mt-4 text-xs font-semibold text-muted tracking-wider uppercase">
-         <span>1 Year Ago</span>
-         <div className="flex items-center gap-2">
-            Less
-            <div className="flex gap-1">
-               <div className="w-3 h-3 rounded-sm bg-surface-elevated/30 border border-border/50" />
-               <div className="w-3 h-3 rounded-sm bg-accent/30 border border-accent/20" />
-               <div className="w-3 h-3 rounded-sm bg-accent/60 border border-accent/40" />
-               <div className="w-3 h-3 rounded-sm bg-accent border border-accent" />
-               <div className="w-3 h-3 rounded-sm bg-cyan-400 border border-cyan-400" />
-            </div>
-            More
-         </div>
+      <div className="text-muted mt-4 flex items-center justify-between text-xs font-semibold tracking-wider uppercase">
+        <span>1 Year Ago</span>
+        <div className="flex items-center gap-2">
+          Less
+          <div className="flex gap-1">
+            <div className="bg-surface-elevated/30 border-border/50 h-3 w-3 rounded-sm border" />
+            <div className="bg-accent/30 border-accent/20 h-3 w-3 rounded-sm border" />
+            <div className="bg-accent/60 border-accent/40 h-3 w-3 rounded-sm border" />
+            <div className="bg-accent border-accent h-3 w-3 rounded-sm border" />
+            <div className="h-3 w-3 rounded-sm border border-cyan-400 bg-cyan-400" />
+          </div>
+          More
+        </div>
       </div>
     </div>
   );

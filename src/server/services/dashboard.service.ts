@@ -153,16 +153,19 @@ export async function getHistory(
 export async function getActivityHeatmap() {
   const user = await requireAuthenticatedUser();
   const tests = await db.testResult.findMany({
-    where: { userId: user.id, createdAt: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) } },
-    select: { createdAt: true }
+    where: {
+      userId: user.id,
+      createdAt: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) },
+    },
+    select: { createdAt: true },
   });
-  
+
   const heatmap: Record<string, number> = {};
-  tests.forEach(t => {
-     const dateString = t.createdAt.toISOString().split('T')[0] as string;
-     heatmap[dateString] = (heatmap[dateString] || 0) + 1;
+  tests.forEach((t) => {
+    const dateString = t.createdAt.toISOString().split("T")[0] as string;
+    heatmap[dateString] = (heatmap[dateString] || 0) + 1;
   });
-  
+
   return heatmap;
 }
 
@@ -176,7 +179,7 @@ export async function getAnalyticsData() {
       accuracy: true,
       createdAt: true,
       elapsedMs: true,
-    }
+    },
   });
   return results;
 }
