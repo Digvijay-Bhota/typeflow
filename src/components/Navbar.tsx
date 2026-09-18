@@ -54,7 +54,7 @@ export function Navbar({ user }: { user: any }) {
           </Link>
 
           {/* Desktop Nav */}
-          <nav className="hidden items-center gap-6 md:flex">
+          <nav className="hidden items-center gap-6 lg:flex">
             {navLinks.map((link) => {
               const active =
                 pathname === link.href || pathname.startsWith(link.href + "/");
@@ -76,7 +76,7 @@ export function Navbar({ user }: { user: any }) {
         </div>
 
         {/* Right side actions */}
-        <div className="hidden items-center gap-4 md:flex">
+        <div className="hidden items-center gap-4 lg:flex">
           {_mounted && (
             <button
               onClick={() =>
@@ -135,7 +135,7 @@ export function Navbar({ user }: { user: any }) {
 
         {/* Mobile menu button */}
         <button
-          className="text-muted hover:text-foreground -mr-2 p-2 md:hidden"
+          className="text-muted hover:text-foreground -mr-2 p-2 lg:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
         >
           {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -144,7 +144,7 @@ export function Navbar({ user }: { user: any }) {
 
       {/* Mobile Nav */}
       {mobileOpen && (
-        <div className="border-border bg-background space-y-4 border-t px-4 py-4 md:hidden">
+        <div className="border-border bg-background space-y-4 border-t px-4 py-4 lg:hidden">
           <nav className="flex flex-col gap-4">
             {navLinks.map((link) => {
               const active =

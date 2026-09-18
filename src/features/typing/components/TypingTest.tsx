@@ -47,12 +47,15 @@ export function TypingTest({
   const [session, setSession] = useState<SessionInitResponse | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
   const sessionStarted = useRef(false);
+  const finalStateRef = useRef<TypingEngineState | null>(null);
 
   // ── Create Session ───────────────────────────────────────────────────────
   const fetchSession = useCallback(async () => {
     setLoadingSession(true);
+    setSubmitError(null);
     try {
       const res = await fetch("/api/session/create", {
         method: "POST",
@@ -71,6 +74,7 @@ export function TypingTest({
       setSession(data);
       sessionStarted.current = false;
       submittingRef.current = false;
+      finalStateRef.current = null;
       setSubmitting(false);
     } catch (e) {
       console.error(e);
@@ -84,6 +88,59 @@ export function TypingTest({
     fetchSession();
   }, [fetchSession]);
 
+  const submitResult = useCallback(async (s: TypingEngineState) => {
+    if (!session || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSubmitError(null);
+    finalStateRef.current = s;
+    try {
+      const res = await fetch("/api/result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: session.sessionId,
+          integrityToken: session.integrityToken,
+          clientElapsedMs: s.elapsedMs,
+          metrics: {
+            wpm: s.wpm,
+            rawWpm: s.rawWpm,
+            accuracy: s.accuracy,
+            correctChars: s.correctCharacters,
+            incorrectChars: s.incorrectCharacters,
+            totalChars: s.totalCharacters,
+            correctedErrors: s.correctedErrors,
+            uncorrectedErrors: s.uncorrectedErrors,
+            consistency: s.consistency,
+          },
+          errorMap: s.keyErrors,
+          integritySignals: s.integritySignals,
+          ...(trustTier === "CERTIFICATE" &&
+            s.eventTrace && { eventTrace: s.eventTrace }),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.claimToken) {
+          sessionStorage.setItem("tf_claim_token", data.claimToken);
+        }
+        router.push(data.shareUrl);
+      } else {
+        const errText = await res.text();
+        console.error("Result submission failed", errText);
+        setSubmitError("Failed to save result. Please try again.");
+        submittingRef.current = false;
+      }
+    } catch (e) {
+      console.error(e);
+      setSubmitError("Network error. Please try again.");
+      submittingRef.current = false;
+    } finally {
+      setSubmitting(false);
+    }
+  }, [session, router, trustTier]);
+
   // ── Engine ────────────────────────────────────────────────────────────────
   const { state, chars, handleKey, handleBackspace } = useTypingEngine({
     passage: session?.passage.content || "",
@@ -91,53 +148,7 @@ export function TypingTest({
     language: language.toLowerCase() as Language,
     duration: mode === "timed" ? duration : undefined,
     wordCount: mode === "words" ? wordCount : undefined,
-    onComplete: useCallback(
-      async (s: TypingEngineState) => {
-        if (!session || submittingRef.current) return;
-        submittingRef.current = true;
-        setSubmitting(true);
-        try {
-          const res = await fetch("/api/result", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessionId: session.sessionId,
-              clientElapsedMs: s.elapsedMs,
-              metrics: {
-                wpm: s.wpm,
-                rawWpm: s.rawWpm,
-                accuracy: s.accuracy,
-                correctChars: s.correctCharacters,
-                incorrectChars: s.incorrectCharacters,
-                totalChars: s.totalCharacters,
-                correctedErrors: s.correctedErrors,
-                uncorrectedErrors: s.uncorrectedErrors,
-                consistency: s.consistency,
-              },
-              errorMap: s.keyErrors,
-              integritySignals: s.integritySignals,
-              ...(trustTier === "CERTIFICATE" &&
-                s.eventTrace && { eventTrace: s.eventTrace }),
-            }),
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            if (data.claimToken) {
-              sessionStorage.setItem("tf_claim_token", data.claimToken);
-            }
-            router.push(data.shareUrl);
-          } else {
-            console.error("Result submission failed", await res.text());
-          }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setSubmitting(false);
-        }
-      },
-      [session, router, trustTier]
-    ),
+    onComplete: submitResult,
   });
 
   // Intercept the first keypress to start the session on the backend
@@ -210,8 +221,26 @@ export function TypingTest({
       )}
 
       {isCompleted && (
-        <div className="text-muted py-12 text-center">
-          {submitting ? "Saving result..." : "Test complete."}
+        <div className="py-12 flex flex-col items-center gap-4 text-center">
+          <div className="text-muted">
+            {submitting ? "Saving result..." : "Test complete."}
+          </div>
+          {submitError && (
+             <div className="text-destructive flex flex-col items-center gap-3">
+                <span>{submitError}</span>
+                <button
+                  onClick={() => {
+                     if (finalStateRef.current) {
+                        submitResult(finalStateRef.current);
+                     }
+                  }}
+                  className="px-4 py-2 bg-tf-neutral-800 text-tf-neutral-100 rounded-md hover:bg-tf-neutral-700 transition disabled:opacity-50"
+                  disabled={submitting}
+                >
+                  Retry Submission
+                </button>
+             </div>
+          )}
         </div>
       )}
 

@@ -182,6 +182,74 @@ describe("Session & Result Service Integration (Mocked DB)", () => {
       expect(res.shareUrl).not.toContain(res.claimToken);
     });
 
+
+    it("should reject submission if integrityToken does not match", async () => {
+      const mockSession = {
+        id: "s1",
+        status: "ACTIVE",
+        integrityToken: "valid-token",
+        userId: null,
+      };
+      (db.testSession.findUnique as any).mockResolvedValue(mockSession);
+
+      await expect(
+        submitResult({
+          sessionId: "s1",
+          integrityToken: "wrong-token",
+          metrics: { wpm: 60, rawWpm: 60, accuracy: 1, correctChars: 150, incorrectChars: 0, totalChars: 150, correctedErrors: 0, uncorrectedErrors: 0, consistency: 0.9 },
+          integritySignals: { pasteAttempts: 0, copyAttempts: 0, focusLossCount: 0, visibilityChanges: 0, suspiciousPattern: false, intervalWpms: [], selectionAttempts: 0 },
+        })
+      ).rejects.toThrow("Invalid integrity token");
+    });
+
+    it("should reject submission if duration exceeded grace period", async () => {
+      const mockSession = {
+        id: "s1",
+        status: "ACTIVE",
+        integrityToken: "t1",
+        userId: null,
+        startedAt: new Date(Date.now() - 100000), // started 100s ago!
+        duration: 30, // 30s test -> maximum allowed is 30s + grace
+        expiresAt: new Date(Date.now() + 100000),
+        passage: { content: "test" },
+      };
+      (db.testSession.findUnique as any).mockResolvedValue(mockSession);
+
+      await expect(
+        submitResult({
+          sessionId: "s1",
+          integrityToken: "t1",
+          clientElapsedMs: 30000,
+          metrics: { wpm: 60, rawWpm: 60, accuracy: 1, correctChars: 150, incorrectChars: 0, totalChars: 150, correctedErrors: 0, uncorrectedErrors: 0, consistency: 0.9 },
+          integritySignals: { pasteAttempts: 0, copyAttempts: 0, focusLossCount: 0, visibilityChanges: 0, suspiciousPattern: false, intervalWpms: [], selectionAttempts: 0 },
+        })
+      ).rejects.toThrow(/duration exceeded grace period/);
+    });
+
+    it("should reject submission if session expired", async () => {
+      const mockSession = {
+        id: "s1",
+        status: "ACTIVE",
+        integrityToken: "t1",
+        userId: null,
+        startedAt: new Date(Date.now() - 30000),
+        duration: null, // words mode or no duration
+        expiresAt: new Date(Date.now() - 10000), // expired 10s ago
+        passage: { content: "test" },
+      };
+      (db.testSession.findUnique as any).mockResolvedValue(mockSession);
+
+      await expect(
+        submitResult({
+          sessionId: "s1",
+          integrityToken: "t1",
+          clientElapsedMs: 30000,
+          metrics: { wpm: 60, rawWpm: 60, accuracy: 1, correctChars: 150, incorrectChars: 0, totalChars: 150, correctedErrors: 0, uncorrectedErrors: 0, consistency: 0.9 },
+          integritySignals: { pasteAttempts: 0, copyAttempts: 0, focusLossCount: 0, visibilityChanges: 0, suspiciousPattern: false, intervalWpms: [], selectionAttempts: 0 },
+        })
+      ).rejects.toThrow(/Session has expired/);
+    });
+
     it("should reject duplicate/completed session submission", async () => {
       // Mock session already completed
       const mockSession = {
