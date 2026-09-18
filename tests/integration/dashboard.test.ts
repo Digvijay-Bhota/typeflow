@@ -92,6 +92,7 @@ describe("Dashboard Service Integration (Cursor Pagination & Authorization)", ()
         _count: { id: true },
         _avg: { wpm: true, accuracy: true },
         _max: { wpm: true },
+        _sum: { elapsedMs: true, totalKeystrokes: true },
       });
 
       expect(stats.totalTests).toBe(10);
