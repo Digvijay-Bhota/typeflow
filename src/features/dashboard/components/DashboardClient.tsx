@@ -107,6 +107,20 @@ export function DashboardClient({ stats, user }: { stats: DashboardStats; user: 
         </div>
       </div>
 
+      {/* DYNAMIC PERFORMANCE INSIGHT */}
+      {chartData.length > 1 && (
+        <div className="bg-accent/5 border-accent/20 text-foreground flex items-center gap-3 rounded-2xl border p-4 shadow-sm">
+          <Zap
+            className={`h-5 w-5 ${wpmTrend >= 0 ? "text-emerald-500" : "text-orange-500"}`}
+          />
+          <p className="text-sm font-medium">
+            {wpmTrend >= 0
+              ? `Great progress! Your speed has improved by ${wpmTrend} WPM compared to your previous test.`
+              : `Your speed dropped by ${Math.abs(wpmTrend)} WPM. Take a deep breath and focus on accuracy for your next run.`}
+          </p>
+        </div>
+      )}
+
       {/* KPI METRICS */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
         <div className="group bg-surface hover:bg-surface-elevated hover:border-accent/30 border-border flex flex-col rounded-3xl border p-6 shadow-sm transition-all duration-300">
