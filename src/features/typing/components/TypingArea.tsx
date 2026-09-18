@@ -18,10 +18,10 @@ interface TypingAreaProps {
 
 function getCharClass(idx: number, currentIdx: number, errorMap: ErrorMap): string {
   if (idx === currentIdx) {
-    return "text-foreground font-black"; 
+    return "text-foreground font-black";
   }
   if (idx > currentIdx) {
-    return "text-muted opacity-70"; 
+    return "text-muted opacity-70";
   }
   const err = errorMap[idx];
   if (err) {
@@ -80,13 +80,13 @@ export function TypingArea({
 
     // Smooth scroll if needed
     if (linesContainerRef.current) {
-       const scrollTarget = caretY - containerRect.height / 2 + charRect.height / 2;
-       if (Math.abs(linesContainerRef.current.scrollTop - scrollTarget) > 20) {
-         linesContainerRef.current.scrollTo({
-           top: Math.max(0, scrollTarget),
-           behavior: "smooth"
-         });
-       }
+      const scrollTarget = caretY - containerRect.height / 2 + charRect.height / 2;
+      if (Math.abs(linesContainerRef.current.scrollTop - scrollTarget) > 20) {
+        linesContainerRef.current.scrollTo({
+          top: Math.max(0, scrollTarget),
+          behavior: "smooth",
+        });
+      }
     }
   }, [currentIndex, status]);
 
@@ -99,7 +99,7 @@ export function TypingArea({
     (e: KeyboardEvent<HTMLDivElement>) => {
       if (status === "completed") return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      
+
       // Prevent browser shortcuts kicking in unexpectedly, except specific ones
       if (e.key === "Tab") {
         e.preventDefault();
@@ -142,7 +142,7 @@ export function TypingArea({
       onKeyDown={handleKeyDown}
       onClick={focusContainer}
       className={cn(
-        "relative font-mono text-xl md:text-2xl leading-relaxed cursor-text outline-none select-none",
+        "relative cursor-text font-mono text-xl leading-relaxed outline-none select-none md:text-2xl",
         "h-[220px] overflow-hidden rounded-2xl p-6 transition-all",
         "focus:ring-accent/40 focus:ring-2",
         !isActive && "opacity-60",
@@ -151,30 +151,27 @@ export function TypingArea({
       )}
     >
       {status === "idle" && (
-        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-           <span className="bg-background/90 text-foreground px-4 py-2 rounded-xl font-bold shadow-sm border border-border animate-pulse">
-             Click to start typing
-           </span>
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <span className="bg-background/90 text-foreground border-border animate-pulse rounded-xl border px-4 py-2 font-bold shadow-sm">
+            Click to start typing
+          </span>
         </div>
       )}
 
-      <div 
-        ref={linesContainerRef}
-        className="h-full overflow-hidden w-full relative"
-      >
+      <div ref={linesContainerRef} className="relative h-full w-full overflow-hidden">
         <div
           ref={caretRef}
           className={cn(
-            "absolute left-0 top-0 w-[3px] rounded-full bg-accent z-20 transition-all duration-75 ease-out",
+            "bg-accent absolute top-0 left-0 z-20 w-[3px] rounded-full transition-all duration-75 ease-out",
             isActive ? "animate-caret-pulse" : "hidden"
           )}
         />
-        
-        <div className="flex flex-col text-left break-all whitespace-pre-wrap pb-20">
+
+        <div className="flex flex-col pb-20 text-left break-all whitespace-pre-wrap">
           {lines.map((line, lineIdx) => (
-            <div key={lineIdx} className="flex group">
+            <div key={lineIdx} className="group flex">
               {isCode && (
-                <div className="w-12 shrink-0 text-right pr-4 text-zinc-700 font-mono text-sm select-none pt-1">
+                <div className="w-12 shrink-0 pt-1 pr-4 text-right font-mono text-sm text-zinc-700 select-none">
                   {lineIdx + 1}
                 </div>
               )}

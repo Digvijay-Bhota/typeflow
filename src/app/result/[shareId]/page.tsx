@@ -28,12 +28,10 @@ export default async function ResultPage({
     notFound();
   }
 
-  
-
   return (
     <div className="bg-background min-h-screen">
       <div className="mx-auto max-w-7xl px-4 py-12">
-        <ResultClient result={result}  />
+        <ResultClient result={result} />
       </div>
     </div>
   );
