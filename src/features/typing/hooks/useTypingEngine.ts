@@ -46,7 +46,6 @@ import type {
   EngineStatus,
 } from "@/types/typing";
 
-
 // ─── Interval WPM tracking ────────────────────────────────────────────────────
 
 /** Track WPM every N milliseconds for consistency calculation */
@@ -115,15 +114,11 @@ export interface UseTypingEngineReturn {
   handleBackspace: () => void;
 }
 
-export function useTypingEngine(
-  config: TypingEngineConfig
-): UseTypingEngineReturn {
+export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineReturn {
   const { passage, mode, duration, wordCount, onComplete, onProgress } = config;
 
   // ── React state (triggers rerenders) ──
-  const [state, setState] = useState<TypingEngineState>(
-    createInitialEngineState
-  );
+  const [state, setState] = useState<TypingEngineState>(createInitialEngineState);
 
   // ── Mutable refs (hot-path — no rerender on change) ──
   const statusRef = useRef<EngineStatus>("idle");
@@ -172,9 +167,7 @@ export function useTypingEngine(
     const consistency = calculateConsistency(intervalWpmsRef.current) ?? 0;
 
     const remainingMs =
-      mode === "timed" && durationMs > 0
-        ? Math.max(0, durationMs - elapsedMs)
-        : null;
+      mode === "timed" && durationMs > 0 ? Math.max(0, durationMs - elapsedMs) : null;
 
     setState((prev) => ({
       ...prev,
@@ -431,10 +424,7 @@ export function useTypingEngine(
           ...keyErrorsRef.current,
           [expectedChar ?? ""]: {
             expected: expectedChar ?? "",
-            actual: [
-              ...(existing?.actual?.slice(-4) ?? []),
-              char,
-            ],
+            actual: [...(existing?.actual?.slice(-4) ?? []), char],
             count: (existing?.count ?? 0) + 1,
             corrected: existing?.corrected ?? 0,
             uncorrected: (existing?.uncorrected ?? 0) + 1,
@@ -452,7 +442,8 @@ export function useTypingEngine(
         };
       }
 
-      const elapsed = Date.now() - (startedAtRef.current ?? Date.now()) - totalPausedMsRef.current;
+      const elapsed =
+        Date.now() - (startedAtRef.current ?? Date.now()) - totalPausedMsRef.current;
       if (eventTraceRef.current.length < 12000) {
         eventTraceRef.current.push([Math.max(0, elapsed), 0, idx, char]);
       }
@@ -497,10 +488,7 @@ export function useTypingEngine(
     if (prevError && !prevError.corrected) {
       // Correcting an error
       incorrectCharsRef.current = Math.max(0, incorrectCharsRef.current - 1);
-      uncorrectedErrorsRef.current = Math.max(
-        0,
-        uncorrectedErrorsRef.current - 1
-      );
+      uncorrectedErrorsRef.current = Math.max(0, uncorrectedErrorsRef.current - 1);
       correctedErrorsRef.current += 1;
 
       // Mark as corrected in error map
@@ -524,7 +512,8 @@ export function useTypingEngine(
       }
     }
 
-    const elapsed = Date.now() - (startedAtRef.current ?? Date.now()) - totalPausedMsRef.current;
+    const elapsed =
+      Date.now() - (startedAtRef.current ?? Date.now()) - totalPausedMsRef.current;
     if (eventTraceRef.current.length < 12000) {
       eventTraceRef.current.push([Math.max(0, elapsed), 1, prevIdx]);
     }
@@ -601,10 +590,7 @@ export function useTypingEngine(
       document.removeEventListener("paste", handlePaste);
       document.removeEventListener("copy", handleCopy);
       window.removeEventListener("blur", handleBlur);
-      document.removeEventListener(
-        "visibilitychange",
-        handleVisibilityChange
-      );
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.removeEventListener("selectionchange", handleSelect);
     };
   }, []);

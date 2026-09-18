@@ -16,7 +16,10 @@ export async function requireOrganizationMember(orgId: string) {
   return { user, member, organization: member.organization };
 }
 
-export async function requireOrganizationRole(orgId: string, allowedRoles: OrganizationRole[]) {
+export async function requireOrganizationRole(
+  orgId: string,
+  allowedRoles: OrganizationRole[]
+) {
   const ctx = await requireOrganizationMember(orgId);
   if (!allowedRoles.includes(ctx.member.role)) {
     throw new Error("INSUFFICIENT_ORG_ROLE");
@@ -62,17 +65,23 @@ export async function createOrganization(data: { name: string; slug: string }) {
 
 export async function getOrganizationMembers(orgId: string) {
   await requireOrganizationRole(orgId, ["OWNER", "ADMIN", "RECRUITER", "REVIEWER"]);
-  
+
   return await db.organizationMember.findMany({
     where: { orgId },
-    include: { user: { select: { id: true, displayName: true, email: true, avatarUrl: true } } },
+    include: {
+      user: { select: { id: true, displayName: true, email: true, avatarUrl: true } },
+    },
     orderBy: { joinedAt: "desc" },
   });
 }
 
-export async function updateOrganizationMemberRole(orgId: string, targetMemberId: string, newRole: OrganizationRole) {
+export async function updateOrganizationMemberRole(
+  orgId: string,
+  targetMemberId: string,
+  newRole: OrganizationRole
+) {
   const ctx = await requireOrganizationRole(orgId, ["OWNER", "ADMIN"]);
-  
+
   const targetMember = await db.organizationMember.findUnique({
     where: { id: targetMemberId },
   });
@@ -108,7 +117,7 @@ export async function updateOrganizationMemberRole(orgId: string, targetMemberId
 
 export async function removeOrganizationMember(orgId: string, targetMemberId: string) {
   const ctx = await requireOrganizationRole(orgId, ["OWNER", "ADMIN"]);
-  
+
   const targetMember = await db.organizationMember.findUnique({
     where: { id: targetMemberId },
   });
@@ -121,9 +130,9 @@ export async function removeOrganizationMember(orgId: string, targetMemberId: st
   if (targetMember.role === "OWNER" && ctx.member.role !== "OWNER") {
     throw new Error("INSUFFICIENT_ORG_ROLE");
   }
-  
+
   if (targetMember.userId === ctx.organization.ownerId) {
-      throw new Error("CANNOT_REMOVE_PRIMARY_OWNER");
+    throw new Error("CANNOT_REMOVE_PRIMARY_OWNER");
   }
 
   await db.organizationMember.delete({
@@ -140,13 +149,17 @@ export async function removeOrganizationMember(orgId: string, targetMemberId: st
   });
 }
 
-export async function inviteOrganizationMember(orgId: string, email: string, role: OrganizationRole) {
+export async function inviteOrganizationMember(
+  orgId: string,
+  email: string,
+  role: OrganizationRole
+) {
   const ctx = await requireOrganizationRole(orgId, ["OWNER", "ADMIN"]);
-  
+
   // Here we would normally create an invite token and send an email
   // For now, we'll just log it.
   const inviteId = "invite_" + Math.random().toString(36).substr(2, 9);
-  
+
   await db.auditLog.create({
     data: {
       userId: ctx.user.id,
@@ -156,6 +169,6 @@ export async function inviteOrganizationMember(orgId: string, email: string, rol
       metadata: { email, role },
     },
   });
-  
+
   return inviteId;
 }

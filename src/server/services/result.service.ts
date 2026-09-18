@@ -1,7 +1,9 @@
 import { db } from "@/server/db";
 import { TestResultPublic } from "@/types/typing";
 
-export async function getResultByShareId(shareId: string): Promise<TestResultPublic | null> {
+export async function getResultByShareId(
+  shareId: string
+): Promise<TestResultPublic | null> {
   const result = await db.testResult.findUnique({
     where: { shareId },
     include: {
@@ -37,12 +39,19 @@ export async function getResultByShareId(shareId: string): Promise<TestResultPub
     duration: result.duration,
     mode: result.session.mode,
     language: result.session.language,
-    errorMap: result.errorMap ? (result.errorMap as Record<string, { expected: string; count: number; corrected: number; uncorrected: number; }>) : null,
+    errorMap: result.errorMap
+      ? (result.errorMap as Record<
+          string,
+          { expected: string; count: number; corrected: number; uncorrected: number }
+        >)
+      : null,
     integrityStatus: result.integrityStatus as "VERIFIED" | "REVIEW" | "INVALID",
     createdAt: result.createdAt.toISOString(),
-    isCertificateEligible: result.session.trustTier === "CERTIFICATE" && result.integrityStatus === "VERIFIED",
+    isCertificateEligible:
+      result.session.trustTier === "CERTIFICATE" && result.integrityStatus === "VERIFIED",
     displayName: result.user?.displayName || null,
-    certificateId: result.certificate?.status === "ACTIVE" ? result.certificate.certificateId : null,
+    certificateId:
+      result.certificate?.status === "ACTIVE" ? result.certificate.certificateId : null,
   };
 
   if (result.session.codeLanguage) {

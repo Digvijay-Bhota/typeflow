@@ -17,11 +17,13 @@ export interface LogEntry {
   userId?: string | undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   context?: Record<string, any> | undefined;
-  error?: {
-    message: string;
-    code?: string | undefined;
-    stack?: string | undefined;
-  } | undefined;
+  error?:
+    | {
+        message: string;
+        code?: string | undefined;
+        stack?: string | undefined;
+      }
+    | undefined;
 }
 
 export interface Logger {
@@ -42,9 +44,7 @@ const isTest = process.env.NODE_ENV === "test";
 
 function formatForDev(entry: LogEntry): string {
   const time = new Date(entry.timestamp).toLocaleTimeString();
-  const context = entry.context
-    ? ` ${JSON.stringify(entry.context)}`
-    : "";
+  const context = entry.context ? ` ${JSON.stringify(entry.context)}` : "";
   const errMsg = entry.error ? ` [${entry.error.message}]` : "";
   return `[${time}] ${entry.level.toUpperCase()} ${entry.message}${context}${errMsg}`;
 }

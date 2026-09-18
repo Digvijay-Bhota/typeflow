@@ -34,7 +34,10 @@ export async function POST(req: NextRequest) {
     const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
     const { success } = await rateLimit(`sub_create_${ip}`, 10, 60000);
     if (!success) {
-      return NextResponse.json({ error: { code: "RATE_LIMITED", message: "Too many requests" } }, { status: 429 });
+      return NextResponse.json(
+        { error: { code: "RATE_LIMITED", message: "Too many requests" } },
+        { status: 429 }
+      );
     }
 
     // 1. Require authentication — userId is from server-side auth

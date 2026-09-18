@@ -9,9 +9,11 @@ export const metadata = constructMetadata({
 
 export default function LeaderboardPage() {
   return (
-    <div className="max-w-5xl mx-auto py-12 px-4 w-full">
+    <div className="mx-auto w-full max-w-5xl px-4 py-12">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground dark:text-foreground">Leaderboard</h1>
+        <h1 className="text-foreground dark:text-foreground text-3xl font-bold">
+          Leaderboard
+        </h1>
         <p className="text-muted mt-2">Top verified typing results.</p>
       </div>
       <LeaderboardClient />

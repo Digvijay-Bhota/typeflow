@@ -23,9 +23,7 @@ import * as RazorpaySubService from "@/server/services/razorpay.subscription.ser
 
 vi.mock("@/server/db", () => {
   const db = {
-    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
-      cb(db)
-    ),
+    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(db)),
     subscription: {
       findUnique: vi.fn(),
       upsert: vi.fn(),
@@ -126,9 +124,7 @@ describe("getSubscriptionEntitlement", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns isPro=false when no subscription record exists", async () => {
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      null
-    );
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     const result = await getSubscriptionEntitlement("user_1");
     expect(result.isPro).toBe(false);
     expect(result.status).toBeNull();
@@ -166,9 +162,7 @@ describe("requirePro", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("throws PRO_REQUIRED when user has no subscription", async () => {
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      null
-    );
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     await expect(requirePro("user_1")).rejects.toThrow("PRO_REQUIRED");
   });
 
@@ -245,9 +239,7 @@ describe("createProSubscription", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("creates subscription successfully for eligible user (no existing subscription)", async () => {
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      null
-    );
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     (
       RazorpaySubService.resolveRazorpayPlanId as ReturnType<typeof vi.fn>
     ).mockReturnValue("plan_monthly_rzp");
@@ -271,9 +263,7 @@ describe("createProSubscription", () => {
     expect(result.plan).toBe("PRO");
     expect(result.interval).toBe("monthly");
     // Verify server-controlled plan — never from client
-    expect(
-      RazorpaySubService.resolveRazorpayPlanId
-    ).toHaveBeenCalledWith("monthly");
+    expect(RazorpaySubService.resolveRazorpayPlanId).toHaveBeenCalledWith("monthly");
   });
 
   it("rejects duplicate active subscription", async () => {
@@ -281,12 +271,10 @@ describe("createProSubscription", () => {
       makeSub({ plan: "PRO", status: "ACTIVE" })
     );
 
-    await expect(
-      createProSubscription("user_1", "monthly")
-    ).rejects.toThrow("SUBSCRIPTION_ALREADY_ACTIVE");
-    expect(
-      RazorpaySubService.createRazorpaySubscription
-    ).not.toHaveBeenCalled();
+    await expect(createProSubscription("user_1", "monthly")).rejects.toThrow(
+      "SUBSCRIPTION_ALREADY_ACTIVE"
+    );
+    expect(RazorpaySubService.createRazorpaySubscription).not.toHaveBeenCalled();
   });
 
   it("rejects duplicate TRIALING subscription", async () => {
@@ -294,17 +282,15 @@ describe("createProSubscription", () => {
       makeSub({ plan: "PRO", status: "TRIALING" })
     );
 
-    await expect(
-      createProSubscription("user_1", "monthly")
-    ).rejects.toThrow("SUBSCRIPTION_ALREADY_ACTIVE");
+    await expect(createProSubscription("user_1", "monthly")).rejects.toThrow(
+      "SUBSCRIPTION_ALREADY_ACTIVE"
+    );
   });
 
   it("uses server-controlled plan ID (not client-supplied)", async () => {
     // This test verifies that even if client sends a malicious plan ID,
     // it's never used — interval is the only client input, plan is server-resolved
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      null
-    );
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     (
       RazorpaySubService.resolveRazorpayPlanId as ReturnType<typeof vi.fn>
     ).mockReturnValue("server_controlled_plan_id");
@@ -318,15 +304,14 @@ describe("createProSubscription", () => {
       currentStart: null,
       currentEnd: null,
     });
-    (db.subscription.upsert as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeSub()
-    );
+    (db.subscription.upsert as ReturnType<typeof vi.fn>).mockResolvedValue(makeSub());
 
     await createProSubscription("user_1", "monthly");
 
-    expect(
-      RazorpaySubService.createRazorpaySubscription
-    ).toHaveBeenCalledWith("server_controlled_plan_id", "user_1");
+    expect(RazorpaySubService.createRazorpaySubscription).toHaveBeenCalledWith(
+      "server_controlled_plan_id",
+      "user_1"
+    );
   });
 
   it("allows re-subscription after CANCELLED status", async () => {
@@ -386,9 +371,7 @@ describe("cancelProSubscription", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("cancels subscription successfully", async () => {
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeSub()
-    );
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(makeSub());
     (
       RazorpaySubService.cancelRazorpaySubscription as ReturnType<typeof vi.fn>
     ).mockResolvedValue(undefined);
@@ -408,9 +391,7 @@ describe("cancelProSubscription", () => {
   });
 
   it("throws SUBSCRIPTION_NOT_FOUND when no subscription", async () => {
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      null
-    );
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     await expect(cancelProSubscription("user_1")).rejects.toThrow(
       "SUBSCRIPTION_NOT_FOUND"
     );
@@ -470,19 +451,11 @@ describe("processSubscriptionWebhook", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (
-      RazorpaySubService.verifyRazorpaySubscriptionSignature as ReturnType<
-        typeof vi.fn
-      >
+      RazorpaySubService.verifyRazorpaySubscriptionSignature as ReturnType<typeof vi.fn>
     ).mockReturnValue(true);
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeSub()
-    );
-    (
-      db.subscriptionEvent.findUnique as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(null);
-    (
-      db.subscriptionEvent.create as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({});
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(makeSub());
+    (db.subscriptionEvent.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (db.subscriptionEvent.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (db.subscription.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
   });
 
@@ -490,14 +463,12 @@ describe("processSubscriptionWebhook", () => {
 
   it("throws INVALID_SUBSCRIPTION_SIGNATURE for invalid signature", async () => {
     (
-      RazorpaySubService.verifyRazorpaySubscriptionSignature as ReturnType<
-        typeof vi.fn
-      >
+      RazorpaySubService.verifyRazorpaySubscriptionSignature as ReturnType<typeof vi.fn>
     ).mockReturnValue(false);
     const payload = makePayload("subscription.activated");
-    await expect(
-      processSubscriptionWebhook(payload, "bad_sig", "raw")
-    ).rejects.toThrow("INVALID_SUBSCRIPTION_SIGNATURE");
+    await expect(processSubscriptionWebhook(payload, "bad_sig", "raw")).rejects.toThrow(
+      "INVALID_SUBSCRIPTION_SIGNATURE"
+    );
     expect(db.subscription.update).not.toHaveBeenCalled();
   });
 
@@ -514,9 +485,9 @@ describe("processSubscriptionWebhook", () => {
   // ── Idempotency tests ──────────────────────────────────────────────────────
 
   it("ignores duplicate events safely (idempotency via P2002)", async () => {
-    (
-      db.subscriptionEvent.create as ReturnType<typeof vi.fn>
-    ).mockRejectedValue({ code: "P2002" });
+    (db.subscriptionEvent.create as ReturnType<typeof vi.fn>).mockRejectedValue({
+      code: "P2002",
+    });
     const payload = makePayload("subscription.activated");
     await processSubscriptionWebhook(payload, "valid_sig", "raw");
     // Event already exists — caught gracefully, no state change
@@ -526,9 +497,7 @@ describe("processSubscriptionWebhook", () => {
   // ── Unknown subscription ID ────────────────────────────────────────────────
 
   it("persists but does not apply events for unknown subscription IDs (Strategy A)", async () => {
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      null
-    );
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     const payload = makePayload("subscription.activated", "sub_UNKNOWN");
     await processSubscriptionWebhook(payload, "valid_sig", "raw");
     expect(db.subscriptionEvent.create).toHaveBeenCalled(); // Should persist the unmatched event
@@ -657,9 +626,7 @@ describe("Security: subscription spoofing prevention", () => {
 
     // We verify the function uses the provided userId (server-controlled)
     // and that no client-supplied userId can override it through the API layer.
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      null
-    );
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     (
       RazorpaySubService.resolveRazorpayPlanId as ReturnType<typeof vi.fn>
     ).mockReturnValue("plan_rzp");
@@ -673,9 +640,7 @@ describe("Security: subscription spoofing prevention", () => {
       currentStart: null,
       currentEnd: null,
     });
-    (db.subscription.upsert as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeSub()
-    );
+    (db.subscription.upsert as ReturnType<typeof vi.fn>).mockResolvedValue(makeSub());
 
     // Server passes its own user.id — never from client body
     const result = await createProSubscription("server_verified_user_id", "monthly");
@@ -690,9 +655,7 @@ describe("Security: subscription spoofing prevention", () => {
   it("does not accept client-supplied plan price — price is server-determined", async () => {
     // Verify that resolveRazorpayPlanId is called with only the interval
     // and returns the server-configured plan ID — client cannot override price
-    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
-      null
-    );
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     (
       RazorpaySubService.resolveRazorpayPlanId as ReturnType<typeof vi.fn>
     ).mockReturnValue("server_plan_id");
@@ -706,16 +669,12 @@ describe("Security: subscription spoofing prevention", () => {
       currentStart: null,
       currentEnd: null,
     });
-    (db.subscription.upsert as ReturnType<typeof vi.fn>).mockResolvedValue(
-      makeSub()
-    );
+    (db.subscription.upsert as ReturnType<typeof vi.fn>).mockResolvedValue(makeSub());
 
     await createProSubscription("user_1", "monthly");
 
     // Only interval was passed from "client" — plan ID is resolved server-side
-    expect(RazorpaySubService.resolveRazorpayPlanId).toHaveBeenCalledWith(
-      "monthly"
-    );
+    expect(RazorpaySubService.resolveRazorpayPlanId).toHaveBeenCalledWith("monthly");
     expect(RazorpaySubService.resolveRazorpayPlanId).not.toHaveBeenCalledWith(
       expect.stringContaining("plan_free") // would be a spoofed plan
     );
@@ -727,9 +686,7 @@ describe("Security: subscription spoofing prevention", () => {
     // but since it's validated against DB (subscription must exist with that providerSubscriptionId),
     // spoofing a non-existent ID is a no-op
     (
-      RazorpaySubService.verifyRazorpaySubscriptionSignature as ReturnType<
-        typeof vi.fn
-      >
+      RazorpaySubService.verifyRazorpaySubscriptionSignature as ReturnType<typeof vi.fn>
     ).mockReturnValue(true);
     (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
       null // Not found — spoofed ID
@@ -757,9 +714,7 @@ describe("Security: subscription spoofing prevention", () => {
 
   it("rejects webhook with invalid signature — no DB operations performed", async () => {
     (
-      RazorpaySubService.verifyRazorpaySubscriptionSignature as ReturnType<
-        typeof vi.fn
-      >
+      RazorpaySubService.verifyRazorpaySubscriptionSignature as ReturnType<typeof vi.fn>
     ).mockReturnValue(false);
 
     const payload = {
@@ -777,9 +732,9 @@ describe("Security: subscription spoofing prevention", () => {
       },
     };
 
-    await expect(
-      processSubscriptionWebhook(payload, "INVALID", "raw")
-    ).rejects.toThrow("INVALID_SUBSCRIPTION_SIGNATURE");
+    await expect(processSubscriptionWebhook(payload, "INVALID", "raw")).rejects.toThrow(
+      "INVALID_SUBSCRIPTION_SIGNATURE"
+    );
 
     // Signature check happens BEFORE any DB operations
     expect(db.subscription.findUnique).not.toHaveBeenCalled();
@@ -795,7 +750,7 @@ describe("Phase 8 Hardening: Concurrency & Failure Recovery", () => {
   // Task 5A: No existing row
   it("A. No existing row: prevents concurrent creation via P2002", async () => {
     (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    
+
     // Simulate one transaction succeeding and the other throwing P2002
     (db.subscription.create as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ id: "sub_1" })
@@ -806,12 +761,14 @@ describe("Phase 8 Hardening: Concurrency & Failure Recovery", () => {
     const createP2 = createProSubscription("u1", "monthly");
 
     const results = await Promise.allSettled([createP1, createP2]);
-    const succeeded = results.filter(r => r.status === "fulfilled");
-    const failed = results.filter(r => r.status === "rejected");
+    const succeeded = results.filter((r) => r.status === "fulfilled");
+    const failed = results.filter((r) => r.status === "rejected");
 
     expect(succeeded.length).toBe(1);
     expect(failed.length).toBe(1);
-    expect((failed[0] as PromiseRejectedResult).reason.message).toBe("SUBSCRIPTION_CREATION_IN_PROGRESS");
+    expect((failed[0] as PromiseRejectedResult).reason.message).toBe(
+      "SUBSCRIPTION_CREATION_IN_PROGRESS"
+    );
     expect(RazorpaySubService.createRazorpaySubscription).toHaveBeenCalledTimes(1); // Exactly one Razorpay creation
   });
 
@@ -833,12 +790,14 @@ describe("Phase 8 Hardening: Concurrency & Failure Recovery", () => {
     const createP2 = createProSubscription("u1", "monthly");
 
     const results = await Promise.allSettled([createP1, createP2]);
-    const succeeded = results.filter(r => r.status === "fulfilled");
-    const failed = results.filter(r => r.status === "rejected");
+    const succeeded = results.filter((r) => r.status === "fulfilled");
+    const failed = results.filter((r) => r.status === "rejected");
 
     expect(succeeded.length).toBe(1);
     expect(failed.length).toBe(1);
-    expect((failed[0] as PromiseRejectedResult).reason.message).toBe("SUBSCRIPTION_CREATION_IN_PROGRESS");
+    expect((failed[0] as PromiseRejectedResult).reason.message).toBe(
+      "SUBSCRIPTION_CREATION_IN_PROGRESS"
+    );
     expect(RazorpaySubService.createRazorpaySubscription).toHaveBeenCalledTimes(1);
   });
 
@@ -859,12 +818,14 @@ describe("Phase 8 Hardening: Concurrency & Failure Recovery", () => {
     const createP2 = createProSubscription("u1", "monthly");
 
     const results = await Promise.allSettled([createP1, createP2]);
-    const succeeded = results.filter(r => r.status === "fulfilled");
-    const failed = results.filter(r => r.status === "rejected");
+    const succeeded = results.filter((r) => r.status === "fulfilled");
+    const failed = results.filter((r) => r.status === "rejected");
 
     expect(succeeded.length).toBe(1);
     expect(failed.length).toBe(1);
-    expect((failed[0] as PromiseRejectedResult).reason.message).toBe("SUBSCRIPTION_CREATION_IN_PROGRESS");
+    expect((failed[0] as PromiseRejectedResult).reason.message).toBe(
+      "SUBSCRIPTION_CREATION_IN_PROGRESS"
+    );
     expect(RazorpaySubService.createRazorpaySubscription).toHaveBeenCalledTimes(1);
   });
 
@@ -877,34 +838,44 @@ describe("Phase 8 Hardening: Concurrency & Failure Recovery", () => {
       updatedAt: new Date(), // recent
     });
 
-    await expect(createProSubscription("u1", "monthly")).rejects.toThrow("SUBSCRIPTION_CREATION_IN_PROGRESS");
+    await expect(createProSubscription("u1", "monthly")).rejects.toThrow(
+      "SUBSCRIPTION_CREATION_IN_PROGRESS"
+    );
     expect(RazorpaySubService.createRazorpaySubscription).not.toHaveBeenCalled();
   });
 
   // Task 5E: Provider failure
   it("E. Provider failure: reverts local state correctly and avoids duplicate provider creation", async () => {
     (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    (db.subscription.create as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "sub_1" });
-    
+    (db.subscription.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "sub_1",
+    });
+
     // Make razorpay fail
-    (RazorpaySubService.createRazorpaySubscription as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("RZP_ERROR"));
+    (
+      RazorpaySubService.createRazorpaySubscription as ReturnType<typeof vi.fn>
+    ).mockRejectedValueOnce(new Error("RZP_ERROR"));
 
     await expect(createProSubscription("u1", "monthly")).rejects.toThrow("RZP_ERROR");
-    
+
     // Verify rollback to CANCELLED
     expect(db.subscription.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: "u1" },
-        data: { status: "CANCELLED" }
+        data: { status: "CANCELLED" },
       })
     );
   });
 
   it("recovers unmatched webhooks (Strategy A/C)", async () => {
     (db.subscriptionEvent.findMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      { id: "evt_1", eventType: "subscription.activated", payload: { entity: { id: "sub_rzp" } } }
+      {
+        id: "evt_1",
+        eventType: "subscription.activated",
+        payload: { entity: { id: "sub_rzp" } },
+      },
     ]);
-    
+
     (db.subscription.findUnique as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
@@ -920,7 +891,7 @@ describe("Phase 8 Hardening: Concurrency & Failure Recovery", () => {
     expect(db.subscription.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "sub_1" },
-        data: expect.objectContaining({ status: "ACTIVE" }) // from Webhook Reconciliation
+        data: expect.objectContaining({ status: "ACTIVE" }), // from Webhook Reconciliation
       })
     );
   });

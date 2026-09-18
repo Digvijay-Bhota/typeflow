@@ -26,7 +26,13 @@ describe("SEO Foundation Tests", () => {
 
     it("does not fabricate misleading certificate claims", () => {
       const config = getSeoRouteConfig("typing-test-with-certificate");
-      expect(config?.faqs?.some(f => f.answer.includes("No online typing test certificate is universally 'government-approved'"))).toBe(true);
+      expect(
+        config?.faqs?.some((f) =>
+          f.answer.includes(
+            "No online typing test certificate is universally 'government-approved'"
+          )
+        )
+      ).toBe(true);
     });
   });
 
@@ -60,7 +66,7 @@ describe("SEO Foundation Tests", () => {
   describe("Sitemap", () => {
     it("includes allowed SEO routes", () => {
       const map = sitemap();
-      const urls = map.map(item => item.url);
+      const urls = map.map((item) => item.url);
       expect(urls).toContain("http://localhost:3000");
       expect(urls).toContain("http://localhost:3000/1-minute-typing-test");
       expect(urls).toContain("http://localhost:3000/javascript-typing-test");
@@ -68,9 +74,9 @@ describe("SEO Foundation Tests", () => {
 
     it("excludes private routes", () => {
       const map = sitemap();
-      const urls = map.map(item => item.url);
-      expect(urls.some(url => url.includes("/dashboard"))).toBe(false);
-      expect(urls.some(url => url.includes("/api"))).toBe(false);
+      const urls = map.map((item) => item.url);
+      expect(urls.some((url) => url.includes("/dashboard"))).toBe(false);
+      expect(urls.some((url) => url.includes("/api"))).toBe(false);
     });
   });
 

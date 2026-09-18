@@ -10,15 +10,15 @@ export const metadata = constructMetadata({
   noindex: true,
 });
 
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const user = await getAuthenticatedUser();
   if (!user) {
     redirect("/login");
   }
 
-  return (
-    <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
-      {children}
-    </div>
-  );
+  return <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">{children}</div>;
 }

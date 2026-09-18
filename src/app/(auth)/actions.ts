@@ -32,14 +32,14 @@ export async function signup(formData: FormData) {
 
   // Supabase will automatically sign them in or send email depending on config.
   // Assuming auto-confirm for testing purposes or they need to click a link.
-  const { error } = await supabase.auth.signUp({ 
-    email, 
+  const { error } = await supabase.auth.signUp({
+    email,
     password,
     options: {
       data: {
         full_name: displayName,
-      }
-    }
+      },
+    },
   });
 
   if (error) {

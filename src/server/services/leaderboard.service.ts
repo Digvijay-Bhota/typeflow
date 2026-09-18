@@ -2,12 +2,14 @@ import { db } from "@/server/db";
 import { Prisma } from "@prisma/client";
 import { LeaderboardEntry, LeaderboardQuery } from "@/types/leaderboard";
 
-export async function getLeaderboard(query: LeaderboardQuery): Promise<{ entries: LeaderboardEntry[] }> {
+export async function getLeaderboard(
+  query: LeaderboardQuery
+): Promise<{ entries: LeaderboardEntry[] }> {
   const limit = query.limit && query.limit > 0 && query.limit <= 100 ? query.limit : 50;
 
   let gteDate = new Date(0);
   const now = new Date();
-  
+
   if (query.period === "daily") {
     gteDate = new Date(now);
     gteDate.setHours(0, 0, 0, 0);
@@ -76,9 +78,10 @@ export async function getLeaderboard(query: LeaderboardQuery): Promise<{ entries
     language: r.language,
     codeLanguage: r.codeLanguage || undefined,
     integrityStatus: r.integrityStatus,
-    isCertificateEligible: r.trustTier === "CERTIFICATE" && r.integrityStatus === "VERIFIED",
+    isCertificateEligible:
+      r.trustTier === "CERTIFICATE" && r.integrityStatus === "VERIFIED",
     trustTier: r.trustTier,
-    createdAt: r.createdAt.toISOString()
+    createdAt: r.createdAt.toISOString(),
   }));
 
   return { entries };

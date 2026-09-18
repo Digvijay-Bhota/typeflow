@@ -8,10 +8,14 @@ export async function generateStaticParams() {
   return ALLOWED_SEO_ROUTES.map((slug) => ({ seoSlug: slug }));
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ seoSlug: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ seoSlug: string }>;
+}): Promise<Metadata> {
   const { seoSlug } = await params;
   const config = getSeoRouteConfig(seoSlug);
-  
+
   if (!config) {
     return {};
   }
@@ -23,7 +27,11 @@ export async function generateMetadata({ params }: { params: Promise<{ seoSlug: 
   });
 }
 
-export default async function SeoPage({ params }: { params: Promise<{ seoSlug: string }> }) {
+export default async function SeoPage({
+  params,
+}: {
+  params: Promise<{ seoSlug: string }>;
+}) {
   const { seoSlug } = await params;
   const config = getSeoRouteConfig(seoSlug);
 

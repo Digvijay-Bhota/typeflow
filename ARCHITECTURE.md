@@ -23,6 +23,7 @@ Webhook idempotency is handled by a separate `SubscriptionEvent` table, distingu
 ### State Machine
 
 Transitions match the provider's lifecycle and are maintained locally via webhooks:
+
 - **TRIALING → ACTIVE**: Initial payment succeeds.
 - **TRIALING → CANCELLED**: User cancels before the first payment.
 - **ACTIVE → PAST_DUE**: Recurring payment fails (grace period starts).
@@ -35,6 +36,7 @@ Transitions match the provider's lifecycle and are maintained locally via webhoo
 ### Entitlement Logic
 
 Pro entitlement is evaluated purely server-side (`requirePro(userId)` guard) and never cached globally. A user is entitled if:
+
 1. They are authenticated.
 2. `subscription.plan === "PRO"`.
 3. `subscription.status` is `ACTIVE`, `TRIALING`, or `PAST_DUE` (grace period).
@@ -45,6 +47,7 @@ Expired subscriptions (`EXPIRED`) immediately lose access.
 ### Pricing Configuration
 
 Pricing is strictly server-authoritative to prevent manipulation:
+
 - Server configuration (`src/lib/constants.ts`) defines price amounts (e.g., `PRO_MONTHLY_PRICE_PAISE`).
 - Environment variables map billing intervals to specific provider plan IDs (e.g., `RAZORPAY_PLAN_ID_PRO_MONTHLY`).
 - The client only specifies the `interval` (`monthly` or `yearly`).
@@ -52,6 +55,7 @@ Pricing is strictly server-authoritative to prevent manipulation:
 ### Cancellation Behavior
 
 TypeFlow uses "at-period-end" cancellation:
+
 - Invoking cancellation immediately sets the provider's subscription to cancel at cycle end.
 - Locally, `status` becomes `CANCELLED` and `cancelAt` is populated.
 - Entitlement checks permit access as long as the current date is before `currentPeriodEnd`.
@@ -59,6 +63,7 @@ TypeFlow uses "at-period-end" cancellation:
 ### Payment-Failure Behavior
 
 If a recurring payment fails:
+
 - Razorpay transitions the subscription to `halted` (mapped to `PAST_DUE` locally).
 - The user is in a "grace period" and retains access until `currentPeriodEnd`.
 - If Razorpay exhausts its automated retries without success, the subscription expires, transitioning to `EXPIRED`.

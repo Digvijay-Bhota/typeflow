@@ -128,27 +128,27 @@ export function BillingClient({
     <div className="space-y-6">
       {/* Feedback */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl p-4 text-sm">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
           {error}
         </div>
       )}
       {successMessage && (
-        <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 rounded-xl p-4 text-sm">
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
           {successMessage}
         </div>
       )}
 
       {/* Current Plan Card */}
-      <div className="bg-surface dark:bg-surface border border-border dark:border-border rounded-2xl p-6">
-        <h2 className="text-lg font-bold mb-4">Current Plan</h2>
+      <div className="bg-surface dark:bg-surface border-border dark:border-border rounded-2xl border p-6">
+        <h2 className="mb-4 text-lg font-bold">Current Plan</h2>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-muted block mb-1">Plan</span>
-            <span className="font-semibold text-foreground dark:text-foreground flex items-center gap-2">
+            <span className="text-muted mb-1 block">Plan</span>
+            <span className="text-foreground dark:text-foreground flex items-center gap-2 font-semibold">
               {plan === "PRO" ? (
                 <>
                   Pro
-                  <span className="text-xs font-bold bg-tf-primary-100 dark:bg-tf-primary-900 text-tf-primary-700 dark:text-tf-primary-300 px-2 py-0.5 rounded-full">
+                  <span className="bg-tf-primary-100 dark:bg-tf-primary-900 text-tf-primary-700 dark:text-tf-primary-300 rounded-full px-2 py-0.5 text-xs font-bold">
                     PRO
                   </span>
                 </>
@@ -159,26 +159,24 @@ export function BillingClient({
           </div>
           {status && (
             <div>
-              <span className="text-muted block mb-1">Status</span>
-              <span className={`font-semibold ${statusColor}`}>
-                {statusLabel}
-              </span>
+              <span className="text-muted mb-1 block">Status</span>
+              <span className={`font-semibold ${statusColor}`}>{statusLabel}</span>
             </div>
           )}
           {currentPeriodEnd && (
             <div>
-              <span className="text-muted block mb-1">
+              <span className="text-muted mb-1 block">
                 {isCancelling ? "Access until" : "Next renewal"}
               </span>
-              <span className="font-semibold text-foreground dark:text-foreground">
+              <span className="text-foreground dark:text-foreground font-semibold">
                 {formatDate(currentPeriodEnd)}
               </span>
             </div>
           )}
           {cancelledAt && (
             <div>
-              <span className="text-muted block mb-1">Cancelled on</span>
-              <span className="font-semibold text-foreground dark:text-foreground">
+              <span className="text-muted mb-1 block">Cancelled on</span>
+              <span className="text-foreground dark:text-foreground font-semibold">
                 {formatDate(cancelledAt)}
               </span>
             </div>
@@ -187,16 +185,15 @@ export function BillingClient({
 
         {/* Past due notice */}
         {isPastDue && (
-          <div className="mt-4 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200 rounded-xl p-3 text-sm">
-            Your last payment failed. Razorpay will retry automatically. You
-            retain Pro access until{" "}
-            <strong>{formatDate(currentPeriodEnd)}</strong>.
+          <div className="mt-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200">
+            Your last payment failed. Razorpay will retry automatically. You retain Pro
+            access until <strong>{formatDate(currentPeriodEnd)}</strong>.
           </div>
         )}
 
         {/* Cancelling notice */}
         {isCancelling && (
-          <div className="mt-4 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 text-orange-800 dark:text-orange-200 rounded-xl p-3 text-sm">
+          <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-200">
             Your subscription is cancelled. You retain Pro access until{" "}
             <strong>{formatDate(cancelAt)}</strong>.
           </div>
@@ -205,24 +202,23 @@ export function BillingClient({
 
       {/* Actions */}
       {!isPro && (
-        <div className="bg-surface dark:bg-surface border border-border dark:border-border rounded-2xl p-6">
-          <h2 className="text-lg font-bold mb-2">Upgrade to Pro</h2>
-          <p className="text-sm text-muted mb-4">
-            Unlock advanced analytics, weak-key training, custom themes, and
-            more.
+        <div className="bg-surface dark:bg-surface border-border dark:border-border rounded-2xl border p-6">
+          <h2 className="mb-2 text-lg font-bold">Upgrade to Pro</h2>
+          <p className="text-muted mb-4 text-sm">
+            Unlock advanced analytics, weak-key training, custom themes, and more.
           </p>
           <div className="flex gap-3">
             <button
               onClick={() => void handleUpgrade("monthly")}
               disabled={loading}
-              className="flex-1 py-2.5 px-4 rounded-xl bg-accent text-white font-bold hover:bg-accent transition-colors disabled:opacity-50"
+              className="bg-accent hover:bg-accent flex-1 rounded-xl px-4 py-2.5 font-bold text-white transition-colors disabled:opacity-50"
             >
               {loading ? "..." : "₹499/month"}
             </button>
             <button
               onClick={() => void handleUpgrade("yearly")}
               disabled={loading}
-              className="flex-1 py-2.5 px-4 rounded-xl border border-tf-primary-500 text-accent dark:text-accent font-medium hover:bg-tf-primary-50 dark:hover:bg-tf-primary-950 transition-colors disabled:opacity-50"
+              className="border-tf-primary-500 text-accent dark:text-accent hover:bg-tf-primary-50 dark:hover:bg-tf-primary-950 flex-1 rounded-xl border px-4 py-2.5 font-medium transition-colors disabled:opacity-50"
             >
               {loading ? "..." : "₹3,999/year"}
             </button>
@@ -231,15 +227,15 @@ export function BillingClient({
       )}
 
       {isPro && !isCancelling && (
-        <div className="bg-surface dark:bg-surface border border-border dark:border-border rounded-2xl p-6">
-          <h2 className="text-lg font-bold mb-2">Manage Subscription</h2>
-          <p className="text-sm text-muted mb-4">
+        <div className="bg-surface dark:bg-surface border-border dark:border-border rounded-2xl border p-6">
+          <h2 className="mb-2 text-lg font-bold">Manage Subscription</h2>
+          <p className="text-muted mb-4 text-sm">
             Cancelling will keep Pro active until your current period ends.
           </p>
           <button
             onClick={() => void handleCancel()}
             disabled={loading}
-            className="py-2.5 px-4 rounded-xl border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-950 transition-colors disabled:opacity-50"
+            className="rounded-xl border border-red-300 px-4 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950"
           >
             {loading ? "Processing..." : "Cancel subscription"}
           </button>

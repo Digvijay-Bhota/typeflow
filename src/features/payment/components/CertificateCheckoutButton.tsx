@@ -62,8 +62,11 @@ export function CertificateCheckoutButton({ resultId }: CertificateCheckoutButto
         body: JSON.stringify({ resultId }),
       });
       const issueData = await issueRes.json();
-      if (!issueRes.ok) throw new Error(issueData.error?.message || "Failed to create certificate record");
-      
+      if (!issueRes.ok)
+        throw new Error(
+          issueData.error?.message || "Failed to create certificate record"
+        );
+
       const { certificateId } = issueData;
 
       // 2. Create order
@@ -103,7 +106,7 @@ export function CertificateCheckoutButton({ resultId }: CertificateCheckoutButto
 
       const Razorpay = window.Razorpay;
       if (!Razorpay) throw new Error("Razorpay not loaded");
-      
+
       const rzp = new Razorpay(options);
       rzp.on("payment.failed", function (_response: unknown) {
         setError("Payment failed. Please try again.");
@@ -121,11 +124,11 @@ export function CertificateCheckoutButton({ resultId }: CertificateCheckoutButto
       <button
         onClick={handleCheckout}
         disabled={loading}
-        className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold transition-colors disabled:opacity-50"
+        className="rounded-lg bg-amber-500 px-6 py-3 font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
       >
         {loading ? "Processing..." : "Get Verified Certificate (₹499)"}
       </button>
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {error && <p className="text-sm text-red-500">{error}</p>}
     </div>
   );
 }

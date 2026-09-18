@@ -17,9 +17,9 @@ export function ClaimClient({ claimToken }: { claimToken: string }) {
         const res = await fetch("/api/result/claim", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ claimToken })
+          body: JSON.stringify({ claimToken }),
         });
-        
+
         if (res.ok) {
           const data = await res.json();
           setStatus("Result claimed successfully!");
@@ -41,7 +41,7 @@ export function ClaimClient({ claimToken }: { claimToken: string }) {
   }, [claimToken, router]);
 
   return (
-    <div className="fixed bottom-4 right-4 bg-background text-white px-4 py-3 rounded-lg shadow-lg animate-fade-in z-50">
+    <div className="bg-background animate-fade-in fixed right-4 bottom-4 z-50 rounded-lg px-4 py-3 text-white shadow-lg">
       {status}
     </div>
   );

@@ -82,9 +82,7 @@ export function getSubscriptionPrice(interval: SubscriptionInterval): number {
 /**
  * Returns the subscription period in months for a billing interval.
  */
-export function getSubscriptionPeriodMonths(
-  interval: SubscriptionInterval
-): number {
+export function getSubscriptionPeriodMonths(interval: SubscriptionInterval): number {
   if (interval === "monthly") return PRO_MONTHLY_PERIOD;
   if (interval === "yearly") return PRO_YEARLY_PERIOD;
   throw new Error(`Unknown subscription interval: ${interval as string}`);
@@ -130,11 +128,9 @@ export async function createRazorpaySubscription(
     planId: sub.plan_id,
     shortUrl: (sub as unknown as Record<string, string>).short_url ?? "",
     currentStart:
-      (sub as unknown as Record<string, number | null | undefined>)
-        .current_start ?? null,
+      (sub as unknown as Record<string, number | null | undefined>).current_start ?? null,
     currentEnd:
-      (sub as unknown as Record<string, number | null | undefined>)
-        .current_end ?? null,
+      (sub as unknown as Record<string, number | null | undefined>).current_end ?? null,
   };
 }
 
@@ -148,10 +144,7 @@ export async function cancelRazorpaySubscription(
   atPeriodEnd: boolean = true
 ): Promise<void> {
   const rzp = getRazorpayClient();
-  await rzp.subscriptions.cancel(
-    providerSubscriptionId,
-    atPeriodEnd ? true : false
-  );
+  await rzp.subscriptions.cancel(providerSubscriptionId, atPeriodEnd ? true : false);
 }
 
 /**
@@ -169,11 +162,9 @@ export async function fetchRazorpaySubscription(
     planId: sub.plan_id,
     shortUrl: (sub as unknown as Record<string, string>).short_url ?? "",
     currentStart:
-      (sub as unknown as Record<string, number | null | undefined>)
-        .current_start ?? null,
+      (sub as unknown as Record<string, number | null | undefined>).current_start ?? null,
     currentEnd:
-      (sub as unknown as Record<string, number | null | undefined>)
-        .current_end ?? null,
+      (sub as unknown as Record<string, number | null | undefined>).current_end ?? null,
   };
 }
 
@@ -193,9 +184,7 @@ export function verifyRazorpaySubscriptionSignature(
   const env = getServerEnv();
   const secret = env.RAZORPAY_WEBHOOK_SECRET;
 
-  const expectedSignature = createHmac("sha256", secret)
-    .update(payloadStr)
-    .digest("hex");
+  const expectedSignature = createHmac("sha256", secret).update(payloadStr).digest("hex");
 
   return expectedSignature === signature;
 }

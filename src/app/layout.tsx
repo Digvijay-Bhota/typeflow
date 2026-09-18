@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-
 const fontSans = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
@@ -19,7 +18,8 @@ import { constructMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = constructMetadata({
   title: "Practice smarter. Type faster. Prove your skills.",
-  description: "TypeFlow is the ultimate typing performance platform. Practice typing, improve your WPM, and earn certificates.",
+  description:
+    "TypeFlow is the ultimate typing performance platform. Practice typing, improve your WPM, and earn certificates.",
   path: "/",
 });
 
@@ -39,11 +39,7 @@ import { ExperienceProvider } from "@/components/providers/ExperienceProvider";
 import { Navbar } from "@/components/Navbar";
 import { getAuthenticatedUser } from "@/server/services/auth.service";
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthenticatedUser();
 
   return (
@@ -52,7 +48,7 @@ export default async function RootLayout({
       className={`${fontSans.variable} ${fontMono.variable}`}
       suppressHydrationWarning
     >
-      <body className="min-h-screen antialiased bg-background text-foreground selection:bg-accent/30 selection:text-accent-foreground">
+      <body className="bg-background text-foreground selection:bg-accent/30 selection:text-accent-foreground min-h-screen antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -61,9 +57,7 @@ export default async function RootLayout({
         >
           <ExperienceProvider>
             <Navbar user={user} />
-            <main className="flex-1 flex flex-col">
-              {children}
-            </main>
+            <main className="flex flex-1 flex-col">{children}</main>
           </ExperienceProvider>
         </ThemeProvider>
       </body>

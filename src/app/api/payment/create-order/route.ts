@@ -9,7 +9,10 @@ export async function POST(req: NextRequest) {
     const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
     const { success } = await rateLimit(`payment_order_${ip}`, 10, 60000);
     if (!success) {
-      return NextResponse.json({ error: { code: "RATE_LIMITED", message: "Too many requests" } }, { status: 429 });
+      return NextResponse.json(
+        { error: { code: "RATE_LIMITED", message: "Too many requests" } },
+        { status: 429 }
+      );
     }
 
     const user = await getAuthenticatedUser();
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     const orderData = await createCertificateOrder(certificateId, user.id);
-    
+
     // Add public key id from client env (or server env but it's safe to expose for checkout)
     const { getClientEnv } = await import("@/lib/env");
     const clientEnv = getClientEnv();
@@ -40,19 +43,24 @@ export async function POST(req: NextRequest) {
       orderId: orderData.orderId,
       amount: orderData.amount,
       currency: orderData.currency,
-      keyId: clientEnv.NEXT_PUBLIC_RAZORPAY_KEY_ID
+      keyId: clientEnv.NEXT_PUBLIC_RAZORPAY_KEY_ID,
     });
-
   } catch (error: unknown) {
     const err = error as Error;
-    if (err.message === "Unauthorized" || err.message.includes("Cannot create order for certificate")) {
+    if (
+      err.message === "Unauthorized" ||
+      err.message.includes("Cannot create order for certificate")
+    ) {
       return NextResponse.json(
         { error: { code: "FORBIDDEN", message: err.message } },
         { status: 403 }
       );
     }
-    
-    if ((err as { code?: string }).code === "P2025" || err.message.includes("No Certificate found")) {
+
+    if (
+      (err as { code?: string }).code === "P2025" ||
+      err.message.includes("No Certificate found")
+    ) {
       return NextResponse.json(
         { error: { code: "NOT_FOUND", message: "Certificate not found" } },
         { status: 404 }

@@ -2,9 +2,9 @@ name: B2B Postgres Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   test:
@@ -26,22 +26,22 @@ jobs:
           --health-retries 5
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Use Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - run: npm install
-    - name: Generate Prisma and migrate
-      run: |
-        npx prisma validate
-        npx prisma generate
-        npx prisma migrate dev --name init
-      env:
-        DATABASE_URL: postgresql://postgres:password@localhost:5432/testing
-        DIRECT_URL: postgresql://postgres:password@localhost:5432/testing
-    - name: Run Integration Tests
-      run: npm run test:pg
-      env:
-        DATABASE_URL: postgresql://postgres:password@localhost:5432/testing
-        DIRECT_URL: postgresql://postgres:password@localhost:5432/testing
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - name: Generate Prisma and migrate
+        run: |
+          npx prisma validate
+          npx prisma generate
+          npx prisma migrate dev --name init
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/testing
+          DIRECT_URL: postgresql://postgres:password@localhost:5432/testing
+      - name: Run Integration Tests
+        run: npm run test:pg
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/testing
+          DIRECT_URL: postgresql://postgres:password@localhost:5432/testing

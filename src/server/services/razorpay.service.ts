@@ -15,7 +15,11 @@ function getRazorpayClient() {
   return razorpayClient;
 }
 
-export async function createRazorpayOrder(amountPaise: number, receiptId: string, notes: Record<string, string> = {}) {
+export async function createRazorpayOrder(
+  amountPaise: number,
+  receiptId: string,
+  notes: Record<string, string> = {}
+) {
   const rzp = getRazorpayClient();
   const options = {
     amount: amountPaise,
@@ -23,23 +27,21 @@ export async function createRazorpayOrder(amountPaise: number, receiptId: string
     receipt: receiptId,
     notes,
   };
-  
+
   const order = await rzp.orders.create(options);
   return {
     orderId: order.id,
     amount: order.amount,
     currency: order.currency,
-    receipt: order.receipt
+    receipt: order.receipt,
   };
 }
 
 export function verifyRazorpaySignature(payloadStr: string, signature: string): boolean {
   const env = getServerEnv();
   const secret = env.RAZORPAY_WEBHOOK_SECRET;
-  
-  const expectedSignature = createHmac("sha256", secret)
-    .update(payloadStr)
-    .digest("hex");
-    
+
+  const expectedSignature = createHmac("sha256", secret).update(payloadStr).digest("hex");
+
   return expectedSignature === signature;
 }

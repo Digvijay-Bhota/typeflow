@@ -12,7 +12,17 @@ export default async function ResultPage({
   const { shareId } = await params;
   const result = await prisma.testResult.findUnique({
     where: { shareId },
-    include: { session: { select: { mode: true, language: true, codeLanguage: true, trustTier: true, duration: true } } }
+    include: {
+      session: {
+        select: {
+          mode: true,
+          language: true,
+          codeLanguage: true,
+          trustTier: true,
+          duration: true,
+        },
+      },
+    },
   });
 
   if (!result) {
@@ -23,8 +33,8 @@ export default async function ResultPage({
   const isOwner = user?.id === result.userId;
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 py-12">
+    <div className="bg-background min-h-screen">
+      <div className="mx-auto max-w-7xl px-4 py-12">
         <ResultClient result={result} isOwner={isOwner} />
       </div>
     </div>

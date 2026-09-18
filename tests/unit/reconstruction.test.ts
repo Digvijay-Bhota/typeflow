@@ -29,10 +29,17 @@ describe("verifyCertificateTest", () => {
   it("should correctly handle wrong characters", () => {
     // "hello wxrld" (error at 'o' index 7)
     const trace: [number, number, number, string?][] = [
-      [0, 0, 0, "h"], [100, 0, 1, "e"], [200, 0, 2, "l"], [300, 0, 3, "l"],
-      [400, 0, 4, "o"], [500, 0, 5, " "], [600, 0, 6, "w"],
+      [0, 0, 0, "h"],
+      [100, 0, 1, "e"],
+      [200, 0, 2, "l"],
+      [300, 0, 3, "l"],
+      [400, 0, 4, "o"],
+      [500, 0, 5, " "],
+      [600, 0, 6, "w"],
       [700, 0, 7, "x"], // typed x instead of o
-      [800, 0, 8, "r"], [900, 0, 9, "l"], [1000, 0, 10, "d"],
+      [800, 0, 8, "r"],
+      [900, 0, 9, "l"],
+      [1000, 0, 10, "d"],
     ];
 
     const result = verifyCertificateTest(passage, trace, 1000);
@@ -45,12 +52,19 @@ describe("verifyCertificateTest", () => {
   it("should correctly handle backspace and correction", () => {
     // "hello wx" -> backspace -> "world"
     const trace: [number, number, number, string?][] = [
-      [0, 0, 0, "h"], [100, 0, 1, "e"], [200, 0, 2, "l"], [300, 0, 3, "l"],
-      [400, 0, 4, "o"], [500, 0, 5, " "], [600, 0, 6, "w"],
+      [0, 0, 0, "h"],
+      [100, 0, 1, "e"],
+      [200, 0, 2, "l"],
+      [300, 0, 3, "l"],
+      [400, 0, 4, "o"],
+      [500, 0, 5, " "],
+      [600, 0, 6, "w"],
       [700, 0, 7, "x"], // typed x instead of o
-      [800, 1, 7],      // backspace
+      [800, 1, 7], // backspace
       [900, 0, 7, "o"], // typed o correctly
-      [1000, 0, 8, "r"], [1100, 0, 9, "l"], [1200, 0, 10, "d"],
+      [1000, 0, 8, "r"],
+      [1100, 0, 9, "l"],
+      [1200, 0, 10, "d"],
     ];
 
     const result = verifyCertificateTest(passage, trace, 1200);
@@ -82,9 +96,7 @@ describe("verifyCertificateTest", () => {
   });
 
   it("should reject negative timing", () => {
-    const trace: [number, number, number, string?][] = [
-      [-10, 0, 0, "h"],
-    ];
+    const trace: [number, number, number, string?][] = [[-10, 0, 0, "h"]];
     const result = verifyCertificateTest(passage, trace, 1000);
     expect(result.status).toBe("INVALID");
     expect(result.reasons).toContain("Negative timestamp");
@@ -108,16 +120,24 @@ describe("verifyCertificateTest", () => {
 
   it("should calculate correct WPM based on server time, not client time", () => {
     const trace: [number, number, number, string?][] = [
-      [0, 0, 0, "h"], [10, 0, 1, "e"], [20, 0, 2, "l"], [30, 0, 3, "l"],
-      [40, 0, 4, "o"], [50, 0, 5, " "], [60, 0, 6, "w"],
-      [70, 0, 7, "o"], [80, 0, 8, "r"], [90, 0, 9, "l"], [100, 0, 10, "d"],
+      [0, 0, 0, "h"],
+      [10, 0, 1, "e"],
+      [20, 0, 2, "l"],
+      [30, 0, 3, "l"],
+      [40, 0, 4, "o"],
+      [50, 0, 5, " "],
+      [60, 0, 6, "w"],
+      [70, 0, 7, "o"],
+      [80, 0, 8, "r"],
+      [90, 0, 9, "l"],
+      [100, 0, 10, "d"],
     ];
 
     // Even though events happened in 100ms, server elapsed is 60000ms (1 minute).
     // WPM should be calculated over 1 minute.
     const result = verifyCertificateTest(passage, trace, 60000);
     expect(result.status).toBe("VERIFIED");
-    
+
     // 11 correct chars -> 11/5 = 2.2 words in 1 minute -> WPM = 2.2
     expect(result.reconstructed?.wpm).toBe(2.2);
   });

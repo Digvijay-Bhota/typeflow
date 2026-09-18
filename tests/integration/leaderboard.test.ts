@@ -32,9 +32,9 @@ describe("Leaderboard Service", () => {
         language: "ENGLISH",
         codeLanguage: null,
         trustTier: "FREE",
-      }
+      },
     ];
-    
+
     vi.mocked(db.$queryRaw).mockResolvedValueOnce(mockResults);
 
     const data = await getLeaderboard({ period: "all-time", limit: 10 });
@@ -47,12 +47,17 @@ describe("Leaderboard Service", () => {
   it("filters by mode and language correctly", async () => {
     vi.mocked(db.$queryRaw).mockResolvedValueOnce([]);
 
-    await getLeaderboard({ period: "all-time", mode: "code", language: "code", codeLanguage: "python" });
-    
+    await getLeaderboard({
+      period: "all-time",
+      mode: "code",
+      language: "code",
+      codeLanguage: "python",
+    });
+
     // Verify that the query contains the filters via arguments
     const callArgs = vi.mocked(db.$queryRaw).mock.calls[0] as unknown as any[];
     // Prisma tagged template literals inject the values as subsequent arguments
-    const hasMode = callArgs.some(arg => JSON.stringify(arg).includes('mode'));
+    const hasMode = callArgs.some((arg) => JSON.stringify(arg).includes("mode"));
     expect(hasMode).toBe(true);
   });
 
@@ -73,7 +78,7 @@ describe("Leaderboard Service", () => {
         mode: "TIMED",
         language: "ENGLISH",
         trustTier: "FREE",
-      }
+      },
     ];
     vi.mocked(db.$queryRaw).mockResolvedValueOnce(mockResults);
 
@@ -97,7 +102,7 @@ describe("Leaderboard Service", () => {
         mode: "TIMED",
         language: "ENGLISH",
         trustTier: "FREE",
-      }
+      },
     ];
     vi.mocked(db.$queryRaw).mockResolvedValueOnce(mockResults);
 

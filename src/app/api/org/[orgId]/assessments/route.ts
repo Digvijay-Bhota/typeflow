@@ -17,14 +17,25 @@ const Schema = z.object({
   accuracyThreshold: z.number().optional(),
 });
 
-export async function POST(req: Request, { params }: { params: Promise<{ orgId: string }> }) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ orgId: string }> }
+) {
   const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
   const { success } = await rateLimit(`assessment_create_${ip}`, 10, 60000);
-  if (!success) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (!success)
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   const p = await params;
   try {
     const json = await req.json();
-    const parsed = Schema.parse(json); const data = { ...parsed, description: parsed.description ?? undefined, codeLanguage: parsed.codeLanguage ?? undefined, wpmThreshold: parsed.wpmThreshold ?? undefined, accuracyThreshold: parsed.accuracyThreshold ?? undefined };
+    const parsed = Schema.parse(json);
+    const data = {
+      ...parsed,
+      description: parsed.description ?? undefined,
+      codeLanguage: parsed.codeLanguage ?? undefined,
+      wpmThreshold: parsed.wpmThreshold ?? undefined,
+      accuracyThreshold: parsed.accuracyThreshold ?? undefined,
+    };
     const assessment = await createAssessment(p.orgId, data as any);
     return NextResponse.json({ assessment });
   } catch (error: any) {
@@ -32,7 +43,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ orgId: 
   }
 }
 
-export async function GET(req: Request, { params }: { params: Promise<{ orgId: string }> }) {
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ orgId: string }> }
+) {
   const p = await params;
   try {
     await requireOrganizationRole(p.orgId, ["OWNER", "ADMIN", "RECRUITER", "REVIEWER"]);

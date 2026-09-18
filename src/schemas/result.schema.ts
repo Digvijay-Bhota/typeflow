@@ -27,12 +27,16 @@ const IntegritySignalsSchema = z.object({
  * Format: array of [timestampOffsetMs, eventType (0=char, 1=backspace), expectedIndex, typedChar]
  */
 const EventTraceSchema = z.object({
-  events: z.array(z.tuple([
-    z.number().int().nonnegative(), // offset from start in ms
-    z.number().int().min(0).max(1), // type: 0=char, 1=backspace
-    z.number().int().nonnegative(), // position index
-    z.string().optional(), // typed character (for type 0)
-  ])).max(12000), // Max realistic keystrokes for a 5-minute test at 300 WPM
+  events: z
+    .array(
+      z.tuple([
+        z.number().int().nonnegative(), // offset from start in ms
+        z.number().int().min(0).max(1), // type: 0=char, 1=backspace
+        z.number().int().nonnegative(), // position index
+        z.string().optional(), // typed character (for type 0)
+      ])
+    )
+    .max(12000), // Max realistic keystrokes for a 5-minute test at 300 WPM
   totalEvents: z.number().int().nonnegative(),
   durationMs: z.number().int().nonnegative(),
 });

@@ -1,6 +1,6 @@
 /**
  * Simple Rate Limiter Abstraction
- * Currently uses an in-memory Map. 
+ * Currently uses an in-memory Map.
  * Designed to be easily replaced by Redis/Upstash later.
  */
 
@@ -19,7 +19,9 @@ export async function rateLimit(
 
   if (env === "production") {
     if (!redisUrl) {
-      throw new Error("CRITICAL: REDIS_URL is required for rate limiting in production. Distributed rate-limiting is mandatory.");
+      throw new Error(
+        "CRITICAL: REDIS_URL is required for rate limiting in production. Distributed rate-limiting is mandatory."
+      );
     }
     // Note: In a real implementation, we would use ioredis/upstash here.
     // For now, since REDIS_URL is required, we enforce the security requirement.
@@ -46,7 +48,7 @@ export async function rateLimit(
 
 function startCleanupIfNecessary() {
   if (isCleanupRunning) return;
-  if (typeof setInterval !== 'undefined') {
+  if (typeof setInterval !== "undefined") {
     isCleanupRunning = true;
     const interval = setInterval(() => {
       const now = Date.now();

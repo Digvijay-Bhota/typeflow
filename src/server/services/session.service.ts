@@ -3,11 +3,11 @@ import { Language, TypingMode, Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 import { CreateSessionRequest, StartSessionRequest } from "@/schemas/session.schema";
 import { SubmitResultRequest } from "@/schemas/result.schema";
-import { 
-  calculateWpm, 
-  calculateRawWpm, 
-  calculateNetWpm, 
-  calculateAccuracy
+import {
+  calculateWpm,
+  calculateRawWpm,
+  calculateNetWpm,
+  calculateAccuracy,
 } from "@/features/typing/lib/metrics";
 import { calculateCodeMetrics } from "@/features/typing/lib/codeMetrics";
 
@@ -16,7 +16,7 @@ const SESSION_VALIDITY_MS = 60 * 60 * 1000; // 1 hour overall expiry to start
 
 export async function createSession(params: CreateSessionRequest) {
   let trustTier: "FREE" | "CERTIFICATE" | "B2B_ASSESSMENT" = "FREE";
-  
+
   if (params.certificateMode) {
     trustTier = "CERTIFICATE";
   }
@@ -26,10 +26,12 @@ export async function createSession(params: CreateSessionRequest) {
 
   if (params.inviteToken && params.attemptId) {
     const candidate = await db.assessmentCandidate.findUnique({
-      where: { inviteTokenHash: createHash("sha256").update(params.inviteToken).digest("hex") },
+      where: {
+        inviteTokenHash: createHash("sha256").update(params.inviteToken).digest("hex"),
+      },
       include: { assessment: true },
     });
-    
+
     if (!candidate || candidate.assessment.status !== "PUBLISHED") {
       throw new Error("INVALID_OR_CLOSED_ASSESSMENT");
     }
@@ -38,13 +40,17 @@ export async function createSession(params: CreateSessionRequest) {
       where: { id: params.attemptId },
     });
 
-    if (!attempt || attempt.candidateId !== candidate.id || attempt.status !== "STARTED") {
+    if (
+      !attempt ||
+      attempt.candidateId !== candidate.id ||
+      attempt.status !== "STARTED"
+    ) {
       throw new Error("INVALID_ATTEMPT");
     }
-    
+
     trustTier = "B2B_ASSESSMENT";
     b2bAttemptId = attempt.id;
-    
+
     // Server overrides candidate settings
     params.mode = candidate.assessment.testMode === "CODE" ? "code" : "timed";
     params.language = candidate.assessment.language.toLowerCase() as any;
@@ -57,14 +63,15 @@ export async function createSession(params: CreateSessionRequest) {
   const { getAuthenticatedUser } = await import("./auth.service");
   const user = await getAuthenticatedUser();
 
-  
   const passages = await db.passage.findMany({
     where: {
       language: params.language.toUpperCase() as Language,
-      ...(params.mode === "code" && params.codeLanguage ? { codeLanguage: params.codeLanguage.toUpperCase() as any } : {}),
+      ...(params.mode === "code" && params.codeLanguage
+        ? { codeLanguage: params.codeLanguage.toUpperCase() as any }
+        : {}),
       isActive: true,
       mode: params.certificateMode ? "CERTIFICATE" : "NORMAL",
-    }
+    },
   });
 
   if (passages.length === 0) {
@@ -81,7 +88,7 @@ export async function createSession(params: CreateSessionRequest) {
       userId: user?.id ?? null,
       mode: params.mode.toUpperCase() as TypingMode,
       language: params.language.toUpperCase() as Language,
-            duration: params.duration ?? null,
+      duration: params.duration ?? null,
       wordCount: params.wordCount ?? null,
       trustTier: trustTier,
       status: "PENDING",
@@ -142,12 +149,15 @@ export async function startSession(params: StartSessionRequest) {
     // Find out why it failed to give a good error
     const session = await db.testSession.findUnique({ where: { id: params.sessionId } });
     if (!session) throw new Error("Session not found");
-    if (session.status !== "PENDING") throw new Error(`Session is already ${session.status}`);
+    if (session.status !== "PENDING")
+      throw new Error(`Session is already ${session.status}`);
     if (session.expiresAt <= now) throw new Error("Session has expired");
     throw new Error("Failed to start session");
   }
 
-  const session = await db.testSession.findUniqueOrThrow({ where: { id: params.sessionId } });
+  const session = await db.testSession.findUniqueOrThrow({
+    where: { id: params.sessionId },
+  });
 
   return {
     sessionId: session.id,
@@ -171,9 +181,12 @@ export async function submitResult(params: SubmitResultRequest) {
     });
 
     if (!session) throw new Error("Session not found");
-    if (session.integrityToken !== params.integrityToken) throw new Error("Invalid integrity token");
-    if (session.userId !== (user?.id ?? null)) throw new Error("Unauthorized to submit for this session");
-    if (session.status !== "ACTIVE") throw new Error(`Session is not ACTIVE, currently ${session.status}`);
+    if (session.integrityToken !== params.integrityToken)
+      throw new Error("Invalid integrity token");
+    if (session.userId !== (user?.id ?? null))
+      throw new Error("Unauthorized to submit for this session");
+    if (session.status !== "ACTIVE")
+      throw new Error(`Session is not ACTIVE, currently ${session.status}`);
     if (!session.startedAt) throw new Error("Session has no startedAt time");
 
     // 2. Validate expiration / duration limit
@@ -182,16 +195,22 @@ export async function submitResult(params: SubmitResultRequest) {
       expectedDurationMs = session.duration * 1000;
     }
     const serverElapsedMs = now.getTime() - session.startedAt.getTime();
-    
+
     // Check if it's too late
     if (session.duration && serverElapsedMs > expectedDurationMs + GRACE_PERIOD_MS) {
       // Mark expired
-      await tx.testSession.update({ where: { id: session.id }, data: { status: "EXPIRED" } });
+      await tx.testSession.update({
+        where: { id: session.id },
+        data: { status: "EXPIRED" },
+      });
       throw new Error("Session duration exceeded grace period");
     }
 
     if (session.expiresAt <= now) {
-      await tx.testSession.update({ where: { id: session.id }, data: { status: "EXPIRED" } });
+      await tx.testSession.update({
+        where: { id: session.id },
+        data: { status: "EXPIRED" },
+      });
       throw new Error("Session has expired");
     }
 
@@ -202,9 +221,13 @@ export async function submitResult(params: SubmitResultRequest) {
     }
 
     // 3. Re-calculate metrics (strictly trust server elapsed time)
-    let { correctChars, incorrectChars, totalChars, correctedErrors, uncorrectedErrors } = params.metrics;
-    let wpm = 0, rawWpm = 0, netWpm = 0, accuracy = 0;
-    
+    let { correctChars, incorrectChars, totalChars, correctedErrors, uncorrectedErrors } =
+      params.metrics;
+    let wpm = 0,
+      rawWpm = 0,
+      netWpm = 0,
+      accuracy = 0;
+
     let finalElapsedMs = serverElapsedMs;
     // Timed mode uses the fixed expected duration. Words mode uses the exact server measured time.
     // clientElapsedMs is completely ignored for timing WPM.
@@ -219,7 +242,11 @@ export async function submitResult(params: SubmitResultRequest) {
       if (!params.eventTrace?.events) {
         integrityStatus = "INVALID";
       } else {
-        const verification = verifyCertificateTest(session.passage.content, params.eventTrace.events as [number, number, number, string?][], finalElapsedMs);
+        const verification = verifyCertificateTest(
+          session.passage.content,
+          params.eventTrace.events as [number, number, number, string?][],
+          finalElapsedMs
+        );
         if (verification.status === "VERIFIED" && verification.reconstructed) {
           correctChars = verification.reconstructed.correctChars;
           incorrectChars = verification.reconstructed.incorrectChars;
@@ -233,7 +260,10 @@ export async function submitResult(params: SubmitResultRequest) {
           integrityStatus = "VERIFIED";
         } else {
           integrityStatus = verification.status;
-          wpm = 0; rawWpm = 0; netWpm = 0; accuracy = 0;
+          wpm = 0;
+          rawWpm = 0;
+          netWpm = 0;
+          accuracy = 0;
         }
       }
     } else {
@@ -241,7 +271,7 @@ export async function submitResult(params: SubmitResultRequest) {
       rawWpm = calculateRawWpm(totalChars, finalElapsedMs);
       accuracy = calculateAccuracy(correctChars, totalChars);
       netWpm = calculateNetWpm(wpm, uncorrectedErrors, finalElapsedMs);
-      
+
       // Basic sanity checks for FREE tier
       if (wpm > 300 || accuracy < 0 || accuracy > 1) {
         integrityStatus = "INVALID";
@@ -255,7 +285,7 @@ export async function submitResult(params: SubmitResultRequest) {
     // 4. Update session to completed (atomic)
     const updated = await tx.testSession.updateMany({
       where: { id: session.id, status: "ACTIVE" },
-      data: { 
+      data: {
         status: "COMPLETED",
         completedAt: now,
       },
@@ -268,7 +298,7 @@ export async function submitResult(params: SubmitResultRequest) {
     // 5. Create Result
     const shareId = randomBytes(10).toString("base64url");
     const claimToken = session.userId ? null : randomBytes(32).toString("hex");
-    
+
     let codeMetrics: Prisma.InputJsonValue | undefined;
     if (session.mode === "CODE" && params.errorMap) {
       codeMetrics = calculateCodeMetrics(session.passage.content, params.errorMap) as any;
@@ -303,24 +333,24 @@ export async function submitResult(params: SubmitResultRequest) {
 
     if (session.trustTier === "B2B_ASSESSMENT") {
       const attempt = await tx.assessmentAttempt.findUnique({
-        where: { sessionId: session.id }
+        where: { sessionId: session.id },
       });
       if (attempt) {
         await tx.assessmentAttempt.update({
           where: { id: attempt.id },
-          data: { status: "COMPLETED", completedAt: now }
+          data: { status: "COMPLETED", completedAt: now },
         });
         await tx.assessmentCandidate.update({
           where: { id: attempt.candidateId },
-          data: { status: "COMPLETED", resultId: result.id, updatedAt: now }
+          data: { status: "COMPLETED", resultId: result.id, updatedAt: now },
         });
         await tx.auditLog.create({
           data: {
             action: "RESULT_COMPLETED",
             resource: "TestResult",
             resourceId: result.id,
-            metadata: { candidateId: attempt.candidateId, attemptId: attempt.id }
-          }
+            metadata: { candidateId: attempt.candidateId, attemptId: attempt.id },
+          },
         });
       }
     }

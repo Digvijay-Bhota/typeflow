@@ -84,6 +84,9 @@ jobs:
 
       - name: Run unit tests with coverage
         run: npm run test:coverage
+        env:
+          DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
+          DIRECT_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4

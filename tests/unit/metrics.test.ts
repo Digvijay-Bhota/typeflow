@@ -289,10 +289,25 @@ describe("getWeakKeys", () => {
   });
 
   it("respects topN limit", () => {
-    const errors: Record<string, { expected: string; actual: string[]; count: number; corrected: number; uncorrected: number }> = {};
+    const errors: Record<
+      string,
+      {
+        expected: string;
+        actual: string[];
+        count: number;
+        corrected: number;
+        uncorrected: number;
+      }
+    > = {};
     for (let i = 0; i < 20; i++) {
       const k = String.fromCharCode(97 + i);
-      errors[k] = { expected: k, actual: ["x"], count: i + 1, corrected: 0, uncorrected: i + 1 };
+      errors[k] = {
+        expected: k,
+        actual: ["x"],
+        count: i + 1,
+        corrected: 0,
+        uncorrected: i + 1,
+      };
     }
     const weak = getWeakKeys(errors, 5);
     expect(weak).toHaveLength(5);
@@ -396,21 +411,15 @@ describe("classifyIntegrity", () => {
   });
 
   it("returns INVALID for paste attempt", () => {
-    expect(
-      classifyIntegrity({ ...base, pasteAttempts: 1 })
-    ).toBe("INVALID");
+    expect(classifyIntegrity({ ...base, pasteAttempts: 1 })).toBe("INVALID");
   });
 
   it("returns INVALID for WPM above human maximum", () => {
-    expect(
-      classifyIntegrity({ ...base, wpm: 350 })
-    ).toBe("INVALID");
+    expect(classifyIntegrity({ ...base, wpm: 350 })).toBe("INVALID");
   });
 
   it("returns INVALID for suspicious pattern", () => {
-    expect(
-      classifyIntegrity({ ...base, suspiciousPattern: true })
-    ).toBe("INVALID");
+    expect(classifyIntegrity({ ...base, suspiciousPattern: true })).toBe("INVALID");
   });
 
   it("returns INVALID for duration anomaly (completed too fast)", () => {
@@ -421,14 +430,10 @@ describe("classifyIntegrity", () => {
   });
 
   it("returns REVIEW for focus loss", () => {
-    expect(
-      classifyIntegrity({ ...base, focusLossCount: 1 })
-    ).toBe("REVIEW");
+    expect(classifyIntegrity({ ...base, focusLossCount: 1 })).toBe("REVIEW");
   });
 
   it("returns REVIEW for many visibility changes", () => {
-    expect(
-      classifyIntegrity({ ...base, visibilityChanges: 3 })
-    ).toBe("REVIEW");
+    expect(classifyIntegrity({ ...base, visibilityChanges: 3 })).toBe("REVIEW");
   });
 });

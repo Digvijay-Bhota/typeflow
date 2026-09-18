@@ -5,13 +5,18 @@ import { z } from "zod";
 
 const CreateOrgSchema = z.object({
   name: z.string().min(2).max(100),
-  slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/),
+  slug: z
+    .string()
+    .min(2)
+    .max(50)
+    .regex(/^[a-z0-9-]+$/),
 });
 
 export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
   const { success } = await rateLimit(`org_create_${ip}`, 5, 60000);
-  if (!success) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (!success)
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   try {
     const json = await req.json();

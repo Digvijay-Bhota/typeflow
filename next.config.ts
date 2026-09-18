@@ -49,10 +49,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: '/code/:language',
-        destination: '/:language-typing-test',
+        source: "/code/:language",
+        destination: "/:language-typing-test",
       },
-    ]
+    ];
   },
 
   // Logging
@@ -61,7 +61,6 @@ const nextConfig: NextConfig = {
       fullUrl: process.env.NODE_ENV === "development",
     },
   },
-
 };
 
 export default nextConfig;

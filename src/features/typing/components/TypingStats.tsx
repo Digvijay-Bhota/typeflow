@@ -33,12 +33,7 @@ export const TypingStats: FC<TypingStatsProps> = ({
   className,
 }) => {
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-6 text-center",
-        className
-      )}
-    >
+    <div className={cn("flex items-center justify-between gap-6 text-center", className)}>
       {/* WPM */}
       <div className="stat-badge min-w-[80px]">
         <span className="stat-badge__value">{Math.round(wpm)}</span>
@@ -49,10 +44,9 @@ export const TypingStats: FC<TypingStatsProps> = ({
       <div className="stat-badge min-w-[80px]">
         {mode === "timed" && remainingMs !== null ? (
           <>
-            <span className={cn(
-              "stat-badge__value",
-              remainingMs < 10_000 && "text-red-400"
-            )}>
+            <span
+              className={cn("stat-badge__value", remainingMs < 10_000 && "text-red-400")}
+            >
               {formatMs(remainingMs)}
             </span>
             <span className="stat-badge__label">remaining</span>
@@ -74,9 +68,7 @@ export const TypingStats: FC<TypingStatsProps> = ({
 
       {/* Accuracy */}
       <div className="stat-badge min-w-[80px]">
-        <span className="stat-badge__value">
-          {(accuracy * 100).toFixed(0)}%
-        </span>
+        <span className="stat-badge__value">{(accuracy * 100).toFixed(0)}%</span>
         <span className="stat-badge__label">accuracy</span>
       </div>
     </div>

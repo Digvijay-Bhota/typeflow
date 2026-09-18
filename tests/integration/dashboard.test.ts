@@ -23,11 +23,13 @@ describe("Dashboard Service Integration (Cursor Pagination & Authorization)", ()
 
   describe("getHistory (Cursor Pagination)", () => {
     it("should fetch the first page without a cursor and return nextCursor if more results exist", async () => {
-      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({ id: "user-1" } as any);
-      
+      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+        id: "user-1",
+      } as any);
+
       const mockResults = Array.from({ length: 21 }).map((_, i) => ({
         id: `result-${21 - i}`,
-        createdAt: new Date(`2026-01-0${(21 - i) % 9 + 1}T10:00:00Z`),
+        createdAt: new Date(`2026-01-0${((21 - i) % 9) + 1}T10:00:00Z`),
         userId: "user-1",
       }));
 
@@ -35,11 +37,13 @@ describe("Dashboard Service Integration (Cursor Pagination & Authorization)", ()
 
       const res = await getHistory(undefined, undefined, 20);
 
-      expect(db.testResult.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: { userId: "user-1" },
-        take: 21,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      }));
+      expect(db.testResult.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: "user-1" },
+          take: 21,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        })
+      );
 
       expect(res.results.length).toBe(20);
       expect(res.nextCursor).not.toBeNull();
@@ -47,27 +51,33 @@ describe("Dashboard Service Integration (Cursor Pagination & Authorization)", ()
     });
 
     it("should fetch subsequent pages using the cursor", async () => {
-      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({ id: "user-1" } as any);
+      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+        id: "user-1",
+      } as any);
       vi.mocked(db.testResult.findMany).mockResolvedValue([] as any);
 
       const cursorCreatedAt = new Date("2026-01-01T10:00:00Z").toISOString();
       await getHistory("result-2", cursorCreatedAt, 20);
 
-      expect(db.testResult.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: expect.objectContaining({
-          userId: "user-1",
-          OR: [
-            { createdAt: { lt: expect.any(Date) } },
-            { createdAt: expect.any(Date), id: { lt: "result-2" } },
-          ],
-        }),
-      }));
+      expect(db.testResult.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: "user-1",
+            OR: [
+              { createdAt: { lt: expect.any(Date) } },
+              { createdAt: expect.any(Date), id: { lt: "result-2" } },
+            ],
+          }),
+        })
+      );
     });
   });
 
   describe("getDashboardStats", () => {
     it("should fetch aggregated stats filtered only for the authenticated user", async () => {
-      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({ id: "user-1" } as any);
+      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+        id: "user-1",
+      } as any);
       vi.mocked(db.testResult.aggregate).mockResolvedValue({
         _count: { id: 10 },
         _avg: { wpm: 80, accuracy: 0.95 },

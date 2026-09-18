@@ -8,20 +8,35 @@ const NotesSchema = z.object({
   reviewerNotes: z.string(),
 });
 
-export async function PUT(req: Request, { params }: { params: Promise<{ orgId: string, assessmentId: string, candidateId: string }> }) {
+export async function PUT(
+  req: Request,
+  {
+    params,
+  }: { params: Promise<{ orgId: string; assessmentId: string; candidateId: string }> }
+) {
   const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
   const { success } = await rateLimit(`review_${ip}`, 20, 60000);
-  if (!success) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (!success)
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   const p = await params;
   try {
-    const ctx = await requireOrganizationRole(p.orgId, ["OWNER", "ADMIN", "RECRUITER", "REVIEWER"]);
-    
+    const ctx = await requireOrganizationRole(p.orgId, [
+      "OWNER",
+      "ADMIN",
+      "RECRUITER",
+      "REVIEWER",
+    ]);
+
     const candidate = await db.assessmentCandidate.findUnique({
       where: { id: p.candidateId },
       include: { assessment: true },
     });
 
-    if (!candidate || candidate.assessmentId !== p.assessmentId || candidate.assessment.orgId !== p.orgId) {
+    if (
+      !candidate ||
+      candidate.assessmentId !== p.assessmentId ||
+      candidate.assessment.orgId !== p.orgId
+    ) {
       return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     }
 

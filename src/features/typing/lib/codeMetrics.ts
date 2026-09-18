@@ -18,24 +18,29 @@ export interface CodeMetrics {
 function isIndentation(passage: string, index: number): boolean {
   let i = index - 1;
   while (i >= 0) {
-    if (passage[i] === '\n') return true;
-    if (passage[i] !== ' ' && passage[i] !== '\t') return false;
+    if (passage[i] === "\n") return true;
+    if (passage[i] !== " " && passage[i] !== "\t") return false;
     i--;
   }
   return true; // start of file
 }
 
 export function calculateCodeMetrics(passage: string, errorMap: ErrorMap): CodeMetrics {
-  let totalPunctuation = 0, punctuationErrors = 0;
-  let totalWhitespace = 0, whitespaceErrors = 0;
-  let totalIndentation = 0, indentationErrors = 0;
-  let totalSymbols = 0, symbolErrors = 0;
+  let totalPunctuation = 0,
+    punctuationErrors = 0;
+  let totalWhitespace = 0,
+    whitespaceErrors = 0;
+  let totalIndentation = 0,
+    indentationErrors = 0;
+  let totalSymbols = 0,
+    symbolErrors = 0;
 
   for (let i = 0; i < passage.length; i++) {
     const char = passage[i] as string;
-    const hasError = !!errorMap[i] && errorMap[i] !== undefined && !errorMap[i]!.corrected;
+    const hasError =
+      !!errorMap[i] && errorMap[i] !== undefined && !errorMap[i]!.corrected;
 
-    if (char === ' ' || char === '\t' || char === '\n') {
+    if (char === " " || char === "\t" || char === "\n") {
       if (isIndentation(passage, i)) {
         totalIndentation++;
         if (hasError) indentationErrors++;
@@ -52,7 +57,8 @@ export function calculateCodeMetrics(passage: string, errorMap: ErrorMap): CodeM
     }
   }
 
-  const calcAcc = (total: number, errs: number) => total === 0 ? 1 : Math.max(0, (total - errs) / total);
+  const calcAcc = (total: number, errs: number) =>
+    total === 0 ? 1 : Math.max(0, (total - errs) / total);
 
   return {
     totalPunctuation,

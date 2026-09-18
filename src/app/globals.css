@@ -7,7 +7,7 @@
   --color-surface-elevated: var(--surface-elevated);
   --color-surface-muted: var(--surface-muted);
   --color-border: var(--border);
-  
+
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
@@ -35,8 +35,9 @@
   --color-tf-primary-400: var(--accent);
   --color-tf-primary-500: var(--accent);
   --color-tf-primary-600: var(--accent);
-  
-  --font-family-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+
+  --font-family-mono:
+    "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
   --font-family-sans: "Inter", system-ui, sans-serif;
 }
 
@@ -51,10 +52,10 @@
     --text-primary: oklch(14% 0 0);
     --text-secondary: oklch(40% 0 0);
     --text-muted: oklch(60% 0 0);
-    
+
     --success: oklch(65% 0.15 150);
     --warning: oklch(75% 0.15 80);
-    --danger: oklch(60% 0.20 25);
+    --danger: oklch(60% 0.2 25);
     --info: oklch(65% 0.15 250);
 
     /* Default Standard Context */
@@ -75,19 +76,19 @@
     --text-muted: oklch(60% 0 0);
 
     /* Default Standard Context Dark */
-    --accent: oklch(75% 0.15 200); 
+    --accent: oklch(75% 0.15 200);
     --accent-foreground: oklch(14% 0 0);
     --accent-soft: oklch(22% 0.05 200);
   }
 
   /* --- Context Themes --- */
-  
+
   .theme-code {
-    --accent: oklch(70% 0.20 260); /* Blue/Purple */
+    --accent: oklch(70% 0.2 260); /* Blue/Purple */
     --accent-soft: oklch(95% 0.05 260);
   }
   .dark .theme-code {
-    --accent: oklch(75% 0.20 260); 
+    --accent: oklch(75% 0.2 260);
     --accent-soft: oklch(22% 0.05 260);
     --background: oklch(10% 0 0); /* Darker for code */
   }
@@ -97,16 +98,16 @@
     --accent-soft: oklch(95% 0.05 160);
   }
   .dark .theme-certificate {
-    --accent: oklch(70% 0.15 160); 
+    --accent: oklch(70% 0.15 160);
     --accent-soft: oklch(20% 0.05 160);
   }
 
   .theme-pro {
-    --accent: oklch(65% 0.20 300); /* Violet/Premium */
+    --accent: oklch(65% 0.2 300); /* Violet/Premium */
     --accent-soft: oklch(95% 0.05 300);
   }
   .dark .theme-pro {
-    --accent: oklch(75% 0.20 300); 
+    --accent: oklch(75% 0.2 300);
     --accent-soft: oklch(22% 0.05 300);
   }
 
@@ -123,7 +124,7 @@
     @apply text-foreground transition-colors duration-75;
   }
   .char-incorrect {
-    @apply text-danger bg-danger/10 rounded-sm transition-colors duration-75 border-b-2 border-danger;
+    @apply text-danger bg-danger/10 border-danger rounded-sm border-b-2 transition-colors duration-75;
   }
   .typing-caret {
     @apply bg-accent transition-all duration-75;
@@ -137,11 +138,22 @@
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

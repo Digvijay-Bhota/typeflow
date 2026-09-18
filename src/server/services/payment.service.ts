@@ -7,7 +7,7 @@ import { Prisma } from "@prisma/client";
 export async function createCertificateOrder(certificateId: string, userId: string) {
   return await db.$transaction(async (tx) => {
     const cert = await tx.certificate.findUniqueOrThrow({
-      where: { certificateId }
+      where: { certificateId },
     });
 
     if (cert.userId !== userId) {
@@ -20,7 +20,7 @@ export async function createCertificateOrder(certificateId: string, userId: stri
 
     // Ensure idempotency for creating orders by checking existing PENDING payment
     const existingPayment = await tx.payment.findFirst({
-      where: { certificateId: cert.id, status: "PENDING" }
+      where: { certificateId: cert.id, status: "PENDING" },
     });
 
     if (existingPayment) {
@@ -33,7 +33,7 @@ export async function createCertificateOrder(certificateId: string, userId: stri
 
     const idempotencyKey = nanoid();
     const amount = CERTIFICATE_PRICE_INR;
-    
+
     const rzpOrder = await createRazorpayOrder(amount, `cert_${cert.certificateId}`);
 
     const payment = await tx.payment.create({
@@ -45,7 +45,7 @@ export async function createCertificateOrder(certificateId: string, userId: stri
         currency: rzpOrder.currency,
         idempotencyKey,
         status: "PENDING",
-      }
+      },
     });
 
     return {
@@ -56,7 +56,11 @@ export async function createCertificateOrder(certificateId: string, userId: stri
   });
 }
 
-export async function processRazorpayWebhook(payload: Record<string, unknown>, signature: string, payloadRawString: string) {
+export async function processRazorpayWebhook(
+  payload: Record<string, unknown>,
+  signature: string,
+  payloadRawString: string
+) {
   if (!verifyRazorpaySignature(payloadRawString, signature)) {
     throw new Error("INVALID_PAYMENT_SIGNATURE");
   }
@@ -65,13 +69,14 @@ export async function processRazorpayWebhook(payload: Record<string, unknown>, s
   const paymentPayload = payload.payload as Record<string, unknown>;
   const paymentEntity = paymentPayload?.payment as Record<string, unknown> | undefined;
   const entity = paymentEntity?.entity as Record<string, unknown> | undefined;
-  const eventId = String(payload.account_id) + "_" + eventType + "_" + (entity?.id || nanoid());
+  const eventId =
+    String(payload.account_id) + "_" + eventType + "_" + (entity?.id || nanoid());
 
   // Use a transaction for idempotency and atomicity
   await db.$transaction(async (tx) => {
     // 1. Idempotency Check
     const existingEvent = await tx.paymentEvent.findUnique({
-      where: { providerEventId: eventId }
+      where: { providerEventId: eventId },
     });
 
     if (existingEvent) {
@@ -83,9 +88,9 @@ export async function processRazorpayWebhook(payload: Record<string, unknown>, s
 
     const orderId = entity.order_id as string;
     const paymentId = entity.id as string;
-    
+
     const payment = await tx.payment.findUnique({
-      where: { orderId }
+      where: { orderId },
     });
 
     if (!payment) {
@@ -101,8 +106,8 @@ export async function processRazorpayWebhook(payload: Record<string, unknown>, s
         providerEventId: eventId,
         eventType,
         payload: payload as Prisma.InputJsonValue,
-        processedAt: new Date()
-      }
+        processedAt: new Date(),
+      },
     });
 
     // 3. Process Event Type
@@ -117,8 +122,8 @@ export async function processRazorpayWebhook(payload: Record<string, unknown>, s
         where: { id: payment.id },
         data: {
           status: "COMPLETED",
-          paymentId
-        }
+          paymentId,
+        },
       });
 
       if (payment.certificateId) {
@@ -128,27 +133,30 @@ export async function processRazorpayWebhook(payload: Record<string, unknown>, s
       if (payment.status === "PENDING") {
         await tx.payment.update({
           where: { id: payment.id },
-          data: { status: "FAILED", paymentId }
+          data: { status: "FAILED", paymentId },
         });
       }
     } else if (eventType === "refund.created" || eventType === "refund.processed") {
       if (payment.status === "COMPLETED") {
         await tx.payment.update({
           where: { id: payment.id },
-          data: { status: "REFUNDED" }
+          data: { status: "REFUNDED" },
         });
-        
-        // As explicitly documented, refunds do NOT automatically revoke certificates 
+
+        // As explicitly documented, refunds do NOT automatically revoke certificates
         // to prevent gaming the system. Refund revocation requires manual admin review.
       }
     }
   });
 }
 
-async function activateCertificate(certificateInternalId: string, tx: Prisma.TransactionClient) {
+async function activateCertificate(
+  certificateInternalId: string,
+  tx: Prisma.TransactionClient
+) {
   const cert = await tx.certificate.findUnique({
     where: { id: certificateInternalId },
-    include: { result: true }
+    include: { result: true },
   });
 
   if (!cert) return;
@@ -162,21 +170,24 @@ async function activateCertificate(certificateInternalId: string, tx: Prisma.Tra
   // or Supabase URL is constructed if storage credentials were unavailable.
   // A robust check is ensuring pdfUrl exists and is not the fallback.
   // Wait, the fallback is exactly "https://storage.typeflow.app/..."
-  if (!cert.pdfUrl || cert.pdfUrl === `https://storage.typeflow.app/certificates/${cert.certificateId}.pdf`) {
+  if (
+    !cert.pdfUrl ||
+    cert.pdfUrl === `https://storage.typeflow.app/certificates/${cert.certificateId}.pdf`
+  ) {
     // PDF storage unavailable or failed. Do not transition to ACTIVE.
     return;
   }
 
   await tx.certificate.update({
     where: { id: cert.id },
-    data: { status: "ACTIVE" }
+    data: { status: "ACTIVE" },
   });
 }
 
 export async function retryCertificateActivation(paymentInternalId: string) {
   await db.$transaction(async (tx) => {
     const payment = await tx.payment.findUnique({
-      where: { id: paymentInternalId }
+      where: { id: paymentInternalId },
     });
 
     if (!payment || payment.status !== "COMPLETED" || !payment.certificateId) {
@@ -184,14 +195,16 @@ export async function retryCertificateActivation(paymentInternalId: string) {
     }
 
     await activateCertificate(payment.certificateId, tx);
-    
+
     // Check if it got activated
     const cert = await tx.certificate.findUnique({
-      where: { id: payment.certificateId }
+      where: { id: payment.certificateId },
     });
-    
+
     if (cert?.status !== "ACTIVE") {
-      throw new Error("Activation failed: PDF storage unavailable or certificate ineligible");
+      throw new Error(
+        "Activation failed: PDF storage unavailable or certificate ineligible"
+      );
     }
   });
 }

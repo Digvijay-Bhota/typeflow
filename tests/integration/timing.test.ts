@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { submitResult } from "@/server/services/session.service";
 import { db } from "@/server/db";
 
-vi.mock("@/server/services/auth.service", () => ({ getAuthenticatedUser: vi.fn().mockResolvedValue({ id: "u1" }) }));
+vi.mock("@/server/services/auth.service", () => ({
+  getAuthenticatedUser: vi.fn().mockResolvedValue({ id: "u1" }),
+}));
 import { calculateWpm, calculateAccuracy } from "@/features/typing/lib/metrics";
 
 vi.mock("@/server/db", () => ({
@@ -24,8 +26,14 @@ describe("Result Submission Timing & Metric Validation", () => {
     vi.clearAllMocks();
   });
 
-  const getBaseSession = (startedAgoMs: number, mode: "TIMED" | "WORDS" = "WORDS", duration: number | null = null) => ({
-    id: "s1", integrityToken: "t1", userId: "u1",
+  const getBaseSession = (
+    startedAgoMs: number,
+    mode: "TIMED" | "WORDS" = "WORDS",
+    duration: number | null = null
+  ) => ({
+    id: "s1",
+    integrityToken: "t1",
+    userId: "u1",
     status: "ACTIVE",
     startedAt: new Date(Date.now() - startedAgoMs),
     expiresAt: new Date(Date.now() + 100000),
@@ -35,15 +43,25 @@ describe("Result Submission Timing & Metric Validation", () => {
   });
 
   const getBaseMetrics = () => ({
-    wpm: 0, rawWpm: 0, accuracy: 0, consistency: null,
-    correctChars: 250, incorrectChars: 50, totalChars: 300,
-    correctedErrors: 0, uncorrectedErrors: 0,
+    wpm: 0,
+    rawWpm: 0,
+    accuracy: 0,
+    consistency: null,
+    correctChars: 250,
+    incorrectChars: 50,
+    totalChars: 300,
+    correctedErrors: 0,
+    uncorrectedErrors: 0,
   });
 
   const getBaseSignals = () => ({
-    pasteAttempts: 0, copyAttempts: 0, focusLossCount: 0,
-    visibilityChanges: 0, suspiciousPattern: false,
-    intervalWpms: [], selectionAttempts: 0,
+    pasteAttempts: 0,
+    copyAttempts: 0,
+    focusLossCount: 0,
+    visibilityChanges: 0,
+    suspiciousPattern: false,
+    intervalWpms: [],
+    selectionAttempts: 0,
   });
 
   it("Case A: clientElapsedMs = 60s, serverElapsedMs = 5s -> Uses ~5s", async () => {
@@ -53,7 +71,8 @@ describe("Result Submission Timing & Metric Validation", () => {
     (db.testResult.create as any).mockImplementation(async ({ data }: any) => data);
 
     const res: any = await submitResult({
-      sessionId: "s1", integrityToken: "t1",
+      sessionId: "s1",
+      integrityToken: "t1",
       clientElapsedMs: 60000,
       metrics: getBaseMetrics(),
       integritySignals: getBaseSignals(),
@@ -71,7 +90,8 @@ describe("Result Submission Timing & Metric Validation", () => {
     (db.testResult.create as any).mockImplementation(async ({ data }: any) => data);
 
     const res: any = await submitResult({
-      sessionId: "s1", integrityToken: "t1",
+      sessionId: "s1",
+      integrityToken: "t1",
       clientElapsedMs: 1000,
       metrics: getBaseMetrics(),
       integritySignals: getBaseSignals(),
@@ -90,7 +110,8 @@ describe("Result Submission Timing & Metric Validation", () => {
     metrics.wpm = 300; // Faked
 
     const res: any = await submitResult({
-      sessionId: "s1", integrityToken: "t1",
+      sessionId: "s1",
+      integrityToken: "t1",
       clientElapsedMs: 60000,
       metrics,
       integritySignals: getBaseSignals(),
@@ -109,7 +130,8 @@ describe("Result Submission Timing & Metric Validation", () => {
     metrics.accuracy = 1.0; // Faked 100% despite 50 incorrectChars
 
     const res: any = await submitResult({
-      sessionId: "s1", integrityToken: "t1",
+      sessionId: "s1",
+      integrityToken: "t1",
       clientElapsedMs: 60000,
       metrics,
       integritySignals: getBaseSignals(),
@@ -128,7 +150,8 @@ describe("Result Submission Timing & Metric Validation", () => {
     (db.testResult.create as any).mockImplementation(async ({ data }: any) => data);
 
     const res: any = await submitResult({
-      sessionId: "s1", integrityToken: "t1",
+      sessionId: "s1",
+      integrityToken: "t1",
       clientElapsedMs: 10000, // 10 seconds claimed by client
       metrics: getBaseMetrics(), // 250 correctChars
       integritySignals: getBaseSignals(),
@@ -137,7 +160,7 @@ describe("Result Submission Timing & Metric Validation", () => {
     // 250 chars / 5 = 50 words.
     // If client time (10s) was used: 50 words / (10/60) min = 300 WPM
     // If server time (60s) was used: 50 words / (60/60) min = 50 WPM
-    
+
     expect(res.wpm).not.toBe(300); // Proves client manipulation failed
     expect(res.wpm).toBe(50); // Proves authoritative server timing was used
   });

@@ -34,7 +34,11 @@ export async function getDashboardStats() {
   };
 }
 
-export async function getHistory(cursorId?: string, cursorCreatedAt?: string, pageSize = 20) {
+export async function getHistory(
+  cursorId?: string,
+  cursorCreatedAt?: string,
+  pageSize = 20
+) {
   const user = await requireAuthenticatedUser();
 
   // Implement explicit cursor pagination logic
@@ -52,10 +56,7 @@ export async function getHistory(cursorId?: string, cursorCreatedAt?: string, pa
 
   const results = await db.testResult.findMany({
     where,
-    orderBy: [
-      { createdAt: "desc" },
-      { id: "desc" },
-    ],
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: pageSize + 1,
     select: {
       id: true,
@@ -75,11 +76,12 @@ export async function getHistory(cursorId?: string, cursorCreatedAt?: string, pa
 
   const hasNextPage = results.length > pageSize;
   const returnedResults = hasNextPage ? results.slice(0, -1) : results;
-  
+
   const lastResult = returnedResults[returnedResults.length - 1];
-  const nextCursor = hasNextPage && lastResult 
-    ? { id: lastResult.id, createdAt: lastResult.createdAt.toISOString() } 
-    : null;
+  const nextCursor =
+    hasNextPage && lastResult
+      ? { id: lastResult.id, createdAt: lastResult.createdAt.toISOString() }
+      : null;
 
   return { results: returnedResults, nextCursor };
 }

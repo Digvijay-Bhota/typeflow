@@ -27,7 +27,9 @@ describe("POST /api/result/claim", () => {
   });
 
   it("should reject unauthenticated users", async () => {
-    vi.mocked(authService.requireAuthenticatedUser).mockRejectedValue(new Error("Unauthorized"));
+    vi.mocked(authService.requireAuthenticatedUser).mockRejectedValue(
+      new Error("Unauthorized")
+    );
 
     const req = new NextRequest("http://localhost/api/result/claim", {
       method: "POST",
@@ -39,8 +41,10 @@ describe("POST /api/result/claim", () => {
   });
 
   it("should claim result if token is valid and unclaimed", async () => {
-    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({ id: "user-1" } as any);
-    
+    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+      id: "user-1",
+    } as any);
+
     vi.mocked(db.testResult.findUnique).mockResolvedValue({
       id: "result-1",
       sessionId: "session-1",
@@ -62,8 +66,10 @@ describe("POST /api/result/claim", () => {
   });
 
   it("should reject duplicate claim attempts", async () => {
-    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({ id: "user-1" } as any);
-    
+    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+      id: "user-1",
+    } as any);
+
     vi.mocked(db.testResult.findUnique).mockResolvedValue({
       id: "result-1",
       sessionId: "session-1",
@@ -86,8 +92,10 @@ describe("POST /api/result/claim", () => {
   });
 
   it("should reject invalid/forged claim tokens", async () => {
-    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({ id: "user-1" } as any);
-    
+    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+      id: "user-1",
+    } as any);
+
     vi.mocked(db.testResult.findUnique).mockResolvedValue(null);
 
     const req = new NextRequest("http://localhost/api/result/claim", {
@@ -101,8 +109,10 @@ describe("POST /api/result/claim", () => {
   });
 
   it("should reject absent claim token", async () => {
-    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({ id: "user-1" } as any);
-    
+    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+      id: "user-1",
+    } as any);
+
     const req = new NextRequest("http://localhost/api/result/claim", {
       method: "POST",
       body: JSON.stringify({}),
@@ -114,8 +124,10 @@ describe("POST /api/result/claim", () => {
   });
 
   it("should nullify token upon successful claim", async () => {
-    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({ id: "user-1" } as any);
-    
+    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+      id: "user-1",
+    } as any);
+
     vi.mocked(db.testResult.findUnique).mockResolvedValue({
       id: "result-1",
       sessionId: "session-1",
@@ -132,7 +144,7 @@ describe("POST /api/result/claim", () => {
     });
 
     await POST(req);
-    
+
     // Verify transaction updates claimToken to null
     expect(db.testResult.update).toHaveBeenCalledWith({
       where: { id: "result-1" },
@@ -141,7 +153,9 @@ describe("POST /api/result/claim", () => {
   });
 
   it("should rate limit repeated attempts and not expose token in error", async () => {
-    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({ id: "user-1" } as any);
+    vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+      id: "user-1",
+    } as any);
     vi.mocked(db.testResult.findUnique).mockResolvedValue(null);
 
     // Call 5 times (the limit)
@@ -160,10 +174,10 @@ describe("POST /api/result/claim", () => {
       body: JSON.stringify({ claimToken: "sensitive-token-123" }),
       headers: new Headers({ "x-forwarded-for": "1.2.3.4" }),
     });
-    
+
     const res = await POST(req);
     expect(res.status).toBe(429);
-    
+
     const body = await res.json();
     expect(body.error.code).toBe("RATE_LIMITED");
     expect(JSON.stringify(body)).not.toContain("sensitive-token-123");

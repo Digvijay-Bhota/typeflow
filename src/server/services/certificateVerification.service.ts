@@ -1,8 +1,8 @@
-import { 
-  calculateWpm, 
-  calculateRawWpm, 
-  calculateNetWpm, 
-  calculateAccuracy
+import {
+  calculateWpm,
+  calculateRawWpm,
+  calculateNetWpm,
+  calculateAccuracy,
 } from "@/features/typing/lib/metrics";
 
 export interface ReconstructedMetrics {
@@ -39,9 +39,12 @@ export function verifyCertificateTest(
   let correctedErrors = 0;
   let uncorrectedErrors = 0;
   const chars = passageContent.split("");
-  
-  const errorMap: Record<number, { expected: string; typed: string; corrected: boolean }> = {};
-  
+
+  const errorMap: Record<
+    number,
+    { expected: string; typed: string; corrected: boolean }
+  > = {};
+
   let lastTimeMs = -1;
   let status: "VERIFIED" | "REVIEW" | "INVALID" = "VERIFIED";
   const reasons: string[] = [];
@@ -59,7 +62,7 @@ export function verifyCertificateTest(
       reasons.push("Negative timestamp");
       break;
     }
-    
+
     // Check if time is after server duration + grace
     if (timeMs > serverElapsedMs + 5000) {
       status = "INVALID";
@@ -86,10 +89,10 @@ export function verifyCertificateTest(
         reasons.push("Event index out of bounds");
         break;
       }
-      
+
       const expectedChar = chars[idx];
       totalChars++;
-      
+
       if (char === expectedChar) {
         correctChars++;
         if (errorMap[idx]) {
@@ -101,10 +104,10 @@ export function verifyCertificateTest(
         errorMap[idx] = {
           expected: expectedChar ?? "",
           typed: char || "",
-          corrected: false
+          corrected: false,
         };
       }
-      
+
       currentIndex++;
     } else if (type === 1) {
       // Backspace
@@ -115,20 +118,22 @@ export function verifyCertificateTest(
       }
       if (idx !== currentIndex - 1) {
         status = "INVALID";
-        reasons.push(`Index mismatch on backspace: expected ${currentIndex - 1}, got ${idx}`);
+        reasons.push(
+          `Index mismatch on backspace: expected ${currentIndex - 1}, got ${idx}`
+        );
         break;
       }
-      
+
       const prevIdx = currentIndex - 1;
       const prevError = errorMap[prevIdx];
-      
+
       if (prevError && !prevError.corrected) {
         incorrectChars = Math.max(0, incorrectChars - 1);
         uncorrectedErrors = Math.max(0, uncorrectedErrors - 1);
         correctedErrors++;
         errorMap[prevIdx] = { ...errorMap[prevIdx]!, corrected: true };
       }
-      
+
       currentIndex--;
       totalChars = Math.max(0, totalChars - 1);
     } else {
@@ -164,7 +169,7 @@ export function verifyCertificateTest(
       wpm,
       rawWpm,
       netWpm,
-      accuracy
-    }
+      accuracy,
+    },
   };
 }

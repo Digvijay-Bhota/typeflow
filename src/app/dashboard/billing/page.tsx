@@ -19,14 +19,12 @@ export default async function BillingPage() {
   const billing = await getUserBillingInfo(user.id);
 
   return (
-    <div className="flex flex-col gap-8 animate-fade-in">
+    <div className="animate-fade-in flex flex-col gap-8">
       <div>
-        <h1 className="text-3xl font-bold text-foreground dark:text-foreground">
+        <h1 className="text-foreground dark:text-foreground text-3xl font-bold">
           Billing
         </h1>
-        <p className="text-muted mt-1">
-          Manage your subscription and billing details.
-        </p>
+        <p className="text-muted mt-1">Manage your subscription and billing details.</p>
       </div>
 
       <BillingClient
@@ -38,7 +36,7 @@ export default async function BillingPage() {
         cancelledAt={billing.cancelledAt?.toISOString() ?? null}
       />
 
-      <div className="text-sm text-tf-text-400">
+      <div className="text-tf-text-400 text-sm">
         <Link href="/pricing" className="text-accent hover:underline">
           View pricing details
         </Link>

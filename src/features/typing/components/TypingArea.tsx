@@ -12,13 +12,7 @@
  */
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  type KeyboardEvent,
-  type FC,
-} from "react";
+import { useCallback, useEffect, useRef, type KeyboardEvent, type FC } from "react";
 import { cn } from "@/lib/utils";
 import type { ErrorMap, EngineStatus } from "@/types/typing";
 
@@ -34,11 +28,7 @@ interface TypingAreaProps {
 }
 
 /** Get CSS class for a character at a given index */
-function getCharClass(
-  index: number,
-  currentIndex: number,
-  errorMap: ErrorMap
-): string {
+function getCharClass(index: number, currentIndex: number, errorMap: ErrorMap): string {
   if (index >= currentIndex) return "char-pending";
 
   const error = errorMap[index];
@@ -101,8 +91,7 @@ export const TypingArea: FC<TypingAreaProps> = ({
         if (!containerEl) return;
         const charRect = lastEl.getBoundingClientRect();
         const containerRect = containerEl.getBoundingClientRect();
-        const left =
-          charRect.right - containerRect.left + containerEl.scrollLeft;
+        const left = charRect.right - containerRect.left + containerEl.scrollLeft;
         const top = charRect.top - containerRect.top + containerEl.scrollTop;
         caretEl.style.left = `${left}px`;
         caretEl.style.top = `${top}px`;
@@ -131,7 +120,10 @@ export const TypingArea: FC<TypingAreaProps> = ({
     (e: KeyboardEvent<HTMLDivElement>) => {
       // Prevent default for all typing keys to avoid scroll/browser shortcuts
       const shouldHandle =
-        e.key.length === 1 || e.key === "Backspace" || e.key === "Enter" || e.key === "Tab";
+        e.key.length === 1 ||
+        e.key === "Backspace" ||
+        e.key === "Enter" ||
+        e.key === "Tab";
 
       if (!shouldHandle) return;
 
@@ -181,13 +173,13 @@ export const TypingArea: FC<TypingAreaProps> = ({
       className={cn(
         // Base
         "typing-area relative font-mono text-xl leading-relaxed",
-        "select-none outline-none cursor-text",
+        "cursor-text outline-none select-none",
         // Container: fixed height prevents layout shift
         "h-36 overflow-hidden",
         // Visual
-        "px-2 py-1 rounded-lg",
+        "rounded-lg px-2 py-1",
         // Focus ring
-        "focus:ring-2 focus:ring-accent/40",
+        "focus:ring-accent/40 focus:ring-2",
         // Blur state: dim when not active
         !isActive && "opacity-50",
         className
@@ -205,13 +197,14 @@ export const TypingArea: FC<TypingAreaProps> = ({
       />
 
       {/* Characters */}
-      <div className="whitespace-pre-wrap text-left break-all">
+      <div className="text-left break-all whitespace-pre-wrap">
         {chars.map((char, i) => {
           const charClass = getCharClass(i, currentIndex, errorMap);
-          
+
           let displayChar = char;
           if (char === " ") displayChar = "\u00A0";
-          else if (char === "\n") displayChar = "↵\n"; // visual indicator
+          else if (char === "\n")
+            displayChar = "↵\n"; // visual indicator
           else if (char === "\t") displayChar = "⇥\t"; // visual indicator
 
           return (
@@ -224,7 +217,7 @@ export const TypingArea: FC<TypingAreaProps> = ({
               className={cn(
                 "relative",
                 "inline",
-                char === "\n" ? "text-muted" : "",
+                char === " " ? "text-muted" : "",
                 charClass
               )}
               aria-hidden="true"
@@ -240,10 +233,10 @@ export const TypingArea: FC<TypingAreaProps> = ({
         <div
           className={cn(
             "absolute inset-0 flex items-center justify-center",
-            "text-muted text-sm pointer-events-none"
+            "text-muted pointer-events-none text-sm"
           )}
         >
-          <span className="bg-surface/80 px-3 py-1 rounded-md">
+          <span className="bg-surface/80 rounded-md px-3 py-1">
             Click here or start typing
           </span>
         </div>

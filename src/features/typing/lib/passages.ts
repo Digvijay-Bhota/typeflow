@@ -175,15 +175,11 @@ export function selectPassage(params: {
     return certificatePassages[idx] ?? certificatePassages[0]!;
   }
 
-  const pool = englishPassages.filter(
-    (p) => p.difficulty === difficulty
-  );
+  const pool = englishPassages.filter((p) => p.difficulty === difficulty);
 
   if (pool.length === 0) {
     // Fallback to intermediate
-    const fallback = englishPassages.filter(
-      (p) => p.difficulty === "intermediate"
-    );
+    const fallback = englishPassages.filter((p) => p.difficulty === "intermediate");
     const idx = seed % (fallback.length || 1);
     return fallback[idx] ?? englishPassages[0]!;
   }

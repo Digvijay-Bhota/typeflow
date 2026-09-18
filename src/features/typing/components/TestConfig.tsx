@@ -33,22 +33,17 @@ interface ConfigButtonProps {
   children: React.ReactNode;
 }
 
-const ConfigButton: FC<ConfigButtonProps> = ({
-  active,
-  onClick,
-  disabled,
-  children,
-}) => (
+const ConfigButton: FC<ConfigButtonProps> = ({ active, onClick, disabled, children }) => (
   <button
     onClick={onClick}
     disabled={disabled}
     className={cn(
-      "px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2",
-      "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+      "flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-all",
+      "focus-visible:ring-accent focus:outline-none focus-visible:ring-2",
       active
-        ? "bg-accent/10 text-accent border border-accent/20 shadow-sm"
+        ? "bg-accent/10 text-accent border-accent/20 border shadow-sm"
         : "text-muted hover:text-foreground hover:bg-surface-elevated border border-transparent",
-      disabled && "opacity-40 cursor-not-allowed"
+      disabled && "cursor-not-allowed opacity-40"
     )}
   >
     {children}
@@ -56,7 +51,7 @@ const ConfigButton: FC<ConfigButtonProps> = ({
 );
 
 const Divider = () => (
-  <span className="text-border mx-2 select-none h-6 w-px bg-border" />
+  <span className="text-border bg-border mx-2 h-6 w-px select-none" />
 );
 
 export const TestConfig: FC<TestConfigProps> = ({
@@ -79,7 +74,7 @@ export const TestConfig: FC<TestConfigProps> = ({
   return (
     <div
       className={cn(
-        "flex items-center gap-1 flex-wrap bg-surface/50 border border-border/50 p-1.5 rounded-xl backdrop-blur-sm",
+        "bg-surface/50 border-border/50 flex flex-wrap items-center gap-1 rounded-xl border p-1.5 backdrop-blur-sm",
         "text-muted text-sm shadow-sm"
       )}
       role="toolbar"
@@ -91,14 +86,14 @@ export const TestConfig: FC<TestConfigProps> = ({
         onClick={() => onModeChange("timed")}
         disabled={disabled}
       >
-        <Timer className="w-4 h-4" /> Timed
+        <Timer className="h-4 w-4" /> Timed
       </ConfigButton>
       <ConfigButton
         active={isWords}
         onClick={() => onModeChange("words")}
         disabled={disabled}
       >
-        <Type className="w-4 h-4" /> Words
+        <Type className="h-4 w-4" /> Words
       </ConfigButton>
 
       <Divider />

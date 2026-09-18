@@ -51,10 +51,7 @@ export function calculateWpm(correctChars: number, elapsedMs: number): number {
  * @param elapsedMs Elapsed time in milliseconds
  * @returns Raw WPM rounded to 1 decimal place
  */
-export function calculateRawWpm(
-  totalChars: number,
-  elapsedMs: number
-): number {
+export function calculateRawWpm(totalChars: number, elapsedMs: number): number {
   if (elapsedMs <= 0) return 0;
   const minutes = msToMinutes(elapsedMs);
   return Math.round((totalChars / CHARS_PER_WORD / minutes) * 10) / 10;
@@ -97,10 +94,7 @@ export function calculateNetWpm(
  * @param totalChars Total characters typed
  * @returns Accuracy ratio 0–1
  */
-export function calculateAccuracy(
-  correctChars: number,
-  totalChars: number
-): number {
+export function calculateAccuracy(correctChars: number, totalChars: number): number {
   if (totalChars === 0) return 1;
   return Math.min(1, correctChars / totalChars);
 }
@@ -116,10 +110,7 @@ export function calculateAccuracy(
  * @param totalChars Total characters typed
  * @returns Error rate ratio 0–1
  */
-export function calculateErrorRate(
-  incorrectChars: number,
-  totalChars: number
-): number {
+export function calculateErrorRate(incorrectChars: number, totalChars: number): number {
   if (totalChars === 0) return 0;
   return Math.min(1, incorrectChars / totalChars);
 }
@@ -135,10 +126,7 @@ export function calculateErrorRate(
  * @param elapsedMs Elapsed time in milliseconds
  * @returns CPM rounded to nearest integer
  */
-export function calculateCpm(
-  correctChars: number,
-  elapsedMs: number
-): number {
+export function calculateCpm(correctChars: number, elapsedMs: number): number {
   if (elapsedMs <= 0) return 0;
   const minutes = msToMinutes(elapsedMs);
   return Math.round(correctChars / minutes);
@@ -156,10 +144,7 @@ export function calculateCpm(
  * @param elapsedMs Elapsed time in milliseconds
  * @returns KSPM rounded to nearest integer
  */
-export function calculateKspm(
-  totalKeystrokes: number,
-  elapsedMs: number
-): number {
+export function calculateKspm(totalKeystrokes: number, elapsedMs: number): number {
   if (elapsedMs <= 0) return 0;
   const minutes = msToMinutes(elapsedMs);
   return Math.round(totalKeystrokes / minutes);
@@ -184,9 +169,7 @@ export function calculateKspm(
  * @param intervalWpms Array of WPM values for each time interval
  * @returns Consistency score 0–1, or null if insufficient data
  */
-export function calculateConsistency(
-  intervalWpms: number[]
-): number | null {
+export function calculateConsistency(intervalWpms: number[]): number | null {
   if (intervalWpms.length < 3) return null;
 
   const validWpms = intervalWpms.filter((w) => w > 0);
@@ -196,8 +179,7 @@ export function calculateConsistency(
   if (mean === 0) return null;
 
   const variance =
-    validWpms.reduce((sum, wpm) => sum + Math.pow(wpm - mean, 2), 0) /
-    validWpms.length;
+    validWpms.reduce((sum, wpm) => sum + Math.pow(wpm - mean, 2), 0) / validWpms.length;
   const stdDev = Math.sqrt(variance);
   const cv = stdDev / mean;
 
@@ -214,12 +196,14 @@ export function calculateConsistency(
  * @param topN Number of weak keys to return
  */
 export function getWeakKeys(
-  keyErrors: Record<
-    string,
-    { count: number; corrected: number; uncorrected: number }
-  >,
+  keyErrors: Record<string, { count: number; corrected: number; uncorrected: number }>,
   topN = 10
-): Array<{ key: string; errorCount: number; correctedCount: number; uncorrectedCount: number }> {
+): Array<{
+  key: string;
+  errorCount: number;
+  correctedCount: number;
+  uncorrectedCount: number;
+}> {
   return Object.entries(keyErrors)
     .map(([key, data]) => ({
       key,

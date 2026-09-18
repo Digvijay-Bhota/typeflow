@@ -32,16 +32,15 @@ export default async function HomePage() {
   const _user = await getAuthenticatedUser();
 
   return (
-    <main className="min-h-screen flex flex-col">
+    <main className="flex min-h-screen flex-col">
       {/* Header */}
-      
 
       {/* Hero — Typing Test */}
-      <section className="flex-1 flex flex-col items-center justify-center px-4 py-16">
-        <div className="w-full max-w-3xl mx-auto space-y-10">
+      <section className="flex flex-1 flex-col items-center justify-center px-4 py-16">
+        <div className="mx-auto w-full max-w-3xl space-y-10">
           {/* Headline */}
-          <div className="text-center space-y-3">
-            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
+          <div className="space-y-3 text-center">
+            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
               <span className="text-foreground">Type </span>
               <span className="text-accent">faster.</span>
               <span className="text-foreground"> Prove it.</span>
@@ -52,12 +51,12 @@ export default async function HomePage() {
           </div>
 
           {/* The typing test — primary LCP */}
-          <div className="bg-surface/60 border border-border/50 rounded-2xl p-6 sm:p-8">
+          <div className="bg-surface/60 border-border/50 rounded-2xl border p-6 sm:p-8">
             <TypingTest />
           </div>
 
           {/* Feature pills */}
-          <div className="flex flex-wrap justify-center gap-2 text-sm text-muted">
+          <div className="text-muted flex flex-wrap justify-center gap-2 text-sm">
             {[
               "⚡ Instant start",
               "📊 WPM + accuracy",
@@ -67,7 +66,7 @@ export default async function HomePage() {
             ].map((f) => (
               <span
                 key={f}
-                className="px-3 py-1 rounded-full border border-border bg-surface/40"
+                className="border-border bg-surface/40 rounded-full border px-3 py-1"
               >
                 {f}
               </span>
@@ -77,25 +76,21 @@ export default async function HomePage() {
       </section>
 
       {/* Features section */}
-      <section className="px-4 py-16 border-t border-border/50">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-2xl font-bold text-center text-tf-neutral-200 mb-10">
+      <section className="border-border/50 border-t px-4 py-16">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="text-tf-neutral-200 mb-10 text-center text-2xl font-bold">
             Everything you need to type better
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((f) => (
               <div
                 key={f.title}
-                className="p-5 rounded-xl bg-surface/40 border border-border/50 hover:border-tf-primary-500/30 transition-colors"
+                className="bg-surface/40 border-border/50 hover:border-tf-primary-500/30 rounded-xl border p-5 transition-colors"
               >
-                <div className="text-2xl mb-3">{f.icon}</div>
-                <h3 className="font-semibold text-tf-neutral-200 mb-1">
-                  {f.title}
-                </h3>
-                <p className="text-muted text-sm leading-relaxed">
-                  {f.desc}
-                </p>
+                <div className="mb-3 text-2xl">{f.icon}</div>
+                <h3 className="text-tf-neutral-200 mb-1 font-semibold">{f.title}</h3>
+                <p className="text-muted text-sm leading-relaxed">{f.desc}</p>
               </div>
             ))}
           </div>
@@ -103,18 +98,18 @@ export default async function HomePage() {
       </section>
 
       {/* Certificate CTA */}
-      <section className="px-4 py-16 border-t border-border/50">
-        <div className="max-w-2xl mx-auto text-center space-y-4">
-          <h2 className="text-2xl font-bold text-foreground">
+      <section className="border-border/50 border-t px-4 py-16">
+        <div className="mx-auto max-w-2xl space-y-4 text-center">
+          <h2 className="text-foreground text-2xl font-bold">
             Prove your typing skills with a verified certificate
           </h2>
           <p className="text-muted">
-            Complete a supervised typing test and receive a TypeFlow Verified
-            Certificate with a unique ID, QR code, and public verification URL.
+            Complete a supervised typing test and receive a TypeFlow Verified Certificate
+            with a unique ID, QR code, and public verification URL.
           </p>
           <Link
             href="/typing-test-with-certificate"
-            className="inline-block mt-4 px-8 py-3 rounded-xl bg-accent hover:bg-accent text-white font-semibold transition-colors"
+            className="bg-accent hover:bg-accent mt-4 inline-block rounded-xl px-8 py-3 font-semibold text-white transition-colors"
           >
             Get Certified →
           </Link>
@@ -122,13 +117,11 @@ export default async function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border/50 px-4 py-8">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted">
+      <footer className="border-border/50 border-t px-4 py-8">
+        <div className="text-muted mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 text-sm sm:flex-row">
           <div>
-            <span className="text-accent font-mono font-semibold">
-              TypeFlow
-            </span>{" "}
-            — Typing performance platform
+            <span className="text-accent font-mono font-semibold">TypeFlow</span> — Typing
+            performance platform
           </div>
           <div className="flex gap-6">
             <Link href="/privacy" className="hover:text-tf-neutral-300 transition-colors">
@@ -137,7 +130,10 @@ export default async function HomePage() {
             <Link href="/terms" className="hover:text-tf-neutral-300 transition-colors">
               Terms
             </Link>
-            <Link href="/how-wpm-is-calculated" className="hover:text-tf-neutral-300 transition-colors">
+            <Link
+              href="/how-wpm-is-calculated"
+              className="hover:text-tf-neutral-300 transition-colors"
+            >
               How WPM works
             </Link>
           </div>

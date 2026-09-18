@@ -32,7 +32,7 @@ describe("Result Transformation & Mapping", () => {
     duration: 60,
     integrityStatus: "VERIFIED",
     createdAt: new Date("2026-09-16T12:00:00Z"),
-    errorMap: { "e": { expected: "e", count: 12, corrected: 6, uncorrected: 6 } },
+    errorMap: { e: { expected: "e", count: 12, corrected: 6, uncorrected: 6 } },
     session: {
       mode: "TIMED",
       language: "ENGLISH",
@@ -55,24 +55,30 @@ describe("Result Transformation & Mapping", () => {
     expect(res?.shareUrl).toBe("/result/share1");
     expect(res?.mode).toBe("TIMED");
     expect(res?.language).toBe("ENGLISH");
-    expect(res?.errorMap).toEqual({ "e": { expected: "e", count: 12, corrected: 6, uncorrected: 6 } });
+    expect(res?.errorMap).toEqual({
+      e: { expected: "e", count: 12, corrected: 6, uncorrected: 6 },
+    });
     expect(res?.isCertificateEligible).toBe(false); // FREE tier
   });
 
   it("handles missing errorMap gracefully (null)", async () => {
-    (db.testResult.findUnique as any).mockResolvedValue(getMockDbResult({ errorMap: null }));
+    (db.testResult.findUnique as any).mockResolvedValue(
+      getMockDbResult({ errorMap: null })
+    );
     const res = await getResultByShareId("share1");
     expect(res?.errorMap).toBeNull();
   });
 
   it("handles zero-error result gracefully", async () => {
-    (db.testResult.findUnique as any).mockResolvedValue(getMockDbResult({
-      accuracy: 1,
-      incorrectChars: 0,
-      correctedErrors: 0,
-      uncorrectedErrors: 0,
-      errorMap: {}
-    }));
+    (db.testResult.findUnique as any).mockResolvedValue(
+      getMockDbResult({
+        accuracy: 1,
+        incorrectChars: 0,
+        correctedErrors: 0,
+        uncorrectedErrors: 0,
+        errorMap: {},
+      })
+    );
     const res = await getResultByShareId("share1");
     expect(res?.accuracy).toBe(1);
     expect(res?.incorrectChars).toBe(0);
@@ -80,35 +86,41 @@ describe("Result Transformation & Mapping", () => {
   });
 
   it("handles low-accuracy result correctly", async () => {
-    (db.testResult.findUnique as any).mockResolvedValue(getMockDbResult({
-      accuracy: 0.15,
-      incorrectChars: 200,
-    }));
+    (db.testResult.findUnique as any).mockResolvedValue(
+      getMockDbResult({
+        accuracy: 0.15,
+        incorrectChars: 200,
+      })
+    );
     const res = await getResultByShareId("share1");
     expect(res?.accuracy).toBe(0.15);
     expect(res?.incorrectChars).toBe(200);
   });
 
   it("sets isCertificateEligible true for CERTIFICATE tier with VERIFIED status", async () => {
-    (db.testResult.findUnique as any).mockResolvedValue(getMockDbResult({
-      integrityStatus: "VERIFIED",
-      session: {
-        mode: "CERTIFICATE",
-        language: "ENGLISH",
-        trustTier: "CERTIFICATE",
-        passage: { content: "test" },
-      }
-    }));
+    (db.testResult.findUnique as any).mockResolvedValue(
+      getMockDbResult({
+        integrityStatus: "VERIFIED",
+        session: {
+          mode: "CERTIFICATE",
+          language: "ENGLISH",
+          trustTier: "CERTIFICATE",
+          passage: { content: "test" },
+        },
+      })
+    );
     const res = await getResultByShareId("share1");
     expect(res?.isCertificateEligible).toBe(true);
   });
 
   it("does not reveal claimToken, eventTrace, or userId in public result", async () => {
-    (db.testResult.findUnique as any).mockResolvedValue(getMockDbResult({
-      userId: "user-1",
-      claimToken: "secret123",
-      eventTrace: [{ k: "a", t: 100 }],
-    }));
+    (db.testResult.findUnique as any).mockResolvedValue(
+      getMockDbResult({
+        userId: "user-1",
+        claimToken: "secret123",
+        eventTrace: [{ k: "a", t: 100 }],
+      })
+    );
     const res = await getResultByShareId("share1");
     expect(res).not.toHaveProperty("claimToken");
     expect(res).not.toHaveProperty("eventTrace");

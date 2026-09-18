@@ -16,32 +16,30 @@ export default function ErrorPage({
   }, [error]);
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4">
-      <div className="text-center space-y-4 max-w-md">
-        <div className="font-mono text-6xl font-bold text-tf-neutral-800">
-          ⚠
-        </div>
-        <h1 className="text-2xl font-semibold text-tf-neutral-200">
+    <main className="flex min-h-screen items-center justify-center px-4">
+      <div className="max-w-md space-y-4 text-center">
+        <div className="text-tf-neutral-800 font-mono text-6xl font-bold">⚠</div>
+        <h1 className="text-tf-neutral-200 text-2xl font-semibold">
           Something went wrong
         </h1>
         <p className="text-muted text-sm">
           An unexpected error occurred. Your typing data has not been lost.
           {error.digest && (
-            <span className="block mt-1 font-mono text-xs text-tf-neutral-600">
+            <span className="text-tf-neutral-600 mt-1 block font-mono text-xs">
               Error ID: {error.digest}
             </span>
           )}
         </p>
-        <div className="flex gap-3 justify-center">
+        <div className="flex justify-center gap-3">
           <button
             onClick={reset}
-            className="px-5 py-2 rounded-lg bg-accent hover:bg-accent text-white font-medium transition-colors"
+            className="bg-accent hover:bg-accent rounded-lg px-5 py-2 font-medium text-white transition-colors"
           >
             Try again
           </button>
           <Link
             href="/"
-            className="px-5 py-2 rounded-lg border border-tf-neutral-700 hover:border-tf-neutral-500 text-tf-neutral-300 transition-colors"
+            className="border-tf-neutral-700 hover:border-tf-neutral-500 text-tf-neutral-300 rounded-lg border px-5 py-2 transition-colors"
           >
             Go home
           </Link>

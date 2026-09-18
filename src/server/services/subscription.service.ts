@@ -233,7 +233,7 @@ export async function createProSubscription(
       }
 
       const result = await tx.subscription.updateMany({
-        where: { 
+        where: {
           userId,
           status: existing.status,
           updatedAt: existing.updatedAt,
@@ -293,9 +293,7 @@ export async function createProSubscription(
       currentPeriodStart: rzpSub.currentStart
         ? new Date(rzpSub.currentStart * 1000)
         : null,
-      currentPeriodEnd: rzpSub.currentEnd
-        ? new Date(rzpSub.currentEnd * 1000)
-        : null,
+      currentPeriodEnd: rzpSub.currentEnd ? new Date(rzpSub.currentEnd * 1000) : null,
     },
   });
 
@@ -421,9 +419,7 @@ export async function processSubscriptionWebhook(
   }
 
   const payloadData = payload.payload as Record<string, unknown>;
-  const subPayload = payloadData?.subscription as
-    | Record<string, unknown>
-    | undefined;
+  const subPayload = payloadData?.subscription as Record<string, unknown> | undefined;
   const entity = subPayload?.entity as Record<string, unknown> | undefined;
 
   if (!entity) return;
@@ -535,9 +531,7 @@ async function applySubscriptionStateTransition(
       : null;
 
   const currentEnd =
-    typeof entity.current_end === "number"
-      ? new Date(entity.current_end * 1000)
-      : null;
+    typeof entity.current_end === "number" ? new Date(entity.current_end * 1000) : null;
   const targetStatus = mapEventTypeToStatus(eventType);
   if (!targetStatus) return;
 
@@ -545,7 +539,9 @@ async function applySubscriptionStateTransition(
   const allowedTransitions = VALID_TRANSITIONS[sub.status] || [];
   if (sub.status !== targetStatus && !allowedTransitions.includes(targetStatus)) {
     // Invalid transition (out of order event)
-    console.warn(`[Webhook] Ignoring invalid transition from ${sub.status} to ${targetStatus}`);
+    console.warn(
+      `[Webhook] Ignoring invalid transition from ${sub.status} to ${targetStatus}`
+    );
     return;
   }
 

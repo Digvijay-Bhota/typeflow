@@ -5,7 +5,7 @@ import { rateLimit } from "@/server/middleware/rateLimit";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const period = url.searchParams.get("period") as any || "all-time";
+  const period = (url.searchParams.get("period") as any) || "all-time";
   const mode = url.searchParams.get("mode") || undefined;
   const language = url.searchParams.get("language") || undefined;
   const codeLanguage = url.searchParams.get("codeLanguage") || undefined;
@@ -15,7 +15,7 @@ export async function GET(req: Request) {
 
   const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
   const { success } = await rateLimit(`leaderboard_${ip}`, 30, 60000);
-  
+
   if (!success) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }

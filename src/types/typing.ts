@@ -25,20 +25,20 @@ import type {
 export interface TypingEngineState {
   // ── Status ──
   status: EngineStatus;
-  startedAt: number | null;       // Date.now() when started
-  elapsedMs: number;              // elapsed time in ms
-  remainingMs: number | null;     // null for word-count mode
+  startedAt: number | null; // Date.now() when started
+  elapsedMs: number; // elapsed time in ms
+  remainingMs: number | null; // null for word-count mode
 
   // ── Position ──
-  currentIndex: number;           // current char index in passage
-  currentWordIndex: number;       // current word index
+  currentIndex: number; // current char index in passage
+  currentWordIndex: number; // current word index
 
   // ── Character counts ──
   correctCharacters: number;
   incorrectCharacters: number;
-  totalCharacters: number;        // total typed (correct + incorrect)
-  correctedErrors: number;        // errors fixed with backspace
-  uncorrectedErrors: number;      // errors left at submission
+  totalCharacters: number; // total typed (correct + incorrect)
+  correctedErrors: number; // errors fixed with backspace
+  uncorrectedErrors: number; // errors left at submission
 
   // ── Derived metrics (computed live from the above) ──
   /**
@@ -102,10 +102,10 @@ export type KeyErrorMap = Record<
   string,
   {
     expected: string;
-    actual: string[];     // what was typed instead (up to last N)
-    count: number;        // total errors on this expected key
-    corrected: number;    // how many were corrected with backspace
-    uncorrected: number;  // how many remain uncorrected
+    actual: string[]; // what was typed instead (up to last N)
+    count: number; // total errors on this expected key
+    corrected: number; // how many were corrected with backspace
+    uncorrected: number; // how many remain uncorrected
   }
 >;
 
@@ -153,8 +153,8 @@ export interface TypingEngineConfig {
   passage: string;
   mode: TypingMode;
   language: Language;
-  duration?: TestDuration | undefined;     // seconds, for timed mode
-  wordCount?: WordCount | undefined;       // for word-count mode
+  duration?: TestDuration | undefined; // seconds, for timed mode
+  wordCount?: WordCount | undefined; // for word-count mode
   codeLanguage?: CodeLanguage | undefined;
   isCertificateMode?: boolean | undefined;
   onComplete?: ((state: TypingEngineState) => void) | undefined;
@@ -212,7 +212,10 @@ export interface TestResultPublic {
   mode: string;
   language: string;
   codeLanguage?: string;
-  errorMap: Record<string, { expected: string; count: number; corrected: number; uncorrected: number; }> | null;
+  errorMap: Record<
+    string,
+    { expected: string; count: number; corrected: number; uncorrected: number }
+  > | null;
   codeMetrics?: any;
   integrityStatus: IntegrityStatus;
   createdAt: string;

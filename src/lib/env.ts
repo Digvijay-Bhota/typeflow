@@ -13,9 +13,7 @@ const serverSchema = z.object({
   // Supabase
   SUPABASE_URL: z.string().url("SUPABASE_URL must be a valid URL"),
   SUPABASE_ANON_KEY: z.string().min(1, "SUPABASE_ANON_KEY is required"),
-  SUPABASE_SERVICE_ROLE_KEY: z
-    .string()
-    .min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
 
   // Database
   DATABASE_URL: z.string().url("DATABASE_URL must be a valid connection URL"),
@@ -24,27 +22,18 @@ const serverSchema = z.object({
   // Razorpay
   RAZORPAY_KEY_ID: z.string().min(1, "RAZORPAY_KEY_ID is required"),
   RAZORPAY_KEY_SECRET: z.string().min(1, "RAZORPAY_KEY_SECRET is required"),
-  RAZORPAY_WEBHOOK_SECRET: z
-    .string()
-    .min(1, "RAZORPAY_WEBHOOK_SECRET is required"),
+  RAZORPAY_WEBHOOK_SECRET: z.string().min(1, "RAZORPAY_WEBHOOK_SECRET is required"),
   /// Optional: Razorpay Plan ID for Pro Monthly subscription
   RAZORPAY_PLAN_ID_PRO_MONTHLY: z.string().optional(),
   /// Optional: Razorpay Plan ID for Pro Yearly subscription
   RAZORPAY_PLAN_ID_PRO_YEARLY: z.string().optional(),
 
   // App
-  APP_URL: z
-    .string()
-    .url("APP_URL must be a valid URL")
-    .default("http://localhost:3000"),
-  NODE_ENV: z
-    .enum(["development", "test", "production"])
-    .default("development"),
+  APP_URL: z.string().url("APP_URL must be a valid URL").default("http://localhost:3000"),
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
   // Integrity
-  SESSION_SECRET: z
-    .string()
-    .min(32, "SESSION_SECRET must be at least 32 characters"),
+  SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters"),
 });
 
 // ─── Client-side environment schema ──────────────────────────────────────────
@@ -85,7 +74,11 @@ export function getServerEnv(): z.infer<typeof serverSchema> {
     );
   }
   if (!_serverEnv) {
-    _serverEnv = parseEnv(serverSchema, process.env as Record<string, string | undefined>, "server");
+    _serverEnv = parseEnv(
+      serverSchema,
+      process.env as Record<string, string | undefined>,
+      "server"
+    );
   }
   return _serverEnv;
 }

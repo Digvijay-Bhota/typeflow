@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { formatWpm, formatAccuracy, formatDuration, formatConsistency } from "@/features/analytics/lib/formatMetrics";
+import {
+  formatWpm,
+  formatAccuracy,
+  formatDuration,
+  formatConsistency,
+} from "@/features/analytics/lib/formatMetrics";
 
 describe("Metric Formatting Utilities", () => {
   it("formats WPM correctly by rounding to nearest integer", () => {

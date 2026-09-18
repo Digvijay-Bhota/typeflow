@@ -9,7 +9,8 @@
 
 export const APP_NAME = "TypeFlow" as const;
 export const APP_TAGLINE = "Practice smarter. Type faster. Prove your skills." as const;
-export const APP_DESCRIPTION = "TypeFlow is a typing performance and career-readiness platform. Practice adaptive typing, code typing, and earn verified certificates." as const;
+export const APP_DESCRIPTION =
+  "TypeFlow is a typing performance and career-readiness platform. Practice adaptive typing, code typing, and earn verified certificates." as const;
 
 // ─── Test durations (seconds) ────────────────────────────────────────────────
 
@@ -27,7 +28,14 @@ export const DEFAULT_WORD_COUNT: WordCount = 50;
 
 // ─── Typing modes ────────────────────────────────────────────────────────────
 
-export const TYPING_MODES = ["timed", "words", "zen", "code", "certificate", "practice"] as const;
+export const TYPING_MODES = [
+  "timed",
+  "words",
+  "zen",
+  "code",
+  "certificate",
+  "practice",
+] as const;
 export type TypingMode = (typeof TYPING_MODES)[number];
 
 // ─── Languages ───────────────────────────────────────────────────────────────

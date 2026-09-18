@@ -7,20 +7,14 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <main className="min-h-screen flex items-center justify-center px-4">
-      <div className="text-center space-y-4">
-        <div className="font-mono text-8xl font-bold text-tf-neutral-800">
-          404
-        </div>
-        <h1 className="text-2xl font-semibold text-tf-neutral-200">
-          Page not found
-        </h1>
-        <p className="text-muted">
-          The page you&apos;re looking for doesn&apos;t exist.
-        </p>
+    <main className="flex min-h-screen items-center justify-center px-4">
+      <div className="space-y-4 text-center">
+        <div className="text-tf-neutral-800 font-mono text-8xl font-bold">404</div>
+        <h1 className="text-tf-neutral-200 text-2xl font-semibold">Page not found</h1>
+        <p className="text-muted">The page you&apos;re looking for doesn&apos;t exist.</p>
         <Link
           href="/"
-          className="inline-block mt-4 px-6 py-2.5 rounded-lg bg-accent hover:bg-accent text-white font-medium transition-colors"
+          className="bg-accent hover:bg-accent mt-4 inline-block rounded-lg px-6 py-2.5 font-medium text-white transition-colors"
         >
           Back to TypeFlow
         </Link>

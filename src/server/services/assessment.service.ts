@@ -3,17 +3,20 @@ import { requireOrganizationRole } from "./organization.service";
 import { AssessmentStatus, Language, TypingMode } from "@prisma/client";
 import { randomBytes, createHash } from "crypto";
 
-export async function createAssessment(orgId: string, data: {
-  title: string;
-  description?: string;
-  testMode: TypingMode;
-  language: Language;
-  codeLanguage?: string;
-  duration: number;
-  maxAttempts: number;
-  wpmThreshold?: number;
-  accuracyThreshold?: number;
-}) {
+export async function createAssessment(
+  orgId: string,
+  data: {
+    title: string;
+    description?: string;
+    testMode: TypingMode;
+    language: Language;
+    codeLanguage?: string;
+    duration: number;
+    maxAttempts: number;
+    wpmThreshold?: number;
+    accuracyThreshold?: number;
+  }
+) {
   const ctx = await requireOrganizationRole(orgId, ["OWNER", "ADMIN", "RECRUITER"]);
 
   const assessment = await db.assessment.create({
@@ -44,7 +47,11 @@ export async function createAssessment(orgId: string, data: {
   return assessment;
 }
 
-export async function updateAssessmentStatus(orgId: string, assessmentId: string, status: AssessmentStatus) {
+export async function updateAssessmentStatus(
+  orgId: string,
+  assessmentId: string,
+  status: AssessmentStatus
+) {
   const ctx = await requireOrganizationRole(orgId, ["OWNER", "ADMIN", "RECRUITER"]);
 
   const assessment = await db.assessment.findUnique({ where: { id: assessmentId } });
@@ -72,7 +79,11 @@ export async function updateAssessmentStatus(orgId: string, assessmentId: string
   return updated;
 }
 
-export async function addCandidate(orgId: string, assessmentId: string, data: { email: string; name?: string; expiresAt?: Date }) {
+export async function addCandidate(
+  orgId: string,
+  assessmentId: string,
+  data: { email: string; name?: string; expiresAt?: Date }
+) {
   const ctx = await requireOrganizationRole(orgId, ["OWNER", "ADMIN", "RECRUITER"]);
 
   const assessment = await db.assessment.findUnique({ where: { id: assessmentId } });
@@ -145,7 +156,7 @@ export async function getCandidateByInviteToken(inviteToken: string) {
 
 export async function startCandidateAttempt(inviteToken: string) {
   const candidate = await getCandidateByInviteToken(inviteToken);
-  
+
   if (candidate.assessment.status !== "PUBLISHED") {
     throw new Error("ASSESSMENT_NOT_ACTIVE");
   }
@@ -187,7 +198,7 @@ export async function startCandidateAttempt(inviteToken: string) {
 
     // We can't generate the full TestSession here easily because passages are random.
     // The candidate will pass `attemptId` and `inviteToken` to the typing engine API to get a session.
-    
+
     // Audit logging for attempt start (no userId since candidate is anonymous)
     await tx.auditLog.create({
       data: {

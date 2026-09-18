@@ -29,7 +29,9 @@ export function ExperienceProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <ExperienceContext.Provider value={{ theme }}>
-      <div className={`theme-${theme} flex-1 flex flex-col min-h-screen transition-colors duration-300`}>
+      <div
+        className={`theme-${theme} flex min-h-screen flex-1 flex-col transition-colors duration-300`}
+      >
         {children}
       </div>
     </ExperienceContext.Provider>

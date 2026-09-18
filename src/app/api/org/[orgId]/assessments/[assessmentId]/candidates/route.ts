@@ -11,10 +11,14 @@ const Schema = z.object({
   expiresAt: z.coerce.date().optional(),
 });
 
-export async function POST(req: Request, { params }: { params: Promise<{ orgId: string, assessmentId: string }> }) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ orgId: string; assessmentId: string }> }
+) {
   const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
   const { success } = await rateLimit(`candidate_create_${ip}`, 10, 60000);
-  if (!success) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (!success)
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   const p = await params;
   try {
     const json = await req.json();
@@ -26,7 +30,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ orgId: 
   }
 }
 
-export async function GET(req: Request, { params }: { params: Promise<{ orgId: string, assessmentId: string }> }) {
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ orgId: string; assessmentId: string }> }
+) {
   const p = await params;
   try {
     const url = new URL(req.url);
@@ -35,7 +42,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ orgId: s
     const cursorId = url.searchParams.get("cursorId");
     const cursorInvitedAt = url.searchParams.get("cursorInvitedAt");
 
-    const ctx = await requireOrganizationRole(p.orgId, ["OWNER", "ADMIN", "RECRUITER", "REVIEWER"]);
+    const ctx = await requireOrganizationRole(p.orgId, [
+      "OWNER",
+      "ADMIN",
+      "RECRUITER",
+      "REVIEWER",
+    ]);
     const assessment = await db.assessment.findUnique({ where: { id: p.assessmentId } });
     if (!assessment || assessment.orgId !== p.orgId) {
       return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
@@ -70,30 +82,34 @@ export async function GET(req: Request, { params }: { params: Promise<{ orgId: s
             accuracy: true,
             duration: true,
             integrityStatus: true,
-          }
+          },
         },
         _count: {
-          select: { attempts: true }
-        }
+          select: { attempts: true },
+        },
       },
-      orderBy: [
-        { invitedAt: "desc" },
-        { id: "desc" }
-      ],
+      orderBy: [{ invitedAt: "desc" }, { id: "desc" }],
     });
 
     const hasNextPage = candidates.length > limit;
     const returnedCandidates = hasNextPage ? candidates.slice(0, -1) : candidates;
 
-    const mappedCandidates = returnedCandidates.map(c => ({
+    const mappedCandidates = returnedCandidates.map((c) => ({
       ...c,
-      reviewerNotes: ctx.member.role === "OWNER" || ctx.member.role === "ADMIN" || ctx.member.role === "RECRUITER" || ctx.member.role === "REVIEWER" ? c.reviewerNotes : undefined,
+      reviewerNotes:
+        ctx.member.role === "OWNER" ||
+        ctx.member.role === "ADMIN" ||
+        ctx.member.role === "RECRUITER" ||
+        ctx.member.role === "REVIEWER"
+          ? c.reviewerNotes
+          : undefined,
     }));
 
     const lastCandidate = returnedCandidates[returnedCandidates.length - 1];
-    const nextCursor = hasNextPage && lastCandidate
-      ? { id: lastCandidate.id, invitedAt: lastCandidate.invitedAt.toISOString() }
-      : null;
+    const nextCursor =
+      hasNextPage && lastCandidate
+        ? { id: lastCandidate.id, invitedAt: lastCandidate.invitedAt.toISOString() }
+        : null;
 
     return NextResponse.json({ candidates: mappedCandidates, nextCursor });
   } catch (error: any) {

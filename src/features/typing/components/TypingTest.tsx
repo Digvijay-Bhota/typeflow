@@ -8,16 +8,8 @@ import { TypingStats } from "./TypingStats";
 import { TestConfig } from "./TestConfig";
 import { cn } from "@/lib/utils";
 import type { TypingEngineState, SessionInitResponse } from "@/types/typing";
-import type {
-  TypingMode,
-  TestDuration,
-  WordCount,
-  Language,
-} from "@/lib/constants";
-import {
-  DEFAULT_DURATION,
-  DEFAULT_WORD_COUNT,
-} from "@/lib/constants";
+import type { TypingMode, TestDuration, WordCount, Language } from "@/lib/constants";
+import { DEFAULT_DURATION, DEFAULT_WORD_COUNT } from "@/lib/constants";
 
 export function TypingTest({
   className,
@@ -39,11 +31,15 @@ export function TypingTest({
   hideConfig?: boolean | undefined;
 }) {
   const router = useRouter();
-  
+
   // ── Config state ─────────────────────────────────────────────────────────
   const [mode, setMode] = useState<TypingMode>(initialMode || "timed");
-  const [duration, setDuration] = useState<TestDuration>((initialDuration as TestDuration) || DEFAULT_DURATION);
-  const [wordCount, setWordCount] = useState<WordCount>((initialWordCount as WordCount) || DEFAULT_WORD_COUNT);
+  const [duration, setDuration] = useState<TestDuration>(
+    (initialDuration as TestDuration) || DEFAULT_DURATION
+  );
+  const [wordCount, setWordCount] = useState<WordCount>(
+    (initialWordCount as WordCount) || DEFAULT_WORD_COUNT
+  );
   const language = initialLanguage || "english";
   const trustTier = initialTrustTier || "FREE";
 
@@ -89,12 +85,7 @@ export function TypingTest({
   }, [fetchSession]);
 
   // ── Engine ────────────────────────────────────────────────────────────────
-  const {
-    state,
-    chars,
-    handleKey,
-    handleBackspace,
-  } = useTypingEngine({
+  const { state, chars, handleKey, handleBackspace } = useTypingEngine({
     passage: session?.passage.content || "",
     mode,
     language: language.toLowerCase() as Language,
@@ -125,10 +116,11 @@ export function TypingTest({
               },
               errorMap: s.keyErrors,
               integritySignals: s.integritySignals,
-              ...(trustTier === "CERTIFICATE" && s.eventTrace && { eventTrace: s.eventTrace }),
+              ...(trustTier === "CERTIFICATE" &&
+                s.eventTrace && { eventTrace: s.eventTrace }),
             }),
           });
-          
+
           if (res.ok) {
             const data = await res.json();
             if (data.claimToken) {
@@ -171,13 +163,13 @@ export function TypingTest({
   const isCompleted = state.status === "completed";
 
   if (loadingSession) {
-    return <div className="text-center text-muted py-12">Loading passage...</div>;
+    return <div className="text-muted py-12 text-center">Loading passage...</div>;
   }
 
   return (
     <div className={cn("w-full space-y-6", className)}>
       {!isActive && !isCompleted && !hideConfig && (
-        <div className="flex justify-center animate-fade-in">
+        <div className="animate-fade-in flex justify-center">
           <TestConfig
             mode={mode}
             duration={duration}
@@ -217,7 +209,7 @@ export function TypingTest({
       )}
 
       {isCompleted && (
-        <div className="text-center py-12 text-muted">
+        <div className="text-muted py-12 text-center">
           {submitting ? "Saving result..." : "Test complete."}
         </div>
       )}
