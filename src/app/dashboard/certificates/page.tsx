@@ -1,7 +1,6 @@
 import React from "react";
 import { getAuthenticatedUser } from "@/server/services/auth.service";
 import { db } from "@/server/db";
-import { EmptyState } from "@/components/EmptyState";
 import { Award, ShieldCheck, Download, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
