@@ -16,19 +16,36 @@ interface TypingAreaProps {
   language?: string;
 }
 
-function getCharClass(idx: number, currentIdx: number, errorMap: ErrorMap): string {
+function getSyntaxClass(char: string, isCode: boolean): string {
+  if (!isCode) return "";
+  if (/[{}\[\]()]/.test(char)) return "text-yellow-400/80";
+  if (/[=+\-*/<>]/.test(char)) return "text-pink-400/80";
+  if (/[;:.,]/.test(char)) return "text-blue-400/80";
+  if (/['"`]/.test(char)) return "text-emerald-400/80";
+  return "";
+}
+
+function getCharClass(
+  idx: number,
+  currentIdx: number,
+  errorMap: ErrorMap,
+  char: string,
+  isCode: boolean
+): string {
+  const syntaxClass = getSyntaxClass(char, isCode);
+
   if (idx === currentIdx) {
-    return "text-foreground font-black";
+    return "text-foreground font-black bg-surface-elevated/50";
   }
   if (idx > currentIdx) {
-    return "text-muted opacity-70";
+    return `opacity-70 ${syntaxClass || "text-muted"}`;
   }
   const err = errorMap[idx];
   if (err) {
     if (err.corrected) return "text-orange-400 opacity-90";
     return "text-danger bg-danger/10 border-b-2 border-danger";
   }
-  return "text-emerald-500 opacity-100";
+  return syntaxClass ? `${syntaxClass} opacity-100` : "text-emerald-500 opacity-100";
 }
 
 export function TypingArea({
@@ -177,7 +194,13 @@ export function TypingArea({
               )}
               <div className="flex-1">
                 {line.map(({ char, index }) => {
-                  const charClass = getCharClass(index, currentIndex, errorMap);
+                  const charClass = getCharClass(
+                    index,
+                    currentIndex,
+                    errorMap,
+                    char,
+                    isCode
+                  );
                   let displayChar = char;
                   if (char === " ") displayChar = "\u00A0";
                   else if (char === "\n") displayChar = isCode ? "↵\n" : "\n";
