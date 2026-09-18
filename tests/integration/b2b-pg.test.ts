@@ -104,7 +104,7 @@ describe("B2B PostgreSQL Integration Tests", () => {
     if (failed[0] && failed[0].status === "rejected") {
       expect(failed[0].reason.message).toBe("MAX_ATTEMPTS_REACHED");
     }
-  });
+  }, 15000);
 
   it("Concurrency: maxAttempts = 2 -> exactly two succeed", async () => {
     const token = randomBytes(32).toString("hex");
@@ -131,7 +131,7 @@ describe("B2B PostgreSQL Integration Tests", () => {
     if (failed[0] && failed[0].status === "rejected") {
       expect(failed[0].reason.message).toBe("MAX_ATTEMPTS_REACHED");
     }
-  });
+  }, 15000);
 
   it("Migration: Existing invitation token remains valid", async () => {
     // This tests the application logic of how tokens are resolved

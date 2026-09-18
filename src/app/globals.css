@@ -8,9 +8,9 @@
   --color-surface-muted: var(--surface-muted);
   --color-border: var(--border);
 
-  --color-text-primary: var(--text-primary);
-  --color-text-secondary: var(--text-secondary);
-  --color-text-muted: var(--text-muted);
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
 
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
