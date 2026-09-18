@@ -84,12 +84,6 @@ export function ResultClient({ result }: { result: any }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Link
-            href="/"
-            className="bg-surface text-foreground border-border hover:bg-surface-elevated flex items-center gap-2 rounded-xl border px-6 py-3 font-bold shadow-sm transition-all"
-          >
-            <RefreshCw className="h-4 w-4" /> Practice Again
-          </Link>
           <button
             onClick={handleShare}
             className="bg-accent text-accent-foreground hover:bg-accent/90 shadow-accent/20 flex items-center gap-2 rounded-xl px-6 py-3 font-bold shadow-lg transition-all"
@@ -281,6 +275,71 @@ export function ResultClient({ result }: { result: any }) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* DETERMINISTIC INSIGHTS */}
+      {chartData.length > 0 && (
+        <div className="bg-accent/5 border-accent/20 text-foreground flex items-center gap-4 rounded-3xl border p-6 shadow-sm">
+          <Activity className="text-accent h-6 w-6" />
+          <div>
+            <h3 className="text-muted mb-1 text-sm font-bold tracking-widest uppercase">
+              Performance Insight
+            </h3>
+            <p className="text-lg font-medium">
+              {(() => {
+                if (chartData.length > 5) {
+                  const startWpm =
+                    chartData.slice(0, 3).reduce((a, b) => a + b.wpm, 0) / 3;
+                  const endWpm = chartData.slice(-3).reduce((a, b) => a + b.wpm, 0) / 3;
+                  if (endWpm > startWpm + 5)
+                    return `You accelerated as the test went on, starting at ${Math.round(startWpm)} WPM and finishing at ${Math.round(endWpm)} WPM.`;
+                  if (endWpm < startWpm - 5)
+                    return `Your speed dropped toward the end (from ${Math.round(startWpm)} WPM to ${Math.round(endWpm)} WPM). Try to maintain pacing.`;
+                  return "Excellent pacing. You maintained a highly steady speed from start to finish.";
+                }
+                return accuracy === 100
+                  ? "Perfect accuracy! Now try pushing your speed slightly higher."
+                  : "Focus on accuracy and your speed will follow naturally.";
+              })()}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* NEXT STEPS ACTIONS */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <Link
+          href="/typing-test"
+          className="bg-surface hover:bg-surface-elevated border-border group flex flex-col items-center justify-center gap-3 rounded-3xl border p-8 shadow-sm transition-all"
+        >
+          <div className="rounded-full bg-blue-500/10 p-4 text-blue-400 transition-all group-hover:scale-110 group-hover:bg-blue-500/20">
+            <RefreshCw className="h-6 w-6" />
+          </div>
+          <span className="text-lg font-bold">Try Again</span>
+          <span className="text-muted text-center text-sm">Beat your current score</span>
+        </Link>
+        <Link
+          href="/typing-test"
+          className="bg-surface hover:bg-surface-elevated border-border group flex flex-col items-center justify-center gap-3 rounded-3xl border p-8 shadow-sm transition-all"
+        >
+          <div className="rounded-full bg-orange-500/10 p-4 text-orange-400 transition-all group-hover:scale-110 group-hover:bg-orange-500/20">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
+          <span className="text-lg font-bold">Practice Keys</span>
+          <span className="text-muted text-center text-sm">
+            Focus on {weakKeys[0]?.key || "weak"} weaknesses
+          </span>
+        </Link>
+        <Link
+          href="/dashboard/analytics"
+          className="bg-surface hover:bg-surface-elevated border-border group flex flex-col items-center justify-center gap-3 rounded-3xl border p-8 shadow-sm transition-all"
+        >
+          <div className="rounded-full bg-emerald-500/10 p-4 text-emerald-500 transition-all group-hover:scale-110 group-hover:bg-emerald-500/20">
+            <Target className="h-6 w-6" />
+          </div>
+          <span className="text-lg font-bold">View Analytics</span>
+          <span className="text-muted text-center text-sm">See long-term trends</span>
+        </Link>
       </div>
 
       {/* CERTIFICATE ELIGIBILITY */}
