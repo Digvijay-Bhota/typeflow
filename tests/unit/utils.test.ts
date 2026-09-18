@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { cn, formatDuration, formatMs, formatNumber, formatAccuracy, clamp, generateId, generateCertificateId, debounce, truncate, isBrowser, hashString } from "@/lib/utils";
+import {
+  cn,
+  formatDuration,
+  formatMs,
+  formatNumber,
+  formatAccuracy,
+  clamp,
+  generateId,
+  generateCertificateId,
+  debounce,
+  truncate,
+  isBrowser,
+  hashString,
+} from "@/lib/utils";
 
 describe("utils", () => {
   it("cn", () => expect(cn("a", "b")).toBe("a b"));
@@ -30,7 +43,9 @@ describe("utils", () => {
   });
   it("debounce", () => {
     let called = false;
-    const fn = debounce(() => { called = true; }, 10);
+    const fn = debounce(() => {
+      called = true;
+    }, 10);
     fn();
     expect(called).toBe(false);
   });
