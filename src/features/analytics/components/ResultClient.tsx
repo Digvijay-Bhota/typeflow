@@ -21,7 +21,7 @@ import {
   LineChart,
 } from "recharts";
 
-export function ResultClient({ result, comparison }: { result: any, comparison?: any }) {
+export function ResultClient({ result, comparison }: { result: any; comparison?: any }) {
   const wpm = Math.round(result.wpm);
   const rawWpm = Math.round(result.rawWpm || wpm);
   const accuracy = Math.round(result.accuracy * 100);
@@ -216,23 +216,37 @@ export function ResultClient({ result, comparison }: { result: any, comparison?:
               </h2>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-background rounded-2xl border p-4 text-center">
-                  <p className="text-muted text-xs font-bold uppercase tracking-wider mb-2">Before</p>
-                  <p className="text-2xl font-black">{comparison.beforeWpm} <span className="text-sm">WPM</span></p>
+                  <p className="text-muted mb-2 text-xs font-bold tracking-wider uppercase">
+                    Before
+                  </p>
+                  <p className="text-2xl font-black">
+                    {comparison.beforeWpm} <span className="text-sm">WPM</span>
+                  </p>
                   <p className="text-sm font-medium">{comparison.beforeAccuracy}% Acc</p>
                 </div>
                 <div className="bg-background rounded-2xl border p-4 text-center">
-                  <p className="text-muted text-xs font-bold uppercase tracking-wider mb-2">After</p>
-                  <p className="text-2xl font-black">{wpm} <span className="text-sm">WPM</span></p>
+                  <p className="text-muted mb-2 text-xs font-bold tracking-wider uppercase">
+                    After
+                  </p>
+                  <p className="text-2xl font-black">
+                    {wpm} <span className="text-sm">WPM</span>
+                  </p>
                   <p className="text-sm font-medium">{accuracy}% Acc</p>
                 </div>
               </div>
               <div className="mt-6 text-center text-sm font-medium">
                 {wpm >= comparison.beforeWpm && accuracy >= comparison.beforeAccuracy ? (
-                  <p className="text-emerald-500">Great job! You improved your speed and accuracy on your weak keys.</p>
+                  <p className="text-emerald-500">
+                    Great job! You improved your speed and accuracy on your weak keys.
+                  </p>
                 ) : wpm >= comparison.beforeWpm ? (
-                  <p className="text-emerald-500">Your speed improved! Keep working on accuracy.</p>
+                  <p className="text-emerald-500">
+                    Your speed improved! Keep working on accuracy.
+                  </p>
                 ) : accuracy >= comparison.beforeAccuracy ? (
-                  <p className="text-emerald-500">Your accuracy improved! Keep practicing for speed.</p>
+                  <p className="text-emerald-500">
+                    Your accuracy improved! Keep practicing for speed.
+                  </p>
                 ) : (
                   <p className="text-muted">Keep practicing to improve your weak keys.</p>
                 )}
@@ -250,35 +264,35 @@ export function ResultClient({ result, comparison }: { result: any, comparison?:
             {weakKeys.length > 0 ? (
               <>
                 <div className="space-y-3">
-                {weakKeys.map((wk, i) => (
-                  <div
-                    key={i}
-                    className="bg-background border-border hover:border-warning/50 flex items-center justify-between rounded-2xl border p-3.5 transition-colors"
-                  >
-                    <kbd className="bg-surface-elevated border-border text-foreground rounded-lg border px-4 py-1.5 font-mono text-xl font-black shadow-sm">
-                      {wk.key === " " ? "Space" : wk.key}
-                    </kbd>
-                    <div className="flex flex-col items-end">
-                      <span className="text-foreground text-sm font-bold">
-                        {wk.count}
-                      </span>
-                      <span className="text-muted text-[10px] font-bold tracking-widest uppercase">
-                        misses
-                      </span>
+                  {weakKeys.map((wk, i) => (
+                    <div
+                      key={i}
+                      className="bg-background border-border hover:border-warning/50 flex items-center justify-between rounded-2xl border p-3.5 transition-colors"
+                    >
+                      <kbd className="bg-surface-elevated border-border text-foreground rounded-lg border px-4 py-1.5 font-mono text-xl font-black shadow-sm">
+                        {wk.key === " " ? "Space" : wk.key}
+                      </kbd>
+                      <div className="flex flex-col items-end">
+                        <span className="text-foreground text-sm font-bold">
+                          {wk.count}
+                        </span>
+                        <span className="text-muted text-[10px] font-bold tracking-widest uppercase">
+                          misses
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-6 flex justify-center">
-                <Link
-                  href={`/practice?sourceResultId=${result.id}`}
-                  className="bg-accent hover:bg-accent/90 text-accent-foreground flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-95"
-                >
-                  <Target className="h-4 w-4" />
-                  Practice these keys
-                </Link>
-              </div>
-            </>
+                  ))}
+                </div>
+                <div className="mt-6 flex justify-center">
+                  <Link
+                    href={`/practice?sourceResultId=${result.id}`}
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-95"
+                  >
+                    <Target className="h-4 w-4" />
+                    Practice these keys
+                  </Link>
+                </div>
+              </>
             ) : (
               <div className="py-10 text-center">
                 <ShieldCheck className="mx-auto mb-4 h-12 w-12 text-emerald-500 drop-shadow-[0_0_15px_rgba(16,185,129,0.3)]" />

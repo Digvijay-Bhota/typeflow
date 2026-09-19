@@ -62,9 +62,7 @@ export async function generateTargetedPassage(
   const wordPool = Array.from(allWords);
 
   // 3. Filter words that contain weak keys
-  let targetedWords = wordPool.filter((w) =>
-    sortedKeys.some((key) => w.includes(key))
-  );
+  let targetedWords = wordPool.filter((w) => sortedKeys.some((key) => w.includes(key)));
 
   // If we don't have enough targeted words, fallback to the general pool
   if (targetedWords.length < 10) {

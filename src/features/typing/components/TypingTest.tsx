@@ -215,13 +215,19 @@ export function TypingTest({
         </div>
       )}
 
-      {!isCompleted && session && mode === "practice" && session.passage.sourceAttribution && (
-        <div className="mb-4 rounded-xl border border-accent/20 bg-accent/5 p-4 text-center">
-          <p className="text-sm font-medium text-accent">
-            {session.passage.sourceAttribution.replace("Generated for weak keys:", "Focusing on your weakest keys:")}
-          </p>
-        </div>
-      )}
+      {!isCompleted &&
+        session &&
+        mode === "practice" &&
+        session.passage.sourceAttribution && (
+          <div className="border-accent/20 bg-accent/5 mb-4 rounded-xl border p-4 text-center">
+            <p className="text-accent text-sm font-medium">
+              {session.passage.sourceAttribution.replace(
+                "Generated for weak keys:",
+                "Focusing on your weakest keys:"
+              )}
+            </p>
+          </div>
+        )}
 
       {!isCompleted && session && (
         <TypingArea

@@ -14,7 +14,8 @@ export default async function PracticePage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const params = await searchParams;
-  const sourceResultId = typeof params.sourceResultId === "string" ? params.sourceResultId : undefined;
+  const sourceResultId =
+    typeof params.sourceResultId === "string" ? params.sourceResultId : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
