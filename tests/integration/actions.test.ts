@@ -24,12 +24,10 @@ describe("Signup Action", () => {
   it("should redirect to /signup?error if signup fails", async () => {
     const mockSupabase = {
       auth: {
-        signUp: vi
-          .fn()
-          .mockResolvedValue({
-            data: { user: null, session: null },
-            error: new Error("Failed"),
-          }),
+        signUp: vi.fn().mockResolvedValue({
+          data: { user: null, session: null },
+          error: new Error("Failed"),
+        }),
       },
     };
     vi.mocked(serverSupabase.createClient).mockResolvedValue(mockSupabase as any);
