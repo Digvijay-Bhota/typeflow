@@ -369,4 +369,84 @@ describe("Session & Result Service Integration (Mocked DB)", () => {
       expect(res?.isCertificateEligible).toBe(false); // FREE tier
     });
   });
+
+  describe("Code Language Routing", () => {
+    it("should request JavaScript passages when codeLanguage is javascript", async () => {
+      (db.passage.findMany as any).mockResolvedValue([
+        {
+          id: "js-passage",
+          content: "console.log('hi')",
+          language: "CODE",
+          codeLanguage: "JAVASCRIPT",
+        },
+      ]);
+      (db.testSession.create as any).mockResolvedValue({
+        id: "js-session",
+        expiresAt: new Date(),
+      });
+
+      await createSession({
+        mode: "timed",
+        language: "code",
+        codeLanguage: "javascript",
+        duration: 60,
+      });
+
+      expect(db.passage.findMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          language: "CODE",
+          codeLanguage: "JAVASCRIPT",
+        }),
+      });
+    });
+
+    it("should request general code passages when codeLanguage is omitted", async () => {
+      (db.passage.findMany as any).mockResolvedValue([
+        { id: "gen-code", content: "hello world", language: "CODE" },
+      ]);
+      (db.testSession.create as any).mockResolvedValue({
+        id: "gen-session",
+        expiresAt: new Date(),
+      });
+
+      await createSession({
+        mode: "timed",
+        language: "code",
+        duration: 60,
+      });
+
+      expect(db.passage.findMany).toHaveBeenCalledWith({
+        where: expect.not.objectContaining({
+          codeLanguage: expect.anything(),
+        }),
+      });
+    });
+
+    it("should request English passages for normal english tests", async () => {
+      (db.passage.findMany as any).mockResolvedValue([
+        { id: "eng", content: "english", language: "ENGLISH" },
+      ]);
+      (db.testSession.create as any).mockResolvedValue({
+        id: "eng-session",
+        expiresAt: new Date(),
+      });
+
+      await createSession({
+        mode: "timed",
+        language: "english",
+        duration: 60,
+      });
+
+      expect(db.passage.findMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          language: "ENGLISH",
+        }),
+      });
+      expect(db.passage.findMany).toHaveBeenCalledWith({
+        where: expect.not.objectContaining({
+          codeLanguage: expect.anything(),
+        }),
+      });
+    });
+  });
 });

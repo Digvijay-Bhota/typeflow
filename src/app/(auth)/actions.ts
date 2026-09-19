@@ -32,7 +32,7 @@ export async function signup(formData: FormData) {
 
   // Supabase will automatically sign them in or send email depending on config.
   // Assuming auto-confirm for testing purposes or they need to click a link.
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -47,6 +47,12 @@ export async function signup(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
+
+  if (!data.session) {
+    // Email confirmation required, no immediate session
+    redirect("/signup/check-email");
+  }
+
   if (claimToken) {
     redirect(`/login?claimToken=${claimToken}&claimed=true`);
   }

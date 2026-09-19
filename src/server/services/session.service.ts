@@ -54,7 +54,7 @@ export async function createSession(params: CreateSessionRequest) {
     // Server overrides candidate settings
     params.mode = candidate.assessment.testMode === "CODE" ? "code" : "timed";
     params.language = candidate.assessment.language.toLowerCase() as any;
-    if (params.mode === "code") {
+    if (params.language === "code") {
       params.codeLanguage = candidate.assessment.codeLanguage?.toLowerCase() as any;
     }
     params.duration = candidate.assessment.duration;
@@ -66,7 +66,7 @@ export async function createSession(params: CreateSessionRequest) {
   const passages = await db.passage.findMany({
     where: {
       language: params.language.toUpperCase() as Language,
-      ...(params.mode === "code" && params.codeLanguage
+      ...(params.language === "code" && params.codeLanguage
         ? { codeLanguage: params.codeLanguage.toUpperCase() as any }
         : {}),
       isActive: true,
