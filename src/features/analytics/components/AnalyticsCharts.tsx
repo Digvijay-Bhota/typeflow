@@ -32,11 +32,14 @@ export function AnalyticsCharts({ data, insights }: AnalyticsChartsProps) {
   const currentMode = searchParams.get("mode") || "ENGLISH";
   const currentTz = searchParams.get("tz");
 
-  const setFilter = React.useCallback((key: string, value: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set(key, value);
-    router.push(`?${params.toString()}`);
-  }, [searchParams, router]);
+  const setFilter = React.useCallback(
+    (key: string, value: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set(key, value);
+      router.push(`?${params.toString()}`);
+    },
+    [searchParams, router]
+  );
 
   useEffect(() => {
     if (!currentTz) {

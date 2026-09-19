@@ -116,7 +116,10 @@ export default async function HistoryPage({
                 </thead>
                 <tbody className="divide-border/50 divide-y">
                   {results.map((r: any) => (
-                    <tr key={r.id} className="hover:bg-background/80 group transition-colors">
+                    <tr
+                      key={r.id}
+                      className="hover:bg-background/80 group transition-colors"
+                    >
                       <td className="text-muted px-6 py-4 font-medium">
                         {new Date(r.createdAt).toLocaleString(undefined, {
                           month: "short",
@@ -196,7 +199,9 @@ export default async function HistoryPage({
                     <div className="text-muted mb-1 flex items-center gap-1 text-xs font-semibold tracking-wider uppercase">
                       <Target className="h-3 w-3" /> ACC
                     </div>
-                    <div className="text-3xl font-black">{Math.round(r.accuracy * 100)}%</div>
+                    <div className="text-3xl font-black">
+                      {Math.round(r.accuracy * 100)}%
+                    </div>
                   </div>
                 </div>
 

@@ -237,11 +237,12 @@ export async function getAnalyticsData(
   // Use 'day' for 7/30 days, 'week' for 90/all
   const truncPeriod = dateRange === "7" || dateRange === "30" ? "day" : "week";
 
-  const modeCondition = modeGroup === "CODE"
-    ? Prisma.sql`AND s."mode" = 'CODE'::"TypingMode"`
-    : modeGroup === "PRACTICE"
-    ? Prisma.sql`AND s."mode" = 'PRACTICE'::"TypingMode"`
-    : Prisma.sql`AND s."mode" NOT IN ('CODE'::"TypingMode", 'PRACTICE'::"TypingMode") AND s."language" = 'ENGLISH'::"Language"`;
+  const modeCondition =
+    modeGroup === "CODE"
+      ? Prisma.sql`AND s."mode" = 'CODE'::"TypingMode"`
+      : modeGroup === "PRACTICE"
+        ? Prisma.sql`AND s."mode" = 'PRACTICE'::"TypingMode"`
+        : Prisma.sql`AND s."mode" NOT IN ('CODE'::"TypingMode", 'PRACTICE'::"TypingMode") AND s."language" = 'ENGLISH'::"Language"`;
 
   const rawResults = await db.$queryRaw<
     { date: Date; avgWpm: number; maxWpm: number; avgAccuracy: number; count: number }[]
@@ -267,26 +268,40 @@ export async function getAnalyticsData(
     const firstHalf = rawResults.slice(0, Math.floor(rawResults.length / 2));
     const secondHalf = rawResults.slice(Math.floor(rawResults.length / 2));
 
-    const avgWpmFirst = firstHalf.reduce((s, r) => s + Number(r.avgWpm), 0) / firstHalf.length;
-    const avgWpmSecond = secondHalf.reduce((s, r) => s + Number(r.avgWpm), 0) / secondHalf.length;
+    const avgWpmFirst =
+      firstHalf.reduce((s, r) => s + Number(r.avgWpm), 0) / firstHalf.length;
+    const avgWpmSecond =
+      secondHalf.reduce((s, r) => s + Number(r.avgWpm), 0) / secondHalf.length;
 
     const diff = avgWpmSecond - avgWpmFirst;
     if (diff > 2) {
-      insights.push(`Your ${modeGroup.toLowerCase()} speed has improved by ${diff.toFixed(1)} WPM! Keep it up.`);
+      insights.push(
+        `Your ${modeGroup.toLowerCase()} speed has improved by ${diff.toFixed(1)} WPM! Keep it up.`
+      );
     } else if (diff < -2) {
-      insights.push(`Your ${modeGroup.toLowerCase()} speed has decreased slightly. Try focusing on accuracy first.`);
+      insights.push(
+        `Your ${modeGroup.toLowerCase()} speed has decreased slightly. Try focusing on accuracy first.`
+      );
     } else {
-      insights.push(`Your ${modeGroup.toLowerCase()} speed is consistent. Try pushing your limits in a short 15-second test!`);
+      insights.push(
+        `Your ${modeGroup.toLowerCase()} speed is consistent. Try pushing your limits in a short 15-second test!`
+      );
     }
 
-    const avgAccFirst = firstHalf.reduce((s, r) => s + Number(r.avgAccuracy), 0) / firstHalf.length;
-    const avgAccSecond = secondHalf.reduce((s, r) => s + Number(r.avgAccuracy), 0) / secondHalf.length;
+    const avgAccFirst =
+      firstHalf.reduce((s, r) => s + Number(r.avgAccuracy), 0) / firstHalf.length;
+    const avgAccSecond =
+      secondHalf.reduce((s, r) => s + Number(r.avgAccuracy), 0) / secondHalf.length;
 
     if (avgAccSecond < 0.95 && avgAccSecond < avgAccFirst) {
-      insights.push(`Your accuracy has dropped below 95%. Slow down and focus on hitting the right keys.`);
+      insights.push(
+        `Your accuracy has dropped below 95%. Slow down and focus on hitting the right keys.`
+      );
     }
   } else {
-    insights.push(`Not enough data to generate trends for the selected range. Keep practicing!`);
+    insights.push(
+      `Not enough data to generate trends for the selected range. Keep practicing!`
+    );
   }
 
   return {
@@ -297,6 +312,6 @@ export async function getAnalyticsData(
       accuracy: Number(r.avgAccuracy),
       count: r.count,
     })),
-    insights
+    insights,
   };
 }

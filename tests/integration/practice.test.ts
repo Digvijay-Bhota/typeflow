@@ -49,7 +49,10 @@ describe("Targeted Practice Loop", () => {
     const weakKeys = ["x", "z"];
     (db.passage.findUnique as any).mockResolvedValueOnce(null);
     (db.passage.findMany as any).mockResolvedValueOnce([
-      { content: "hello world exact zebra xylophone xylophone2 xylophone3 xylophone4 xylophone5 xylophone6 xylophone7 xylophone8 test" },
+      {
+        content:
+          "hello world exact zebra xylophone xylophone2 xylophone3 xylophone4 xylophone5 xylophone6 xylophone7 xylophone8 test",
+      },
     ]);
     (db.passage.create as any).mockImplementationOnce((args: any) => ({
       id: "new-passage",

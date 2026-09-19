@@ -20,7 +20,11 @@ export default async function AnalyticsPage({
   const dateRange = (params.range as AnalyticsDateRange) || "30";
   const timezone = params.tz || "UTC";
 
-  const { data: results, insights } = await getAnalyticsData(modeGroup, dateRange, timezone);
+  const { data: results, insights } = await getAnalyticsData(
+    modeGroup,
+    dateRange,
+    timezone
+  );
   const heatmap = await getActivityHeatmap();
 
   if (results.length === 0 && modeGroup === "ENGLISH" && dateRange === "30") {
