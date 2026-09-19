@@ -303,7 +303,7 @@ export function DashboardClient({ stats, user }: { stats: DashboardStats; user: 
                   </div>
                 ))}
                 <Link
-                  href="/typing-test"
+                  href="/practice"
                   className="text-accent hover:text-accent/80 mt-4 block text-center text-sm font-bold"
                 >
                   Practice Keys →

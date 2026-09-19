@@ -19,6 +19,11 @@ export default async function ResultPage({
           codeLanguage: true,
           trustTier: true,
           duration: true,
+          passage: {
+            select: {
+              sourceAttribution: true,
+            },
+          },
         },
       },
     },
@@ -28,10 +33,37 @@ export default async function ResultPage({
     notFound();
   }
 
+  let comparison: any = null;
+
+  if (result.session.mode === "PRACTICE" && result.userId) {
+    const recent = await prisma.testResult.findMany({
+      where: {
+        userId: result.userId,
+        createdAt: { lt: result.createdAt },
+        session: {
+          mode: { not: "PRACTICE" },
+          language: result.session.language,
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+
+    if (recent.length > 0) {
+      const avgWpm = recent.reduce((sum, r) => sum + r.wpm, 0) / recent.length;
+      const avgAcc = recent.reduce((sum, r) => sum + r.accuracy, 0) / recent.length;
+
+      comparison = {
+        beforeWpm: Math.round(avgWpm),
+        beforeAccuracy: Math.round(avgAcc * 100),
+      };
+    }
+  }
+
   return (
     <div className="bg-background min-h-screen">
       <div className="mx-auto max-w-7xl px-4 py-12">
-        <ResultClient result={result} />
+        <ResultClient result={result} comparison={comparison} />
       </div>
     </div>
   );

@@ -15,10 +15,11 @@ export function TypingTest({
   className,
   mode: initialMode,
   language: initialLanguage,
-  codeLanguage,
+  codeLanguage: initialCodeLanguage,
   duration: initialDuration,
   wordCount: initialWordCount,
   trustTier: initialTrustTier,
+  sourceResultId,
   hideConfig,
 }: {
   className?: string;
@@ -28,20 +29,22 @@ export function TypingTest({
   duration?: number | undefined;
   wordCount?: number | undefined;
   trustTier?: string | undefined;
-  hideConfig?: boolean | undefined;
+  sourceResultId?: string | undefined;
+  hideConfig?: boolean;
 }) {
   const router = useRouter();
 
   // ── Config state ─────────────────────────────────────────────────────────
   const [mode, setMode] = useState<TypingMode>(initialMode || "timed");
+  const [language] = useState<string>(initialLanguage || "english");
+  const [codeLanguage] = useState<string | undefined>(initialCodeLanguage);
   const [duration, setDuration] = useState<TestDuration>(
     (initialDuration as TestDuration) || DEFAULT_DURATION
   );
   const [wordCount, setWordCount] = useState<WordCount>(
     (initialWordCount as WordCount) || DEFAULT_WORD_COUNT
   );
-  const language = initialLanguage || "english";
-  const trustTier = initialTrustTier || "FREE";
+  const [trustTier] = useState(initialTrustTier || "FREE");
 
   // ── Backend Session state ────────────────────────────────────────────────
   const [session, setSession] = useState<SessionInitResponse | null>(null);
@@ -67,6 +70,7 @@ export function TypingTest({
           duration: mode === "timed" ? duration : undefined,
           wordCount: mode === "words" ? wordCount : undefined,
           trustTier,
+          sourceResultId,
         }),
       });
       if (!res.ok) throw new Error("Failed to create session");
@@ -82,7 +86,7 @@ export function TypingTest({
     } finally {
       setLoadingSession(false);
     }
-  }, [mode, duration, wordCount, language, codeLanguage, trustTier]);
+  }, [mode, language, codeLanguage, duration, wordCount, trustTier, sourceResultId]);
 
   useEffect(() => {
     fetchSession();
@@ -208,6 +212,14 @@ export function TypingTest({
             totalWords={mode === "words" ? wordCount : undefined}
             className="justify-center"
           />
+        </div>
+      )}
+
+      {!isCompleted && session && mode === "practice" && session.passage.sourceAttribution && (
+        <div className="mb-4 rounded-xl border border-accent/20 bg-accent/5 p-4 text-center">
+          <p className="text-sm font-medium text-accent">
+            {session.passage.sourceAttribution.replace("Generated for weak keys:", "Focusing on your weakest keys:")}
+          </p>
         </div>
       )}
 

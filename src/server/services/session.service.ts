@@ -63,22 +63,81 @@ export async function createSession(params: CreateSessionRequest) {
   const { getAuthenticatedUser } = await import("./auth.service");
   const user = await getAuthenticatedUser();
 
-  const passages = await db.passage.findMany({
-    where: {
-      language: params.language.toUpperCase() as Language,
-      ...(params.language === "code" && params.codeLanguage
-        ? { codeLanguage: params.codeLanguage.toUpperCase() as any }
-        : {}),
-      isActive: true,
-      mode: params.certificateMode ? "CERTIFICATE" : "NORMAL",
-    },
-  });
+  let passage: any;
 
-  if (passages.length === 0) {
-    throw new Error("No passages found for the requested criteria");
+  if (params.mode === "practice") {
+    // Determine weak keys
+    let weakKeys: string[] = [];
+
+    if (params.sourceResultId) {
+      if (!user) {
+        throw new Error("UNAUTHORIZED_PRACTICE");
+      }
+      // Practice from a specific result (must be owned by the user)
+      const sourceResult = await db.testResult.findUnique({
+        where: { id: params.sourceResultId },
+      });
+
+      // IDOR protection: strictly verify ownership
+      if (!sourceResult || sourceResult.userId !== user.id) {
+        throw new Error("UNAUTHORIZED_PRACTICE");
+      }
+
+      if (sourceResult.errorMap && typeof sourceResult.errorMap === "object") {
+        const map = sourceResult.errorMap as Record<string, any>;
+        weakKeys = Object.entries(map)
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 5)
+          .map(([k]) => k);
+      }
+    } else if (user) {
+      // Practice from dashboard (recent aggregate)
+      const recentResults = await db.testResult.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      });
+      const mistakeCounts: Record<string, number> = {};
+      recentResults.forEach((r) => {
+        if (r.errorMap && typeof r.errorMap === "object") {
+          Object.entries(r.errorMap as Record<string, any>).forEach(([k, v]) => {
+            if (v && typeof v.count === "number") {
+              mistakeCounts[k] = (mistakeCounts[k] || 0) + v.count;
+            }
+          });
+        }
+      });
+      weakKeys = Object.entries(mistakeCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([k]) => k);
+    }
+
+    const { generateTargetedPassage } = await import("./practice.service");
+    passage = await generateTargetedPassage(
+      params.language.toUpperCase() as Language,
+      weakKeys,
+      params.wordCount || 30
+    );
+  } else {
+    // Normal passage selection
+    const passages = await db.passage.findMany({
+      where: {
+        language: params.language.toUpperCase() as Language,
+        ...(params.language === "code" && params.codeLanguage
+          ? { codeLanguage: params.codeLanguage.toUpperCase() as any }
+          : {}),
+        isActive: true,
+        mode: params.certificateMode ? "CERTIFICATE" : "NORMAL",
+      },
+    });
+
+    if (passages.length === 0) {
+      throw new Error("No passages found for the requested criteria");
+    }
+
+    passage = passages[Math.floor(Math.random() * passages.length)];
   }
-
-  const passage = passages[Math.floor(Math.random() * passages.length)] as any;
 
   const integrityToken = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_VALIDITY_MS);
@@ -112,6 +171,7 @@ export async function createSession(params: CreateSessionRequest) {
       content: passage.content,
       difficulty: passage.difficulty,
       wordCount: passage.wordCount,
+      sourceAttribution: passage.sourceAttribution,
     },
     mode: session.mode,
     language: session.language,

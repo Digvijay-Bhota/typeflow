@@ -235,6 +235,7 @@ export interface PassageData {
   wordCount: number;
   charCount: number;
   codeLanguage?: CodeLanguage;
+  sourceAttribution?: string | null;
 }
 
 // ─── Session Init Response (server → client) ─────────────────────────────────

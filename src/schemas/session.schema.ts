@@ -12,6 +12,7 @@ export const CreateSessionSchema = z
     trustTier: z.enum(["FREE", "CERTIFICATE", "B2B_ASSESSMENT"]).optional(),
     inviteToken: z.string().optional(),
     attemptId: z.string().uuid().optional(),
+    sourceResultId: z.string().optional(), // Used for deriving practice weak keys
   })
   .refine(
     (data) => {

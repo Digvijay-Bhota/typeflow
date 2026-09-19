@@ -21,7 +21,7 @@ import {
   LineChart,
 } from "recharts";
 
-export function ResultClient({ result }: { result: any }) {
+export function ResultClient({ result, comparison }: { result: any, comparison?: any }) {
   const wpm = Math.round(result.wpm);
   const rawWpm = Math.round(result.rawWpm || wpm);
   const accuracy = Math.round(result.accuracy * 100);
@@ -207,6 +207,40 @@ export function ResultClient({ result }: { result: any }) {
           )}
         </div>
 
+        {/* COMPARISON ANALYSIS (FOR PRACTICE) */}
+        {result.session.mode === "PRACTICE" && comparison && (
+          <div className="flex flex-col space-y-6">
+            <div className="bg-surface border-border flex-1 rounded-3xl border p-8 shadow-sm">
+              <h2 className="mb-6 flex items-center gap-2 text-xl font-bold">
+                <Target className="text-accent h-5 w-5" /> Practice Results
+              </h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-background rounded-2xl border p-4 text-center">
+                  <p className="text-muted text-xs font-bold uppercase tracking-wider mb-2">Before</p>
+                  <p className="text-2xl font-black">{comparison.beforeWpm} <span className="text-sm">WPM</span></p>
+                  <p className="text-sm font-medium">{comparison.beforeAccuracy}% Acc</p>
+                </div>
+                <div className="bg-background rounded-2xl border p-4 text-center">
+                  <p className="text-muted text-xs font-bold uppercase tracking-wider mb-2">After</p>
+                  <p className="text-2xl font-black">{wpm} <span className="text-sm">WPM</span></p>
+                  <p className="text-sm font-medium">{accuracy}% Acc</p>
+                </div>
+              </div>
+              <div className="mt-6 text-center text-sm font-medium">
+                {wpm >= comparison.beforeWpm && accuracy >= comparison.beforeAccuracy ? (
+                  <p className="text-emerald-500">Great job! You improved your speed and accuracy on your weak keys.</p>
+                ) : wpm >= comparison.beforeWpm ? (
+                  <p className="text-emerald-500">Your speed improved! Keep working on accuracy.</p>
+                ) : accuracy >= comparison.beforeAccuracy ? (
+                  <p className="text-emerald-500">Your accuracy improved! Keep practicing for speed.</p>
+                ) : (
+                  <p className="text-muted">Keep practicing to improve your weak keys.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ERROR ANALYSIS */}
         <div className="flex flex-col space-y-6">
           <div className="bg-surface border-border flex-1 rounded-3xl border p-8 shadow-sm">
@@ -214,7 +248,8 @@ export function ResultClient({ result }: { result: any }) {
               <AlertTriangle className="text-warning h-5 w-5" /> Weak Keys
             </h2>
             {weakKeys.length > 0 ? (
-              <div className="space-y-3">
+              <>
+                <div className="space-y-3">
                 {weakKeys.map((wk, i) => (
                   <div
                     key={i}
@@ -234,6 +269,16 @@ export function ResultClient({ result }: { result: any }) {
                   </div>
                 ))}
               </div>
+              <div className="mt-6 flex justify-center">
+                <Link
+                  href={`/practice?sourceResultId=${result.id}`}
+                  className="bg-accent hover:bg-accent/90 text-accent-foreground flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-95"
+                >
+                  <Target className="h-4 w-4" />
+                  Practice these keys
+                </Link>
+              </div>
+            </>
             ) : (
               <div className="py-10 text-center">
                 <ShieldCheck className="mx-auto mb-4 h-12 w-12 text-emerald-500 drop-shadow-[0_0_15px_rgba(16,185,129,0.3)]" />
