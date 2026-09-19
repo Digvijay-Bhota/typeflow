@@ -2,17 +2,28 @@ import React from "react";
 import {
   getAnalyticsData,
   getActivityHeatmap,
+  AnalyticsModeGroup,
+  AnalyticsDateRange,
 } from "@/server/services/dashboard.service";
 import { ActivityHeatmap } from "@/features/analytics/components/ActivityHeatmap";
 import { AnalyticsCharts } from "@/features/analytics/components/AnalyticsCharts";
 import { EmptyState } from "@/components/EmptyState";
 import { BarChart3 } from "lucide-react";
 
-export default async function AnalyticsPage() {
-  const results = await getAnalyticsData();
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mode?: string; range?: string; tz?: string }>;
+}) {
+  const params = await searchParams;
+  const modeGroup = (params.mode as AnalyticsModeGroup) || "ENGLISH";
+  const dateRange = (params.range as AnalyticsDateRange) || "30";
+  const timezone = params.tz || "UTC";
+
+  const { data: results, insights } = await getAnalyticsData(modeGroup, dateRange, timezone);
   const heatmap = await getActivityHeatmap();
 
-  if (results.length === 0) {
+  if (results.length === 0 && modeGroup === "ENGLISH" && dateRange === "30") {
     return (
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <h1 className="mb-2 text-4xl font-black">Detailed Analytics</h1>
@@ -44,7 +55,7 @@ export default async function AnalyticsPage() {
         <ActivityHeatmap data={heatmap} />
       </div>
 
-      <AnalyticsCharts data={results} />
+      <AnalyticsCharts data={results} insights={insights} />
     </div>
   );
 }

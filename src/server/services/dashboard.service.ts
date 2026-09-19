@@ -1,4 +1,5 @@
 import { db } from "@/server/db";
+import { Prisma } from "@prisma/client";
 import { requireAuthenticatedUser } from "./auth.service";
 
 export async function getDashboardStats() {
@@ -101,7 +102,12 @@ export async function getDashboardStats() {
 export async function getHistory(
   cursorId?: string,
   cursorCreatedAt?: string,
-  pageSize = 20
+  pageSize = 20,
+  filters?: {
+    mode?: string;
+    language?: string;
+    dateRange?: string;
+  }
 ) {
   const user = await requireAuthenticatedUser();
 
@@ -116,6 +122,38 @@ export async function getHistory(
         id: { lt: cursorId },
       },
     ];
+  }
+
+  // Apply filters
+  if (filters) {
+    if (filters.dateRange && filters.dateRange !== "all") {
+      const days = parseInt(filters.dateRange);
+      if (!isNaN(days)) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        // If we already have OR from cursor, we need to AND it with the date filter
+        if (where.OR) {
+          where.AND = [{ createdAt: { gte: cutoff } }];
+        } else {
+          where.createdAt = { gte: cutoff };
+        }
+      }
+    }
+
+    if (filters.mode || filters.language) {
+      where.session = {};
+      if (filters.mode) {
+        where.session.mode = filters.mode.toUpperCase();
+      }
+      if (filters.language) {
+        // Either standard language or codeLanguage based on mode
+        if (filters.mode === "CODE") {
+          where.session.codeLanguage = filters.language;
+        } else {
+          where.session.language = filters.language.toUpperCase();
+        }
+      }
+    }
   }
 
   const results = await db.testResult.findMany({
@@ -169,17 +207,96 @@ export async function getActivityHeatmap() {
   return heatmap;
 }
 
-export async function getAnalyticsData() {
+export type AnalyticsModeGroup = "ENGLISH" | "CODE" | "PRACTICE";
+export type AnalyticsDateRange = "7" | "30" | "90" | "all";
+
+function getValidTimezone(tz: string): string {
+  if (!tz) return "UTC";
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return tz;
+  } catch {
+    return "UTC";
+  }
+}
+
+export async function getAnalyticsData(
+  modeGroup: AnalyticsModeGroup = "ENGLISH",
+  dateRange: AnalyticsDateRange = "30",
+  timezone: string = "UTC"
+) {
+  const safeTimezone = getValidTimezone(timezone);
   const user = await requireAuthenticatedUser();
-  const results = await db.testResult.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
-    select: {
-      wpm: true,
-      accuracy: true,
-      createdAt: true,
-      elapsedMs: true,
-    },
-  });
-  return results;
+
+  let startDate = new Date(0);
+  if (dateRange !== "all") {
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(dateRange));
+  }
+
+  // Use 'day' for 7/30 days, 'week' for 90/all
+  const truncPeriod = dateRange === "7" || dateRange === "30" ? "day" : "week";
+
+  const modeCondition = modeGroup === "CODE"
+    ? Prisma.sql`AND s."mode" = 'CODE'::"TypingMode"`
+    : modeGroup === "PRACTICE"
+    ? Prisma.sql`AND s."mode" = 'PRACTICE'::"TypingMode"`
+    : Prisma.sql`AND s."mode" NOT IN ('CODE'::"TypingMode", 'PRACTICE'::"TypingMode") AND s."language" = 'ENGLISH'::"Language"`;
+
+  const rawResults = await db.$queryRaw<
+    { date: Date; avgWpm: number; maxWpm: number; avgAccuracy: number; count: number }[]
+  >`
+    SELECT
+      date_trunc(${Prisma.raw(`'${truncPeriod}'`)}, r."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${safeTimezone}) as "date",
+      AVG(r."wpm") as "avgWpm",
+      MAX(r."wpm") as "maxWpm",
+      AVG(r."accuracy") as "avgAccuracy",
+      COUNT(r."id")::int as "count"
+    FROM "test_results" r
+    JOIN "test_sessions" s ON r."sessionId" = s."id"
+    WHERE r."userId" = ${user.id}::uuid
+      AND r."createdAt" >= ${startDate}
+      ${modeCondition}
+    GROUP BY date_trunc(${Prisma.raw(`'${truncPeriod}'`)}, r."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${safeTimezone})
+    ORDER BY "date" ASC
+  `;
+
+  // Generate Insights
+  const insights: string[] = [];
+  if (rawResults.length > 2) {
+    const firstHalf = rawResults.slice(0, Math.floor(rawResults.length / 2));
+    const secondHalf = rawResults.slice(Math.floor(rawResults.length / 2));
+
+    const avgWpmFirst = firstHalf.reduce((s, r) => s + Number(r.avgWpm), 0) / firstHalf.length;
+    const avgWpmSecond = secondHalf.reduce((s, r) => s + Number(r.avgWpm), 0) / secondHalf.length;
+
+    const diff = avgWpmSecond - avgWpmFirst;
+    if (diff > 2) {
+      insights.push(`Your ${modeGroup.toLowerCase()} speed has improved by ${diff.toFixed(1)} WPM! Keep it up.`);
+    } else if (diff < -2) {
+      insights.push(`Your ${modeGroup.toLowerCase()} speed has decreased slightly. Try focusing on accuracy first.`);
+    } else {
+      insights.push(`Your ${modeGroup.toLowerCase()} speed is consistent. Try pushing your limits in a short 15-second test!`);
+    }
+
+    const avgAccFirst = firstHalf.reduce((s, r) => s + Number(r.avgAccuracy), 0) / firstHalf.length;
+    const avgAccSecond = secondHalf.reduce((s, r) => s + Number(r.avgAccuracy), 0) / secondHalf.length;
+
+    if (avgAccSecond < 0.95 && avgAccSecond < avgAccFirst) {
+      insights.push(`Your accuracy has dropped below 95%. Slow down and focus on hitting the right keys.`);
+    }
+  } else {
+    insights.push(`Not enough data to generate trends for the selected range. Keep practicing!`);
+  }
+
+  return {
+    data: rawResults.map((r) => ({
+      date: r.date.toISOString(),
+      wpm: Number(r.avgWpm),
+      maxWpm: Number(r.maxWpm),
+      accuracy: Number(r.avgAccuracy),
+      count: r.count,
+    })),
+    insights
+  };
 }

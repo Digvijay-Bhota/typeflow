@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getHistory, getDashboardStats } from "@/server/services/dashboard.service";
+import { getHistory, getDashboardStats, getAnalyticsData } from "@/server/services/dashboard.service";
 import { db } from "@/server/db";
 import * as authService from "@/server/services/auth.service";
 
@@ -9,6 +9,7 @@ vi.mock("@/server/db", () => ({
       findMany: vi.fn(),
       aggregate: vi.fn(),
     },
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -21,7 +22,7 @@ describe("Dashboard Service Integration (Cursor Pagination & Authorization)", ()
     vi.clearAllMocks();
   });
 
-  describe("getHistory (Cursor Pagination)", () => {
+  describe("getHistory (Cursor Pagination & Filters)", () => {
     it("should fetch the first page without a cursor and return nextCursor if more results exist", async () => {
       vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
         id: "user-1",
@@ -48,6 +49,45 @@ describe("Dashboard Service Integration (Cursor Pagination & Authorization)", ()
       expect(res.results.length).toBe(20);
       expect(res.nextCursor).not.toBeNull();
       expect(res.nextCursor?.id).toBe("result-2");
+    });
+
+    it("should apply mode and language filters", async () => {
+      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+        id: "user-1",
+      } as any);
+      vi.mocked(db.testResult.findMany).mockResolvedValue([] as any);
+
+      await getHistory(undefined, undefined, 20, { mode: "CODE", language: "typescript" });
+
+      expect(db.testResult.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: "user-1",
+            session: {
+              mode: "CODE",
+              codeLanguage: "typescript"
+            }
+          }),
+        })
+      );
+    });
+
+    it("should apply dateRange filters", async () => {
+      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+        id: "user-1",
+      } as any);
+      vi.mocked(db.testResult.findMany).mockResolvedValue([] as any);
+
+      await getHistory(undefined, undefined, 20, { dateRange: "7" });
+
+      expect(db.testResult.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: "user-1",
+            createdAt: { gte: expect.any(Date) }
+          }),
+        })
+      );
     });
 
     it("should fetch subsequent pages using the cursor", async () => {
@@ -98,6 +138,42 @@ describe("Dashboard Service Integration (Cursor Pagination & Authorization)", ()
       expect(stats.totalTests).toBe(10);
       expect(stats.avgWpm).toBe(80);
       expect(stats.maxWpm).toBe(120);
+    });
+  });
+
+  describe("getAnalyticsData (Scalable Aggregation & Timezone Hardening)", () => {
+    it("should aggregate data via raw SQL", async () => {
+      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+        id: "user-1",
+      } as any);
+
+      vi.mocked(db.$queryRaw).mockResolvedValue([
+        { date: new Date("2026-01-01"), avgWpm: 50, maxWpm: 60, avgAccuracy: 0.9, count: 5 }
+      ] as any);
+
+      const res = await getAnalyticsData("ENGLISH", "30");
+
+      expect(db.$queryRaw).toHaveBeenCalled();
+      expect(res.data).toHaveLength(1);
+      expect(res.data[0]?.wpm).toBe(50);
+    });
+
+    it("should handle valid, invalid, and missing timezones safely", async () => {
+      vi.mocked(authService.requireAuthenticatedUser).mockResolvedValue({
+        id: "user-1",
+      } as any);
+
+      vi.mocked(db.$queryRaw).mockResolvedValue([]);
+
+      await getAnalyticsData("ENGLISH", "30", "Asia/Kolkata");
+      expect(db.$queryRaw).toHaveBeenCalledTimes(1);
+
+      await getAnalyticsData("ENGLISH", "30", "Invalid/Timezone");
+      // Since it's invalid, it should fall back to UTC inside the query instead of crashing Postgres.
+      expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+
+      await getAnalyticsData("ENGLISH", "30", "");
+      expect(db.$queryRaw).toHaveBeenCalledTimes(3);
     });
   });
 });
