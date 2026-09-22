@@ -21,6 +21,9 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
+    "db:test:up": "docker compose --env-file /dev/null up -d",
+    "db:test:down": "docker compose --env-file /dev/null down -v",
+    "db:test:migrate": "DATABASE_URL=postgresql://postgres:postgres@localhost:5434/typeflow_test DIRECT_URL=postgresql://postgres:postgres@localhost:5434/typeflow_test prisma migrate deploy",
     "validate": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "dependencies": {

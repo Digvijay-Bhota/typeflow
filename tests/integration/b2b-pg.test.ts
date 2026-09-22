@@ -10,6 +10,7 @@ import { createHash } from "crypto";
 import { randomBytes } from "crypto";
 
 describe("B2B PostgreSQL Integration Tests", () => {
+  let owner: any;
   let orgA: any;
   let orgB: any;
   let assessmentA: any;
@@ -18,7 +19,7 @@ describe("B2B PostgreSQL Integration Tests", () => {
   beforeAll(async () => {
     const suffix = randomBytes(4).toString("hex");
 
-    const owner = await db.user.create({
+    owner = await db.user.create({
       data: {
         authId: `00000000-0000-0000-0000-${suffix.padEnd(12, "0")}`,
         email: `owner-${suffix}@test.com`,
@@ -59,14 +60,25 @@ describe("B2B PostgreSQL Integration Tests", () => {
   });
 
   afterAll(async () => {
-    await db.assessmentAttempt.deleteMany({
-      where: { candidate: { assessment: { orgId: { in: [orgA.id, orgB.id] } } } },
-    });
-    await db.assessmentCandidate.deleteMany({
-      where: { assessment: { orgId: { in: [orgA.id, orgB.id] } } },
-    });
-    await db.assessment.deleteMany({ where: { orgId: { in: [orgA.id, orgB.id] } } });
-    await db.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } });
+    // Guarded: if beforeAll threw/timed out partway, these fixtures may be
+    // undefined — skip each cleanup step whose fixtures never got created,
+    // rather than throwing inside afterAll and masking the real failure.
+    const orgIds = [orgA?.id, orgB?.id].filter(Boolean);
+
+    if (orgIds.length > 0) {
+      await db.assessmentAttempt.deleteMany({
+        where: { candidate: { assessment: { orgId: { in: orgIds } } } },
+      });
+      await db.assessmentCandidate.deleteMany({
+        where: { assessment: { orgId: { in: orgIds } } },
+      });
+      await db.assessment.deleteMany({ where: { orgId: { in: orgIds } } });
+      await db.organization.deleteMany({ where: { id: { in: orgIds } } });
+    }
+
+    if (owner?.id) {
+      await db.user.deleteMany({ where: { id: owner.id } });
+    }
   });
 
   it("Tenant isolation: Org A cannot retrieve Org B candidates (Mocked test logic for IDOR check)", async () => {

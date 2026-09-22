@@ -1,4 +1,5 @@
 import { db } from "@/server/db";
+import { getServerEnv } from "@/lib/env";
 import {
   CERTIFICATE_MIN_WPM,
   CERTIFICATE_MIN_ACCURACY,
@@ -8,8 +9,6 @@ import {
 import { createHmac } from "crypto";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import QRCode from "qrcode";
-
-const CERT_SECRET = process.env.SESSION_SECRET || "fallback-secret-minimum-32-chars-long";
 
 export interface EligibilityResult {
   eligible: boolean;
@@ -87,8 +86,9 @@ export function generateVerificationHash(
   userId: string,
   issuedAt: Date
 ): string {
+  const { SESSION_SECRET } = getServerEnv();
   const payload = `${certificateId}:${userId}:${issuedAt.toISOString()}`;
-  return createHmac("sha256", CERT_SECRET).update(payload).digest("hex");
+  return createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
 }
 
 function generateCertificateId(): string {

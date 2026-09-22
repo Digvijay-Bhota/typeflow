@@ -4,9 +4,11 @@ import {
   checkCertificateEligibility,
   createCertificate,
   generateCertificatePdfAndQr,
+  generateVerificationHash,
   getCertificateVerification,
   revokeCertificate,
 } from "@/server/services/certificate.service";
+import { getServerEnv } from "@/lib/env";
 import {
   CERTIFICATE_MIN_WPM,
   CERTIFICATE_MIN_ACCURACY,
@@ -51,6 +53,13 @@ vi.mock("@/server/db", () => ({
 // Mock Supabase
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: vi.fn(),
+}));
+
+// Mock env so tests don't depend on real SESSION_SECRET/Supabase/Razorpay vars being set
+vi.mock("@/lib/env", () => ({
+  getServerEnv: vi.fn(() => ({
+    SESSION_SECRET: "test-session-secret-at-least-32-characters-long",
+  })),
 }));
 
 describe("Certificate Service", () => {
@@ -337,5 +346,44 @@ describe("Certificate Service", () => {
         `https://storage.typeflow.app/certificates/${cert.certificateId}.pdf`
       );
     });
+  });
+});
+
+describe("generateVerificationHash — SESSION_SECRET configuration", () => {
+  afterEach(() => {
+    vi.mocked(getServerEnv).mockReturnValue({
+      SESSION_SECRET: "test-session-secret-at-least-32-characters-long",
+    } as ReturnType<typeof getServerEnv>);
+  });
+
+  it("derives the hash from getServerEnv(), not a hardcoded secret", () => {
+    const certId = "TF-2026-ABCDEF";
+    const userId = "u1";
+    const issuedAt = new Date("2026-01-01T00:00:00.000Z");
+
+    vi.mocked(getServerEnv).mockReturnValue({
+      SESSION_SECRET: "secret-one-at-least-32-characters-long",
+    } as ReturnType<typeof getServerEnv>);
+    const hashWithSecretOne = generateVerificationHash(certId, userId, issuedAt);
+
+    vi.mocked(getServerEnv).mockReturnValue({
+      SESSION_SECRET: "a-totally-different-secret-32-characters",
+    } as ReturnType<typeof getServerEnv>);
+    const hashWithSecretTwo = generateVerificationHash(certId, userId, issuedAt);
+
+    // Same inputs, different configured secrets → different hashes proves the
+    // secret is read live from getServerEnv(), not a module-level constant.
+    expect(hashWithSecretOne).not.toBe(hashWithSecretTwo);
+    expect(hashWithSecretOne).toHaveLength(64); // sha256 hex digest
+  });
+
+  it("fails closed when SESSION_SECRET is missing/invalid instead of falling back", () => {
+    vi.mocked(getServerEnv).mockImplementation(() => {
+      throw new Error("Invalid server environment variables. See above.");
+    });
+
+    expect(() => generateVerificationHash("TF-2026-ABCDEF", "u1", new Date())).toThrow(
+      "Invalid server environment variables"
+    );
   });
 });

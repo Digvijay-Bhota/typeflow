@@ -1,0 +1,38 @@
+# Local-only test database infrastructure.
+#
+# This is NOT used for local development (which connects to the remote
+# Supabase database via .env) and is NOT used in CI (which uses its own
+# postgres:15 service container — see .github/workflows/*.yml).
+#
+# It exists solely so `npm test` can run against an isolated, disposable
+# Postgres instance instead of any shared database. tests/setup/db-env.ts
+# and tests/setup/global-db.ts refuse to run tests against anything else.
+#
+# Usage:
+#   npm run db:test:up      # start (or reuse) the container
+#   npm run db:test:migrate # apply Prisma migrations to it
+#   npm run db:test:down    # stop and delete all its data
+services:
+  postgres-test:
+    image: postgres:15
+    container_name: typeflow_postgres_test
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: typeflow_test
+    volumes:
+      - typeflow_test_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d typeflow_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+# Named volume so repeated `db:test:up` runs are fast (no re-init). Test
+# data itself is truncated automatically before every test run (see
+# tests/setup/global-db.ts) — this volume is not relied on for durability.
+# `npm run db:test:down` removes it entirely when a clean slate is wanted.
+volumes:
+  typeflow_test_pgdata:
