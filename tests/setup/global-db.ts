@@ -11,8 +11,9 @@
  * Responsibilities:
  *   1. Resolve + validate DATABASE_URL/DIRECT_URL (same rules as db-env.ts).
  *   2. Apply committed Prisma migrations to the (already-validated) test DB.
- *   3. Truncate all application tables so every test run starts clean,
- *      regardless of whether the previous run's cleanup hooks succeeded.
+ *   3. Discover the application tables from information_schema and truncate
+ *      them so every test run starts clean, regardless of whether the
+ *      previous run's cleanup hooks succeeded.
  *
  * This file must never touch a remote database. The safety assertions
  * below make that failure mode impossible rather than merely unlikely.
@@ -24,7 +25,28 @@ import { execSync } from "node:child_process";
 const REPO_ROOT = resolve(__dirname, "../..");
 const TEST_ENV_PATH = resolve(REPO_ROOT, ".env.test");
 const REQUIRED_DB_NAME = "typeflow_test";
-const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+// WHATWG URL returns IPv6 hosts in bracketed form, so the loopback literal
+// here is "[::1]" — a bare "::1" would never match url.hostname and would be
+// dead code. Exact-match only: arbitrary IPv6 addresses stay rejected.
+const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+// libpq (and therefore Prisma) honours these query parameters as the real
+// connection target, overriding the host in the URL authority. Left
+// unchecked, `postgresql://u:p@localhost:5434/typeflow_test?host=<remote>`
+// would pass the hostname allowlist above while actually connecting
+// elsewhere. Verified behaviour, not theoretical — so they are forbidden
+// outright in test connection strings.
+const FORBIDDEN_QUERY_PARAMS = new Set(["host", "hostaddr"]);
+
+// Prisma's migration bookkeeping table must survive truncation, otherwise
+// `migrate deploy` would re-apply every migration on the next run.
+const MIGRATIONS_TABLE = "_prisma_migrations";
+
+// Postgres identifiers we are willing to interpolate into a TRUNCATE. Any
+// discovered table name that does not match is treated as hostile and
+// aborts the run rather than being quoted-and-hoped-for.
+const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]*$/;
 
 function parseEnvFile(content: string): Record<string, string> {
   const result: Record<string, string> = {};
@@ -46,7 +68,7 @@ function parseEnvFile(content: string): Record<string, string> {
   return result;
 }
 
-function assertSafeTestDatabaseUrl(name: string, raw: string): void {
+export function assertSafeTestDatabaseUrl(name: string, raw: string): void {
   let url: URL;
   try {
     url = new URL(raw);
@@ -70,6 +92,16 @@ function assertSafeTestDatabaseUrl(name: string, raw: string): void {
       `[global-db] Refusing to run tests: ${name} host "${host}" looks like a remote ` +
         `Supabase database. Tests must never run against Supabase, under any circumstances.`
     );
+  }
+
+  for (const key of url.searchParams.keys()) {
+    if (FORBIDDEN_QUERY_PARAMS.has(key.trim().toLowerCase())) {
+      throw new Error(
+        `[global-db] Refusing to run tests: ${name} contains a "${key}" query parameter. ` +
+          `host/hostaddr override the connection target that the hostname check above ` +
+          `validates, so they are forbidden in test database URLs.`
+      );
+    }
   }
 
   const dbName = url.pathname.replace(/^\//, "");
@@ -115,28 +147,52 @@ function resolveTestDatabaseUrls(): { databaseUrl: string; directUrl: string } {
   return { databaseUrl, directUrl };
 }
 
-// FK-safe order is irrelevant here — a single TRUNCATE ... CASCADE handles
-// dependency ordering in one statement. Table names are a hardcoded literal
-// list (not user input), so building the SQL string directly is safe.
-const APP_TABLES = [
-  "audit_logs",
-  "assessment_attempts",
-  "assessment_candidates",
-  "assessments",
-  "organization_members",
-  "organizations",
-  "subscription_events",
-  "subscriptions",
-  "payment_events",
-  "payments",
-  "certificates",
-  "user_key_stats",
-  "practice_sessions",
-  "test_results",
-  "test_sessions",
-  "passages",
-  "users",
-];
+/**
+ * Discover the application tables to truncate, rather than maintaining a
+ * hardcoded list that silently goes stale the first time someone adds a
+ * Prisma model.
+ *
+ * Scope is pinned to BASE TABLEs in the `public` schema, so PostgreSQL
+ * catalogs/system schemas are never in range, and `_prisma_migrations` is
+ * excluded so `migrate deploy` does not re-apply everything next run.
+ * Results are ordered for determinism.
+ *
+ * Every discovered name is validated against a strict identifier pattern
+ * before it is interpolated — anything unexpected aborts the run instead
+ * of being quoted and executed.
+ */
+export async function discoverApplicationTables(prisma: {
+  $queryRaw: (q: TemplateStringsArray, ...v: unknown[]) => Promise<unknown>;
+}): Promise<string[]> {
+  const rows = (await prisma.$queryRaw`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_type = 'BASE TABLE'
+      AND table_name <> ${MIGRATIONS_TABLE}
+    ORDER BY table_name
+  `) as Array<{ table_name: string }>;
+
+  const tables = rows.map((r) => r.table_name);
+
+  const unsafe = tables.filter((t) => !SAFE_IDENTIFIER.test(t));
+  if (unsafe.length > 0) {
+    throw new Error(
+      `[global-db] Refusing to truncate: discovered table name(s) that are not plain ` +
+        `identifiers: ${unsafe.map((t) => JSON.stringify(t)).join(", ")}.`
+    );
+  }
+
+  if (tables.length === 0) {
+    throw new Error(
+      "[global-db] Refusing to continue: no application tables were discovered in the " +
+        "public schema of the test database. Expected `prisma migrate deploy` to have " +
+        "created them — the test database may be pointing somewhere unexpected."
+    );
+  }
+
+  return tables;
+}
 
 export default async function globalSetup(): Promise<void> {
   const { databaseUrl, directUrl } = resolveTestDatabaseUrls();
@@ -170,7 +226,10 @@ export default async function globalSetup(): Promise<void> {
   // than the already-validated test database.
   const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   try {
-    const tableList = APP_TABLES.map((t) => `"${t}"`).join(", ");
+    const tables = await discoverApplicationTables(prisma);
+    // FK-safe order is irrelevant — a single TRUNCATE ... CASCADE resolves
+    // dependency ordering in one statement.
+    const tableList = tables.map((t) => `"public"."${t}"`).join(", ");
     await prisma.$executeRawUnsafe(
       `TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE;`
     );

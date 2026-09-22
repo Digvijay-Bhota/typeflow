@@ -16,8 +16,9 @@
  *   3. If they still cannot be resolved, fail immediately.
  *
  * Safety (applied unconditionally, regardless of source):
- *   - hostname must be localhost / 127.0.0.1 / ::1
+ *   - hostname must be localhost / 127.0.0.1 / [::1]
  *   - hostname must not look like a Supabase or pooler host
+ *   - the URL must not carry a host= / hostaddr= query parameter
  *   - database name must be exactly "typeflow_test"
  *
  * There is no escape hatch. Any violation throws and aborts the run.
@@ -29,7 +30,19 @@ import { resolve } from "node:path";
 
 const TEST_ENV_PATH = resolve(__dirname, "../../.env.test");
 const REQUIRED_DB_NAME = "typeflow_test";
-const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+// WHATWG URL returns IPv6 hosts in bracketed form, so the loopback literal
+// here is "[::1]" — a bare "::1" would never match url.hostname and would be
+// dead code. Exact-match only: arbitrary IPv6 addresses stay rejected.
+const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+// libpq (and therefore Prisma) honours these query parameters as the real
+// connection target, overriding the host in the URL authority. Left
+// unchecked, `postgresql://u:p@localhost:5434/typeflow_test?host=<remote>`
+// would pass the hostname allowlist above while actually connecting
+// elsewhere. Verified behaviour, not theoretical — so they are forbidden
+// outright in test connection strings.
+const FORBIDDEN_QUERY_PARAMS = new Set(["host", "hostaddr"]);
 
 function parseEnvFile(content: string): Record<string, string> {
   const result: Record<string, string> = {};
@@ -74,8 +87,7 @@ function loadFromTestEnvFileIfNeeded(): void {
   }
 }
 
-function assertSafeTestDatabaseUrl(name: "DATABASE_URL" | "DIRECT_URL"): void {
-  const raw = process.env[name];
+export function assertSafeTestDatabaseUrl(name: string, raw: string | undefined): void {
   if (!raw) {
     throw new Error(
       `[db-env] ${name} is not set. Run "npm run db:test:up" and re-run tests, ` +
@@ -111,6 +123,16 @@ function assertSafeTestDatabaseUrl(name: "DATABASE_URL" | "DIRECT_URL"): void {
     );
   }
 
+  for (const key of url.searchParams.keys()) {
+    if (FORBIDDEN_QUERY_PARAMS.has(key.trim().toLowerCase())) {
+      throw new Error(
+        `[db-env] Refusing to run tests: ${name} contains a "${key}" query parameter. ` +
+          `host/hostaddr override the connection target that the hostname check above ` +
+          `validates, so they are forbidden in test database URLs.`
+      );
+    }
+  }
+
   const dbName = url.pathname.replace(/^\//, "");
   if (dbName !== REQUIRED_DB_NAME) {
     throw new Error(
@@ -122,5 +144,5 @@ function assertSafeTestDatabaseUrl(name: "DATABASE_URL" | "DIRECT_URL"): void {
 }
 
 loadFromTestEnvFileIfNeeded();
-assertSafeTestDatabaseUrl("DATABASE_URL");
-assertSafeTestDatabaseUrl("DIRECT_URL");
+assertSafeTestDatabaseUrl("DATABASE_URL", process.env.DATABASE_URL);
+assertSafeTestDatabaseUrl("DIRECT_URL", process.env.DIRECT_URL);
