@@ -66,15 +66,25 @@ describe("B2B PostgreSQL Pagination Tests", () => {
   });
 
   afterAll(async () => {
-    await db.assessmentCandidate.deleteMany({
-      where: { assessmentId: { in: [assessmentA.id, assessmentB.id] } },
-    });
-    await db.assessment.deleteMany({ where: { orgId: { in: [orgA.id, orgB.id] } } });
-    await db.organizationMember.deleteMany({
-      where: { orgId: { in: [orgA.id, orgB.id] } },
-    });
-    await db.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } });
-    await db.user.deleteMany({ where: { id: owner.id } });
+    // Guarded: if beforeAll threw/timed out partway, these fixtures may be
+    // undefined — skip each cleanup step whose fixtures never got created,
+    // rather than throwing inside afterAll and masking the real failure.
+    const assessmentIds = [assessmentA?.id, assessmentB?.id].filter(Boolean);
+    const orgIds = [orgA?.id, orgB?.id].filter(Boolean);
+
+    if (assessmentIds.length > 0) {
+      await db.assessmentCandidate.deleteMany({
+        where: { assessmentId: { in: assessmentIds } },
+      });
+    }
+    if (orgIds.length > 0) {
+      await db.assessment.deleteMany({ where: { orgId: { in: orgIds } } });
+      await db.organizationMember.deleteMany({ where: { orgId: { in: orgIds } } });
+      await db.organization.deleteMany({ where: { id: { in: orgIds } } });
+    }
+    if (owner?.id) {
+      await db.user.deleteMany({ where: { id: owner.id } });
+    }
   });
 
   it("Case A: Request limit=25 -> exactly 25 results + next cursor", async () => {
