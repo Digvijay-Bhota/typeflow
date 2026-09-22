@@ -382,8 +382,8 @@ describe("generateVerificationHash — SESSION_SECRET configuration", () => {
       throw new Error("Invalid server environment variables. See above.");
     });
 
-    expect(() =>
-      generateVerificationHash("TF-2026-ABCDEF", "u1", new Date())
-    ).toThrow("Invalid server environment variables");
+    expect(() => generateVerificationHash("TF-2026-ABCDEF", "u1", new Date())).toThrow(
+      "Invalid server environment variables"
+    );
   });
 });
