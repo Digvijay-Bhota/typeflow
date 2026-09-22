@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { login, signup, logout } from "@/app/(auth)/actions";
 import {
-  login,
-  signup,
-  logout,
   LOGIN_IP_LIMIT,
   LOGIN_EMAIL_LIMIT,
   SIGNUP_IP_LIMIT,
   SIGNUP_EMAIL_LIMIT,
-} from "@/app/(auth)/actions";
+} from "@/app/(auth)/rate-limit-config";
 import * as serverSupabase from "@/lib/supabase/server";
 import * as nextNavigation from "next/navigation";
 import * as nextCache from "next/cache";

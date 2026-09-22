@@ -6,12 +6,14 @@ import { headers } from "next/headers";
 import { createHash } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/server/middleware/rateLimit";
+import {
+  LOGIN_IP_LIMIT,
+  LOGIN_EMAIL_LIMIT,
+  SIGNUP_IP_LIMIT,
+  SIGNUP_EMAIL_LIMIT,
+} from "./rate-limit-config";
 
 const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
-export const LOGIN_IP_LIMIT = 20;
-export const LOGIN_EMAIL_LIMIT = 5;
-export const SIGNUP_IP_LIMIT = 10;
-export const SIGNUP_EMAIL_LIMIT = 3;
 
 // Same trusted-header convention used by every API route in this app
 // (e.g. src/app/api/session/create/route.ts) — server actions have no
