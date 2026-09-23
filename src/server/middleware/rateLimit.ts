@@ -39,7 +39,7 @@ export async function rateLimit(
       }
     }
   } catch (err) {
-    if (err instanceof Error && err.message.startsWith('Configuration Error')) {
+    if (err instanceof Error && (err.message.startsWith('Configuration Error') || err.message.includes('Invalid server environment variables'))) {
       throw err;
     }
     return failClosed(limit, now + windowMs);

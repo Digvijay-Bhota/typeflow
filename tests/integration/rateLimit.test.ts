@@ -18,6 +18,20 @@ describe('Distributed Rate Limiter', () => {
     vi.stubEnv('TEST_RL_PREFIX', testPrefix);
     vi.stubEnv('NODE_ENV', 'test');
     vi.stubEnv('TEST_REDIS_URL', TEST_REDIS_URL);
+    vi.stubEnv('SUPABASE_URL', 'https://placeholder.supabase.co');
+    vi.stubEnv('SUPABASE_ANON_KEY', 'placeholder');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'placeholder');
+    vi.stubEnv('DATABASE_URL', 'postgresql://placeholder');
+    vi.stubEnv('DIRECT_URL', 'postgresql://placeholder');
+    vi.stubEnv('RAZORPAY_KEY_ID', 'placeholder');
+    vi.stubEnv('RAZORPAY_KEY_SECRET', 'placeholder');
+    vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', 'placeholder');
+    vi.stubEnv('SESSION_SECRET', '12345678901234567890123456789012');
+    vi.stubEnv('APP_URL', 'http://localhost:3000');
+    
+    // Clear _serverEnv cache
+    const envModule = await import('../../src/lib/env');
+    envModule.__clearServerEnvForTesting();
     
     // Reset global client if it exists
     const g = globalThis as any;
@@ -219,14 +233,14 @@ describe('Distributed Rate Limiter', () => {
       vi.stubEnv('REDIS_URL', '');
       vi.stubEnv('TEST_REDIS_URL', '');
       
-      await expect(rateLimit('test', 10, 10000)).rejects.toThrow('Configuration Error: REDIS_URL is missing in production.');
+      await expect(rateLimit('test', 10, 10000)).rejects.toThrow('Invalid server environment variables');
     });
 
     it('throws configuration error when production uses redis:// instead of rediss://', async () => {
       vi.stubEnv('NODE_ENV', 'production');
       vi.stubEnv('REDIS_URL', 'redis://localhost:6379');
       
-      await expect(rateLimit('test', 10, 10000)).rejects.toThrow('Configuration Error: Production REDIS_URL must use rediss://');
+      await expect(rateLimit('test', 10, 10000)).rejects.toThrow('Invalid server environment variables');
     });
     
     it('does not throw when production uses rediss://', async () => {
@@ -257,6 +271,30 @@ describe('Distributed Rate Limiter', () => {
       const pttl2 = await redisClient.pttl(key);
       expect(pttl2).toBeGreaterThan(0);
       expect(pttl2).toBeLessThanOrEqual(pttl1); // TTL should not increase
+    });
+    
+    it('treats ttl == -1 as corrupted state and starts a fresh window', async () => {
+      const id = 'ttl_corruption_test';
+      const windowMs = 5000;
+      const key = generateRateLimitKey(id);
+      
+      // Simulate corrupted state (key exists, no TTL)
+      await redisClient.set(key, '10'); // No EX/PX
+      
+      const pttlBefore = await redisClient.pttl(key);
+      expect(pttlBefore).toBe(-1); // Verify it has no TTL
+      
+      // Attempt to rate limit (limit = 5, but count was 10, so normally would reject)
+      // Since TTL is -1, it should wipe it, start fresh, and allow the request
+      const r = await rateLimit(id, 5, windowMs);
+      expect(r.success).toBe(true);
+      expect(r.remaining).toBe(4);
+      
+      // Verify count is now 1 and TTL is correct
+      const countAfter = await redisClient.get(key);
+      const pttlAfter = await redisClient.pttl(key);
+      expect(countAfter).toBe('1');
+      expect(pttlAfter).toBeGreaterThan(0);
     });
   });
 

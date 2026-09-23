@@ -30,6 +30,17 @@ services:
       timeout: 5s
       retries: 10
 
+  redis-test:
+    image: redis:7-alpine
+    container_name: typeflow_redis_test
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 # Named volume so repeated `db:test:up` runs are fast (no re-init). Test
 # data itself is truncated automatically before every test run (see
 # tests/setup/global-db.ts) — this volume is not relied on for durability.

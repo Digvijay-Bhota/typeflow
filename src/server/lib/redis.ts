@@ -1,5 +1,6 @@
 import { Redis } from 'ioredis';
 import crypto from 'crypto';
+import { getServerEnv } from '../../lib/env';
 
 const globalForRedis = globalThis as unknown as {
   redisClient: Redis | null | undefined;
@@ -10,35 +11,29 @@ export function getRedisClient(): Redis | null {
     return globalForRedis.redisClient;
   }
 
-  const env = process.env.NODE_ENV || 'development';
-  let redisUrl = process.env.REDIS_URL;
+  const envConfig = getServerEnv();
+  const env = envConfig.NODE_ENV;
+  let redisUrl = envConfig.REDIS_URL;
 
-  if (env === 'test' && process.env.TEST_REDIS_URL) {
-    redisUrl = process.env.TEST_REDIS_URL;
+  if (env === 'test' && envConfig.TEST_REDIS_URL) {
+    redisUrl = envConfig.TEST_REDIS_URL;
   }
 
   if (!redisUrl) {
-    if (env === 'production') {
-      throw new Error("Configuration Error: REDIS_URL is missing in production.");
-    }
     globalForRedis.redisClient = null;
     return null;
   }
 
-  if (env === 'production' && !redisUrl.startsWith('rediss://')) {
-    throw new Error("Configuration Error: Production REDIS_URL must use rediss://");
-  }
-
   const options: any = {
     lazyConnect: true,
-    connectTimeout: 5000,
-    commandTimeout: 3000,
-    maxRetriesPerRequest: 3,
+    connectTimeout: 1000,
+    commandTimeout: 500,
+    maxRetriesPerRequest: 1,
     retryStrategy(times: number) {
-      if (times > 3) {
+      if (times > 1) {
         return null;
       }
-      return Math.min(times * 100, 1000);
+      return 100;
     },
     reconnectOnError(err: Error) {
       if (err.message.includes('READONLY')) {
@@ -61,9 +56,21 @@ export function getRedisClient(): Redis | null {
 
 export function generateRateLimitKey(identifier: string): string {
   const hash = crypto.createHash('sha256').update(identifier).digest('hex');
-  const env = process.env.NODE_ENV;
-  if (env === 'test' && process.env.TEST_RL_PREFIX) {
-    return `${process.env.TEST_RL_PREFIX}:${hash}`;
+  
+  // Safe default prefix in case of early import outside server context,
+  // though realistically rateLimit runs in server context.
+  let env = process.env.NODE_ENV;
+  const testPrefix = process.env.TEST_RL_PREFIX;
+  
+  try {
+    const envConfig = getServerEnv();
+    env = envConfig.NODE_ENV;
+  } catch {
+    // If getServerEnv throws (e.g., config error), fallback to process.env
+  }
+
+  if (env === 'test' && testPrefix) {
+    return `${testPrefix}:${hash}`;
   }
   return `rl:v1:${hash}`;
 }
@@ -83,19 +90,16 @@ end
 count = tonumber(count)
 local ttl = redis.call('PTTL', key)
 
+if ttl == -1 then
+    redis.call('SET', key, 1, 'PX', windowMs)
+    return { 1, 1, windowMs }
+end
+
 if count >= limit then
-    if ttl == -1 then
-        redis.call('PEXPIRE', key, windowMs)
-        ttl = windowMs
-    end
     return { 0, count, ttl }
 end
 
 local new_count = redis.call('INCR', key)
-if ttl == -1 then
-    redis.call('PEXPIRE', key, windowMs)
-    ttl = windowMs
-end
 return { 1, new_count, ttl }
 `;
 
