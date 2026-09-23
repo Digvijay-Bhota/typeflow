@@ -34,6 +34,7 @@ describe("Result Submission Timing & Metric Validation", () => {
     id: "s1",
     integrityToken: "t1",
     userId: "u1",
+    trustTier: "FREE",
     status: "ACTIVE",
     startedAt: new Date(Date.now() - startedAgoMs),
     expiresAt: new Date(Date.now() + 100000),

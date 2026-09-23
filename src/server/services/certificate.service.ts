@@ -33,7 +33,7 @@ export async function checkCertificateEligibility(
   const wpmPassed = result.netWpm >= CERTIFICATE_MIN_WPM;
   const accPassed = result.accuracy * 100 >= CERTIFICATE_MIN_ACCURACY;
   const durationPassed = (result.session.duration || 0) >= CERTIFICATE_MIN_DURATION;
-  const isVerified = result.integrityStatus === "VERIFIED";
+  const isVerified = result.integrityStatus === "VERIFIED" && result.scoringSource === "SERVER_RECONSTRUCTED";
   const isCertMode = result.session.trustTier === "CERTIFICATE";
 
   const reasons: string[] = [];

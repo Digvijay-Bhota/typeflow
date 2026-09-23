@@ -219,7 +219,7 @@ export async function startSession(params: StartSessionRequest) {
   // Use a transaction or atomic update to ensure it only starts once
   const now = new Date();
   const { getAuthenticatedUser } = await import("./auth.service");
-  const user = await getAuthenticatedUser();
+  const user = await getAuthenticatedUser().catch(() => null);
 
   // Try atomic update
   const updatedSession = await db.testSession.updateMany({
@@ -258,13 +258,14 @@ export async function startSession(params: StartSessionRequest) {
   };
 }
 
-export async function submitResult(params: SubmitResultRequest) {
+export async function submitResult(params: SubmitResultRequest & { _isConcurrentReplay?: boolean }) {
   const now = new Date();
 
   const { getAuthenticatedUser } = await import("./auth.service");
-  const user = await getAuthenticatedUser();
+  const user = await getAuthenticatedUser().catch(() => null);
 
-  return await db.$transaction(async (tx) => {
+  try {
+    return await db.$transaction(async (tx) => {
     // 1. Retrieve session securely
     const session = await tx.testSession.findUnique({
       where: { id: params.sessionId },
@@ -274,8 +275,22 @@ export async function submitResult(params: SubmitResultRequest) {
     if (!session) throw new Error("Session not found");
     if (session.integrityToken !== params.integrityToken)
       throw new Error("Invalid integrity token");
-    if (session.userId !== (user?.id ?? null))
-      throw new Error("Unauthorized to submit for this session");
+    if (session.trustTier === "B2B_ASSESSMENT") {
+      const attempt = await tx.assessmentAttempt.findUnique({
+        where: { sessionId: session.id },
+        include: { candidate: { include: { assessment: true } } }
+      });
+      if (!attempt || !attempt.candidate || !attempt.candidate.assessment) {
+        throw new Error("Invalid B2B session mapping");
+      }
+      if (attempt.candidateId !== attempt.candidate.id || attempt.candidate.assessmentId !== attempt.candidate.assessment.id) {
+        throw new Error("Corrupted B2B assessment chain");
+      }
+    } else {
+      if (session.userId !== (user?.id ?? null)) {
+        throw new Error("Unauthorized to submit for this session");
+      }
+    }
     if (session.status !== "ACTIVE")
       throw new Error(`Session is not ACTIVE, currently ${session.status}`);
     if (!session.startedAt) throw new Error("Session has no startedAt time");
@@ -319,91 +334,90 @@ export async function submitResult(params: SubmitResultRequest) {
       netWpm = 0,
       accuracy = 0;
 
-    let finalElapsedMs = serverElapsedMs;
+    const actualElapsedMs = serverElapsedMs;
+    let scoringElapsedMs = actualElapsedMs;
     // Timed mode uses the fixed expected duration. Words mode uses the exact server measured time.
-    // clientElapsedMs is completely ignored for timing WPM.
     if (session.mode === "TIMED" && expectedDurationMs > 0) {
-      finalElapsedMs = expectedDurationMs;
+      scoringElapsedMs = Math.min(actualElapsedMs, expectedDurationMs);
     }
 
     let integrityStatus: "VERIFIED" | "REVIEW" | "INVALID" = "VERIFIED";
-
     let scoringSource: "CLIENT_COUNTS" | "SERVER_RECONSTRUCTED" = "CLIENT_COUNTS";
+    let traceHash: string | undefined = undefined;
 
-    if (session.trustTier === "CERTIFICATE" || session.trustTier === "B2B_ASSESSMENT") {
-      const { verifyCertificateTest } = await import("./certificateVerification.service");
-      if (!params.eventTrace?.events) {
+    if (params._isConcurrentReplay) {
+      integrityStatus = "INVALID";
+      traceHash = undefined;
+    } else if (params.eventTrace?.events && params.eventTrace.events.length > 0) {
+      const traceString = JSON.stringify(params.eventTrace.events);
+      // traceHash is an exact-replay detector, not proof of human-originated input.
+      // It does NOT cryptographically authenticate the browser trace.
+      traceHash = createHash("sha256").update(traceString).digest("hex");
+
+      const existingTrace = await (tx.testResult as any).findFirst({
+        where: { traceHash }
+      });
+
+      if (existingTrace) {
+
         integrityStatus = "INVALID";
+        traceHash = undefined;
       } else {
-        const verification = verifyCertificateTest(
-          session.passage.content,
-          params.eventTrace.events as [number, number, number, string?][],
-          finalElapsedMs
-        );
-        if (verification.status === "VERIFIED" && verification.reconstructed) {
-          correctChars = verification.reconstructed.correctChars;
-          incorrectChars = verification.reconstructed.incorrectChars;
-          totalChars = verification.reconstructed.totalChars;
-          correctedErrors = verification.reconstructed.correctedErrors;
-          uncorrectedErrors = verification.reconstructed.uncorrectedErrors;
-          wpm = verification.reconstructed.wpm;
-          rawWpm = verification.reconstructed.rawWpm;
-          netWpm = verification.reconstructed.netWpm;
-          accuracy = verification.reconstructed.accuracy;
-          integrityStatus = "VERIFIED";
-        } else {
-          integrityStatus = verification.status;
-          wpm = 0;
-          rawWpm = 0;
-          netWpm = 0;
-          accuracy = 0;
-        }
-      }
-    } else {
-      if (params.eventTrace?.events) {
-        // Reconstruct from authoritative event trace
         const { reconstructFinalBuffer } = await import("@/features/typing/lib/reconstruct");
-        const rec = reconstructFinalBuffer(session.passage.content, params.eventTrace);
-        
+        const rec = reconstructFinalBuffer(session.passage.content, params.eventTrace as any);
+
         if (rec.isValidTrace) {
           correctChars = rec.correctChars;
           incorrectChars = rec.incorrectChars;
           totalChars = rec.totalChars;
           correctedErrors = rec.correctedErrors;
           uncorrectedErrors = rec.uncorrectedErrors;
-          
           scoringSource = "SERVER_RECONSTRUCTED";
-          
-          // Verify timing bounds
-          if (rec.lastEventTimeMs > serverElapsedMs + 2000) {
-            integrityStatus = "REVIEW";
-          } else if (session.mode === "TIMED" && expectedDurationMs > 0 && serverElapsedMs < expectedDurationMs - 2000 && !rec.isPassageCompleted) {
-            integrityStatus = "REVIEW";
+
+          // Strictly use ACTUAL elapsed time for bounds checking
+          if (rec.lastEventTimeMs > actualElapsedMs + 2000) {
+
+            integrityStatus = session.trustTier === "FREE" ? "REVIEW" : "INVALID";
+          } else if (session.mode === "TIMED" && expectedDurationMs > 0 && actualElapsedMs < expectedDurationMs - GRACE_PERIOD_MS && !rec.isPassageCompleted) {
+
+            integrityStatus = session.trustTier === "FREE" ? "REVIEW" : "INVALID";
           } else {
             integrityStatus = "VERIFIED";
           }
         } else {
-          integrityStatus = "REVIEW";
+
+          integrityStatus = session.trustTier === "FREE" ? "REVIEW" : "INVALID";
         }
-      } else {
-        integrityStatus = "REVIEW";
-        scoringSource = "CLIENT_COUNTS";
       }
+    } else {
 
-      wpm = calculateWpm(correctChars, finalElapsedMs);
-      rawWpm = calculateRawWpm(totalChars, finalElapsedMs);
+      integrityStatus = session.trustTier === "FREE" ? "REVIEW" : "INVALID";
+      scoringSource = "CLIENT_COUNTS";
+    }
+
+    if (integrityStatus === "VERIFIED" || integrityStatus === "REVIEW") {
+      wpm = calculateWpm(correctChars, scoringElapsedMs);
+      rawWpm = calculateRawWpm(totalChars, scoringElapsedMs);
       accuracy = calculateAccuracy(correctChars, totalChars);
-      netWpm = calculateNetWpm(wpm, uncorrectedErrors, finalElapsedMs);
+      netWpm = calculateNetWpm(wpm, uncorrectedErrors, scoringElapsedMs);
 
-      // Basic sanity checks for FREE tier
       if (wpm > 300 || accuracy < 0 || accuracy > 1) {
+
+
         integrityStatus = "INVALID";
       }
+    } else {
+      wpm = 0;
+      rawWpm = 0;
+      netWpm = 0;
+      accuracy = 0;
     }
 
     if (params.integritySignals.pasteAttempts > 0) {
+
       integrityStatus = "INVALID";
     }
+
 
     // 4. Update session to completed (atomic)
     const updated = await tx.testSession.updateMany({
@@ -443,12 +457,13 @@ export async function submitResult(params: SubmitResultRequest) {
         correctedErrors,
         uncorrectedErrors,
         totalKeystrokes: totalChars + correctedErrors,
-        elapsedMs: finalElapsedMs,
+        elapsedMs: actualElapsedMs,
         duration: session.duration,
         integrityStatus,
         scoringSource,
         integritySignals: params.integritySignals as Prisma.InputJsonValue,
         eventTrace: params.eventTrace as Prisma.InputJsonValue,
+        traceHash: traceHash as any,
         ...(params.errorMap && { errorMap: params.errorMap }),
         ...(codeMetrics && { codeMetrics }),
         claimToken,
@@ -460,22 +475,33 @@ export async function submitResult(params: SubmitResultRequest) {
         where: { sessionId: session.id },
       });
       if (attempt) {
+        if (integrityStatus === "VERIFIED" && scoringSource === "SERVER_RECONSTRUCTED") {
+          await tx.assessmentAttempt.update({
+            where: { id: attempt.id },
+            data: { status: "COMPLETED", completedAt: now },
+          });
+          await tx.assessmentCandidate.update({
+            where: { id: attempt.candidateId },
+            data: { status: "COMPLETED", resultId: result.id, updatedAt: now },
+          });
+          await tx.auditLog.create({
+            data: {
+              action: "RESULT_COMPLETED",
+              resource: "TestResult",
+              resourceId: result.id,
+              metadata: { candidateId: attempt.candidateId, attemptId: attempt.id },
+            },
+          });
+        } else if (integrityStatus === "INVALID") {
         await tx.assessmentAttempt.update({
           where: { id: attempt.id },
-          data: { status: "COMPLETED", completedAt: now },
+          data: { status: "INVALIDATED", completedAt: now },
         });
         await tx.assessmentCandidate.update({
           where: { id: attempt.candidateId },
-          data: { status: "COMPLETED", resultId: result.id, updatedAt: now },
+          data: { status: "DISQUALIFIED", resultId: result.id, updatedAt: now },
         });
-        await tx.auditLog.create({
-          data: {
-            action: "RESULT_COMPLETED",
-            resource: "TestResult",
-            resourceId: result.id,
-            metadata: { candidateId: attempt.candidateId, attemptId: attempt.id },
-          },
-        });
+      }
       }
     }
 
@@ -489,4 +515,12 @@ export async function submitResult(params: SubmitResultRequest) {
       claimToken,
     };
   });
+  } catch (error: any) {
+    if (error.code === "P2002" && (error.meta?.target?.includes("traceHash") || error.meta?.target?.includes("trace_hash"))) {
+      // Concurrent duplicate submission hit the unique constraint.
+      // Recursively call with a flag to explicitly reject it and preserve transaction semantics.
+      return submitResult({ ...params, _isConcurrentReplay: true });
+    }
+    throw error;
+  }
 }
