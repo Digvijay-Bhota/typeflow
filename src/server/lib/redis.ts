@@ -6,9 +6,23 @@ const globalForRedis = globalThis as unknown as {
   redisClient: Redis | null | undefined;
 };
 
+// With lazyConnect, ioredis starts the first command's timer before the
+// connection exists, so on a cold instance commandTimeout must also cover
+// DNS + TCP + TLS + AUTH. connectTimeout is longer so a slow handshake can
+// still finish in the background for the next request.
+export const REDIS_CONNECT_TIMEOUT_MS = 3000;
+export const REDIS_COMMAND_TIMEOUT_MS = 2000;
+
 export function getRedisClient(): Redis | null {
-  if (globalForRedis.redisClient !== undefined) {
-    return globalForRedis.redisClient;
+  const cached = globalForRedis.redisClient;
+  if (cached !== undefined) {
+    // retryStrategy gives up after one reconnect, which leaves the client in
+    // the terminal "end" state. Replace it instead of failing every request
+    // on this instance until it is recycled.
+    if (cached === null || cached.status !== "end") {
+      return cached;
+    }
+    globalForRedis.redisClient = undefined;
   }
 
   const envConfig = getServerEnv();
@@ -26,8 +40,8 @@ export function getRedisClient(): Redis | null {
 
   const options: any = {
     lazyConnect: true,
-    connectTimeout: 1000,
-    commandTimeout: 500,
+    connectTimeout: REDIS_CONNECT_TIMEOUT_MS,
+    commandTimeout: REDIS_COMMAND_TIMEOUT_MS,
     maxRetriesPerRequest: 1,
     retryStrategy(times: number) {
       if (times > 1) {

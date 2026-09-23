@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { getServerEnv } from "./lib/env";
+import { getSupabaseAuthEnv } from "./lib/env";
 
 export async function middleware(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
@@ -33,7 +33,9 @@ export async function middleware(request: NextRequest) {
 
   response.headers.set("Content-Security-Policy", cspHeader);
 
-  const env = getServerEnv();
+  // Only the Supabase URL + anon key: an unrelated server variable must not be
+  // able to fail every request. Throws (fails closed) if these are missing.
+  const env = getSupabaseAuthEnv();
 
   const supabase = createServerClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
     cookies: {
@@ -47,6 +49,8 @@ export async function middleware(request: NextRequest) {
         response = NextResponse.next({
           request,
         });
+        // The rebuilt response must keep the CSP header set above.
+        response.headers.set("Content-Security-Policy", cspHeader);
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options);
         });
@@ -58,10 +62,17 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Redirects must carry any session cookies refreshed by getUser() above.
+  const redirectTo = (pathname: string) => {
+    const redirect = NextResponse.redirect(new URL(pathname, request.url));
+    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return redirect;
+  };
+
   // Protect /dashboard routes
   if (request.nextUrl.pathname.startsWith("/dashboard")) {
     if (!user) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      return redirectTo("/login");
     }
   }
 
@@ -71,7 +82,7 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/signup")
   ) {
     if (user && !request.nextUrl.searchParams.get("claimToken")) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+      return redirectTo("/dashboard");
     }
   }
 
@@ -79,6 +90,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  runtime: "nodejs",
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
