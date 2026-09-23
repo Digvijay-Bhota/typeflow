@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { db as prisma } from "@/server/db";
 import { ResultClient } from "@/features/analytics/components/ResultClient";
 
+import { getPublicResult } from "@/features/analytics/lib/publicResult";
+
 export default async function ResultPage({
   params,
 }: {
@@ -60,10 +62,12 @@ export default async function ResultPage({
     }
   }
 
+  const publicResult = getPublicResult(result);
+
   return (
     <div className="bg-background min-h-screen">
       <div className="mx-auto max-w-7xl px-4 py-12">
-        <ResultClient result={result} comparison={comparison} />
+        <ResultClient result={publicResult} comparison={comparison} />
       </div>
     </div>
   );

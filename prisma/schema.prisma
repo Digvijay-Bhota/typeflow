@@ -64,6 +64,11 @@ enum PassageMode {
   CERTIFICATE
 }
 
+enum ScoringSource {
+  CLIENT_COUNTS
+  SERVER_RECONSTRUCTED
+}
+
 enum TestSessionStatus {
   PENDING
   ACTIVE
@@ -269,6 +274,7 @@ model TestResult {
 
   // ── Integrity ──
   integrityStatus  IntegrityStatus @default(VERIFIED)
+  scoringSource    ScoringSource   @default(CLIENT_COUNTS)
   /// Integrity signals submitted by client (stored for review, not acted on alone)
   integritySignals Json?
   /// Compact typed-character/event trace submitted at end of high-trust tests

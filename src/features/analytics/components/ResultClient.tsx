@@ -31,23 +31,17 @@ export function ResultClient({ result, comparison }: { result: any; comparison?:
 
   // Reconstruct Chart Data from intervalWpms
   let chartData: any[] = [];
-  if (result.integritySignals && Array.isArray(result.integritySignals.intervalWpms)) {
-    chartData = result.integritySignals.intervalWpms.map((val: number, i: number) => ({
+  if (Array.isArray(result.intervalWpms)) {
+    chartData = result.intervalWpms.map((val: number, i: number) => ({
       second: i + 1,
       wpm: Math.round(val),
     }));
-  } else if (result.eventTrace?.events) {
-    chartData = [];
   }
 
   // Extract Weak Keys from errorMap
   let weakKeys: { key: string; count: number }[] = [];
-  if (result.errorMap && typeof result.errorMap === "object") {
-    const map = result.errorMap as Record<string, any>;
-    weakKeys = Object.entries(map)
-      .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 8)
-      .map(([key, val]) => ({ key, count: val.count }));
+  if (Array.isArray(result.weakKeys)) {
+    weakKeys = result.weakKeys;
   }
 
   const handleShare = () => {

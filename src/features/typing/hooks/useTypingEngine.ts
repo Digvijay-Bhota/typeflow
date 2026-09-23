@@ -30,6 +30,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { EventTrace } from "@/schemas/result.schema";
 import {
   calculateWpm,
   calculateRawWpm,
@@ -138,7 +139,7 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
   const intervalWpmsRef = useRef<number[]>([]);
   const lastIntervalAtRef = useRef<number>(0);
   const totalKeystrokes = useRef(0);
-  const eventTraceRef = useRef<[number, number, number, string?][]>([]);
+  const eventTraceRef = useRef<EventTrace["events"]>([]);
 
   // ── Derived ──
   const chars = passage.split("");
@@ -369,6 +370,7 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
     intervalWpmsRef.current = [];
     lastIntervalAtRef.current = 0;
     totalKeystrokes.current = 0;
+    eventTraceRef.current = [];
 
     setState(createInitialEngineState());
   }, []);

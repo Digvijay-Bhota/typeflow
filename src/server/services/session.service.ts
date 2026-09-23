@@ -328,6 +328,8 @@ export async function submitResult(params: SubmitResultRequest) {
 
     let integrityStatus: "VERIFIED" | "REVIEW" | "INVALID" = "VERIFIED";
 
+    let scoringSource: "CLIENT_COUNTS" | "SERVER_RECONSTRUCTED" = "CLIENT_COUNTS";
+
     if (session.trustTier === "CERTIFICATE" || session.trustTier === "B2B_ASSESSMENT") {
       const { verifyCertificateTest } = await import("./certificateVerification.service");
       if (!params.eventTrace?.events) {
@@ -358,6 +360,36 @@ export async function submitResult(params: SubmitResultRequest) {
         }
       }
     } else {
+      if (params.eventTrace?.events) {
+        // Reconstruct from authoritative event trace
+        const { reconstructFinalBuffer } = await import("@/features/typing/lib/reconstruct");
+        const rec = reconstructFinalBuffer(session.passage.content, params.eventTrace);
+        
+        if (rec.isValidTrace) {
+          correctChars = rec.correctChars;
+          incorrectChars = rec.incorrectChars;
+          totalChars = rec.totalChars;
+          correctedErrors = rec.correctedErrors;
+          uncorrectedErrors = rec.uncorrectedErrors;
+          
+          scoringSource = "SERVER_RECONSTRUCTED";
+          
+          // Verify timing bounds
+          if (rec.lastEventTimeMs > serverElapsedMs + 2000) {
+            integrityStatus = "REVIEW";
+          } else if (session.mode === "TIMED" && expectedDurationMs > 0 && serverElapsedMs < expectedDurationMs - 2000 && !rec.isPassageCompleted) {
+            integrityStatus = "REVIEW";
+          } else {
+            integrityStatus = "VERIFIED";
+          }
+        } else {
+          integrityStatus = "REVIEW";
+        }
+      } else {
+        integrityStatus = "REVIEW";
+        scoringSource = "CLIENT_COUNTS";
+      }
+
       wpm = calculateWpm(correctChars, finalElapsedMs);
       rawWpm = calculateRawWpm(totalChars, finalElapsedMs);
       accuracy = calculateAccuracy(correctChars, totalChars);
@@ -414,6 +446,7 @@ export async function submitResult(params: SubmitResultRequest) {
         elapsedMs: finalElapsedMs,
         duration: session.duration,
         integrityStatus,
+        scoringSource,
         integritySignals: params.integritySignals as Prisma.InputJsonValue,
         eventTrace: params.eventTrace as Prisma.InputJsonValue,
         ...(params.errorMap && { errorMap: params.errorMap }),
