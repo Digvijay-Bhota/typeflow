@@ -9,32 +9,57 @@
 import { z } from "zod";
 
 // ─── Server-side environment schema ──────────────────────────────────────────
-const serverSchema = z.object({
-  // Supabase
-  SUPABASE_URL: z.string().url("SUPABASE_URL must be a valid URL"),
-  SUPABASE_ANON_KEY: z.string().min(1, "SUPABASE_ANON_KEY is required"),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
+const serverSchema = z
+  .object({
+    // Supabase
+    SUPABASE_URL: z.string().url("SUPABASE_URL must be a valid URL"),
+    SUPABASE_ANON_KEY: z.string().min(1, "SUPABASE_ANON_KEY is required"),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
 
-  // Database
-  DATABASE_URL: z.string().url("DATABASE_URL must be a valid connection URL"),
-  DIRECT_URL: z.string().url("DIRECT_URL must be a valid connection URL"),
+    // Database
+    DATABASE_URL: z.string().url("DATABASE_URL must be a valid connection URL"),
+    DIRECT_URL: z.string().url("DIRECT_URL must be a valid connection URL"),
 
-  // Razorpay
-  RAZORPAY_KEY_ID: z.string().min(1, "RAZORPAY_KEY_ID is required"),
-  RAZORPAY_KEY_SECRET: z.string().min(1, "RAZORPAY_KEY_SECRET is required"),
-  RAZORPAY_WEBHOOK_SECRET: z.string().min(1, "RAZORPAY_WEBHOOK_SECRET is required"),
-  /// Optional: Razorpay Plan ID for Pro Monthly subscription
-  RAZORPAY_PLAN_ID_PRO_MONTHLY: z.string().optional(),
-  /// Optional: Razorpay Plan ID for Pro Yearly subscription
-  RAZORPAY_PLAN_ID_PRO_YEARLY: z.string().optional(),
+    // Razorpay
+    RAZORPAY_KEY_ID: z.string().min(1, "RAZORPAY_KEY_ID is required"),
+    RAZORPAY_KEY_SECRET: z.string().min(1, "RAZORPAY_KEY_SECRET is required"),
+    RAZORPAY_WEBHOOK_SECRET: z.string().min(1, "RAZORPAY_WEBHOOK_SECRET is required"),
+    /// Optional: Razorpay Plan ID for Pro Monthly subscription
+    RAZORPAY_PLAN_ID_PRO_MONTHLY: z.string().optional(),
+    /// Optional: Razorpay Plan ID for Pro Yearly subscription
+    RAZORPAY_PLAN_ID_PRO_YEARLY: z.string().optional(),
 
-  // App
-  APP_URL: z.string().url("APP_URL must be a valid URL").default("http://localhost:3000"),
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    // App
+    APP_URL: z
+      .string()
+      .url("APP_URL must be a valid URL")
+      .default("http://localhost:3000"),
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
-  // Integrity
-  SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters"),
-});
+    // Integrity
+    SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters"),
+
+    // Redis
+    REDIS_URL: z.string().url("REDIS_URL must be a valid URL").optional(),
+    TEST_REDIS_URL: z.string().url("TEST_REDIS_URL must be a valid URL").optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.NODE_ENV === "production") {
+      if (!data.REDIS_URL) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "REDIS_URL is required in production.",
+          path: ["REDIS_URL"],
+        });
+      } else if (!data.REDIS_URL.startsWith("rediss://")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Production REDIS_URL must use rediss://",
+          path: ["REDIS_URL"],
+        });
+      }
+    }
+  });
 
 // ─── Client-side environment schema ──────────────────────────────────────────
 const clientSchema = z.object({
@@ -90,6 +115,8 @@ export function getServerEnv(): z.infer<typeof serverSchema> {
         APP_URL: process.env.APP_URL,
         NODE_ENV: process.env.NODE_ENV,
         SESSION_SECRET: process.env.SESSION_SECRET,
+        REDIS_URL: process.env.REDIS_URL,
+        TEST_REDIS_URL: process.env.TEST_REDIS_URL,
       },
       "server"
     );
@@ -115,6 +142,10 @@ export function getClientEnv(): z.infer<typeof clientSchema> {
     );
   }
   return _clientEnv;
+}
+
+export function __clearServerEnvForTesting() {
+  _serverEnv = undefined;
 }
 
 /** @deprecated Use getClientEnv() instead */

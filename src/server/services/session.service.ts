@@ -142,25 +142,56 @@ export async function createSession(params: CreateSessionRequest) {
   const integrityToken = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_VALIDITY_MS);
 
-  const session = await db.testSession.create({
-    data: {
-      userId: user?.id ?? null,
-      mode: params.mode.toUpperCase() as TypingMode,
-      language: params.language.toUpperCase() as Language,
-      duration: params.duration ?? null,
-      wordCount: params.wordCount ?? null,
-      trustTier: trustTier,
-      status: "PENDING",
-      passageId: passage.id,
-      integrityToken,
-      expiresAt,
-    },
-  });
-
+  let session;
   if (b2bAttemptId) {
-    await db.assessmentAttempt.update({
-      where: { id: b2bAttemptId },
-      data: { sessionId: session.id },
+    session = await db.$transaction(async (tx) => {
+      const newSession = await tx.testSession.create({
+        data: {
+          userId: user?.id ?? null,
+          mode: params.mode.toUpperCase() as TypingMode,
+          language: params.language.toUpperCase() as Language,
+          duration: params.duration ?? null,
+          wordCount: params.wordCount ?? null,
+          trustTier: trustTier,
+          status: "PENDING",
+          passageId: passage.id,
+          integrityToken,
+          expiresAt,
+        },
+      });
+
+      const attached = await tx.assessmentAttempt.updateMany({
+        where: {
+          id: b2bAttemptId,
+          status: "STARTED",
+          sessionId: null, // Strictly prevent overwriting an existing sessionId
+        },
+        data: {
+          sessionId: newSession.id,
+        },
+      });
+
+      if (attached.count === 0) {
+        throw new Error("DUPLICATE_SESSION");
+      }
+
+      return newSession;
+    });
+  } else {
+    // Non-B2B flow (unchanged)
+    session = await db.testSession.create({
+      data: {
+        userId: user?.id ?? null,
+        mode: params.mode.toUpperCase() as TypingMode,
+        language: params.language.toUpperCase() as Language,
+        duration: params.duration ?? null,
+        wordCount: params.wordCount ?? null,
+        trustTier: trustTier,
+        status: "PENDING",
+        passageId: passage.id,
+        integrityToken,
+        expiresAt,
+      },
     });
   }
 
@@ -188,7 +219,7 @@ export async function startSession(params: StartSessionRequest) {
   // Use a transaction or atomic update to ensure it only starts once
   const now = new Date();
   const { getAuthenticatedUser } = await import("./auth.service");
-  const user = await getAuthenticatedUser();
+  const user = await getAuthenticatedUser().catch(() => null);
 
   // Try atomic update
   const updatedSession = await db.testSession.updateMany({
@@ -227,202 +258,293 @@ export async function startSession(params: StartSessionRequest) {
   };
 }
 
-export async function submitResult(params: SubmitResultRequest) {
+export async function submitResult(
+  params: SubmitResultRequest & { _isConcurrentReplay?: boolean }
+) {
   const now = new Date();
 
   const { getAuthenticatedUser } = await import("./auth.service");
-  const user = await getAuthenticatedUser();
+  const user = await getAuthenticatedUser().catch(() => null);
 
-  return await db.$transaction(async (tx) => {
-    // 1. Retrieve session securely
-    const session = await tx.testSession.findUnique({
-      where: { id: params.sessionId },
-      include: { passage: true },
-    });
-
-    if (!session) throw new Error("Session not found");
-    if (session.integrityToken !== params.integrityToken)
-      throw new Error("Invalid integrity token");
-    if (session.userId !== (user?.id ?? null))
-      throw new Error("Unauthorized to submit for this session");
-    if (session.status !== "ACTIVE")
-      throw new Error(`Session is not ACTIVE, currently ${session.status}`);
-    if (!session.startedAt) throw new Error("Session has no startedAt time");
-
-    // 2. Validate expiration / duration limit
-    let expectedDurationMs = 0;
-    if (session.duration) {
-      expectedDurationMs = session.duration * 1000;
-    }
-    const serverElapsedMs = now.getTime() - session.startedAt.getTime();
-
-    // Check if it's too late
-    if (session.duration && serverElapsedMs > expectedDurationMs + GRACE_PERIOD_MS) {
-      // Mark expired
-      await tx.testSession.update({
-        where: { id: session.id },
-        data: { status: "EXPIRED" },
+  try {
+    return await db.$transaction(async (tx) => {
+      // 1. Retrieve session securely
+      const session = await tx.testSession.findUnique({
+        where: { id: params.sessionId },
+        include: { passage: true },
       });
-      throw new Error("Session duration exceeded grace period");
-    }
 
-    if (session.expiresAt <= now) {
-      await tx.testSession.update({
-        where: { id: session.id },
-        data: { status: "EXPIRED" },
-      });
-      throw new Error("Session has expired");
-    }
-
-    if (session.mode === "CODE") {
-      if (params.codeLanguage && params.codeLanguage !== session.codeLanguage) {
-        throw new Error("Mismatched code language in submission");
-      }
-    }
-
-    // 3. Re-calculate metrics (strictly trust server elapsed time)
-    let { correctChars, incorrectChars, totalChars, correctedErrors, uncorrectedErrors } =
-      params.metrics;
-    let wpm = 0,
-      rawWpm = 0,
-      netWpm = 0,
-      accuracy = 0;
-
-    let finalElapsedMs = serverElapsedMs;
-    // Timed mode uses the fixed expected duration. Words mode uses the exact server measured time.
-    // clientElapsedMs is completely ignored for timing WPM.
-    if (session.mode === "TIMED" && expectedDurationMs > 0) {
-      finalElapsedMs = expectedDurationMs;
-    }
-
-    let integrityStatus: "VERIFIED" | "REVIEW" | "INVALID" = "VERIFIED";
-
-    if (session.trustTier === "CERTIFICATE" || session.trustTier === "B2B_ASSESSMENT") {
-      const { verifyCertificateTest } = await import("./certificateVerification.service");
-      if (!params.eventTrace?.events) {
-        integrityStatus = "INVALID";
+      if (!session) throw new Error("Session not found");
+      if (session.integrityToken !== params.integrityToken)
+        throw new Error("Invalid integrity token");
+      if (session.trustTier === "B2B_ASSESSMENT") {
+        const attempt = await tx.assessmentAttempt.findUnique({
+          where: { sessionId: session.id },
+          include: { candidate: { include: { assessment: true } } },
+        });
+        if (!attempt || !attempt.candidate || !attempt.candidate.assessment) {
+          throw new Error("Invalid B2B session mapping");
+        }
+        if (
+          attempt.candidateId !== attempt.candidate.id ||
+          attempt.candidate.assessmentId !== attempt.candidate.assessment.id
+        ) {
+          throw new Error("Corrupted B2B assessment chain");
+        }
       } else {
-        const verification = verifyCertificateTest(
-          session.passage.content,
-          params.eventTrace.events as [number, number, number, string?][],
-          finalElapsedMs
-        );
-        if (verification.status === "VERIFIED" && verification.reconstructed) {
-          correctChars = verification.reconstructed.correctChars;
-          incorrectChars = verification.reconstructed.incorrectChars;
-          totalChars = verification.reconstructed.totalChars;
-          correctedErrors = verification.reconstructed.correctedErrors;
-          uncorrectedErrors = verification.reconstructed.uncorrectedErrors;
-          wpm = verification.reconstructed.wpm;
-          rawWpm = verification.reconstructed.rawWpm;
-          netWpm = verification.reconstructed.netWpm;
-          accuracy = verification.reconstructed.accuracy;
-          integrityStatus = "VERIFIED";
-        } else {
-          integrityStatus = verification.status;
-          wpm = 0;
-          rawWpm = 0;
-          netWpm = 0;
-          accuracy = 0;
+        if (session.userId !== (user?.id ?? null)) {
+          throw new Error("Unauthorized to submit for this session");
         }
       }
-    } else {
-      wpm = calculateWpm(correctChars, finalElapsedMs);
-      rawWpm = calculateRawWpm(totalChars, finalElapsedMs);
-      accuracy = calculateAccuracy(correctChars, totalChars);
-      netWpm = calculateNetWpm(wpm, uncorrectedErrors, finalElapsedMs);
+      if (session.status !== "ACTIVE")
+        throw new Error(`Session is not ACTIVE, currently ${session.status}`);
+      if (!session.startedAt) throw new Error("Session has no startedAt time");
 
-      // Basic sanity checks for FREE tier
-      if (wpm > 300 || accuracy < 0 || accuracy > 1) {
-        integrityStatus = "INVALID";
+      // 2. Validate expiration / duration limit
+      let expectedDurationMs = 0;
+      if (session.duration) {
+        expectedDurationMs = session.duration * 1000;
       }
-    }
+      const serverElapsedMs = now.getTime() - session.startedAt.getTime();
 
-    if (params.integritySignals.pasteAttempts > 0) {
-      integrityStatus = "INVALID";
-    }
+      // Check if it's too late
+      if (session.duration && serverElapsedMs > expectedDurationMs + GRACE_PERIOD_MS) {
+        // Mark expired
+        await tx.testSession.update({
+          where: { id: session.id },
+          data: { status: "EXPIRED" },
+        });
+        throw new Error("Session duration exceeded grace period");
+      }
 
-    // 4. Update session to completed (atomic)
-    const updated = await tx.testSession.updateMany({
-      where: { id: session.id, status: "ACTIVE" },
-      data: {
-        status: "COMPLETED",
-        completedAt: now,
-      },
-    });
+      if (session.expiresAt <= now) {
+        await tx.testSession.update({
+          where: { id: session.id },
+          data: { status: "EXPIRED" },
+        });
+        throw new Error("Session has expired");
+      }
 
-    if (updated.count === 0) {
-      throw new Error("Session is not ACTIVE (concurrent submission detected)");
-    }
+      if (session.mode === "CODE") {
+        if (params.codeLanguage && params.codeLanguage !== session.codeLanguage) {
+          throw new Error("Mismatched code language in submission");
+        }
+      }
 
-    // 5. Create Result
-    const shareId = randomBytes(10).toString("base64url");
-    const claimToken = session.userId ? null : randomBytes(32).toString("hex");
-
-    let codeMetrics: Prisma.InputJsonValue | undefined;
-    if (session.mode === "CODE" && params.errorMap) {
-      codeMetrics = calculateCodeMetrics(session.passage.content, params.errorMap) as any;
-    }
-
-    const result = await tx.testResult.create({
-      data: {
-        sessionId: session.id,
-        userId: session.userId,
-        shareId,
-        wpm,
-        rawWpm,
-        netWpm,
-        accuracy,
-        consistency: params.metrics.consistency,
+      // 3. Re-calculate metrics (strictly trust server elapsed time)
+      let {
         correctChars,
         incorrectChars,
         totalChars,
         correctedErrors,
         uncorrectedErrors,
-        totalKeystrokes: totalChars + correctedErrors,
-        elapsedMs: finalElapsedMs,
-        duration: session.duration,
-        integrityStatus,
-        integritySignals: params.integritySignals as Prisma.InputJsonValue,
-        eventTrace: params.eventTrace as Prisma.InputJsonValue,
-        ...(params.errorMap && { errorMap: params.errorMap }),
-        ...(codeMetrics && { codeMetrics }),
-        claimToken,
-      },
-    });
+      } = params.metrics;
+      let wpm = 0,
+        rawWpm = 0,
+        netWpm = 0,
+        accuracy = 0;
 
-    if (session.trustTier === "B2B_ASSESSMENT") {
-      const attempt = await tx.assessmentAttempt.findUnique({
-        where: { sessionId: session.id },
-      });
-      if (attempt) {
-        await tx.assessmentAttempt.update({
-          where: { id: attempt.id },
-          data: { status: "COMPLETED", completedAt: now },
-        });
-        await tx.assessmentCandidate.update({
-          where: { id: attempt.candidateId },
-          data: { status: "COMPLETED", resultId: result.id, updatedAt: now },
-        });
-        await tx.auditLog.create({
-          data: {
-            action: "RESULT_COMPLETED",
-            resource: "TestResult",
-            resourceId: result.id,
-            metadata: { candidateId: attempt.candidateId, attemptId: attempt.id },
-          },
-        });
+      const actualElapsedMs = serverElapsedMs;
+      let scoringElapsedMs = actualElapsedMs;
+      // Timed mode uses the fixed expected duration. Words mode uses the exact server measured time.
+      if (session.mode === "TIMED" && expectedDurationMs > 0) {
+        scoringElapsedMs = Math.min(actualElapsedMs, expectedDurationMs);
       }
-    }
 
-    return {
-      resultId: result.id,
-      shareId: result.shareId,
-      shareUrl: `/result/${result.shareId}`,
-      integrityStatus: result.integrityStatus,
-      wpm: result.wpm,
-      accuracy: result.accuracy,
-      claimToken,
-    };
-  });
+      let integrityStatus: "VERIFIED" | "REVIEW" | "INVALID" = "VERIFIED";
+      let scoringSource: "CLIENT_COUNTS" | "SERVER_RECONSTRUCTED" = "CLIENT_COUNTS";
+      let traceHash: string | undefined = undefined;
+
+      if (params._isConcurrentReplay) {
+        integrityStatus = "INVALID";
+        traceHash = undefined;
+      } else if (params.eventTrace?.events && params.eventTrace.events.length > 0) {
+        const traceString = JSON.stringify(params.eventTrace.events);
+        // traceHash is an exact-replay detector, not proof of human-originated input.
+        // It does NOT cryptographically authenticate the browser trace.
+        traceHash = createHash("sha256").update(traceString).digest("hex");
+
+        const existingTrace = await (tx.testResult as any).findFirst({
+          where: { traceHash },
+        });
+
+        if (existingTrace) {
+          integrityStatus = "INVALID";
+          traceHash = undefined;
+        } else {
+          const { reconstructFinalBuffer } = await import(
+            "@/features/typing/lib/reconstruct"
+          );
+          const rec = reconstructFinalBuffer(
+            session.passage.content,
+            params.eventTrace as any
+          );
+
+          if (rec.isValidTrace) {
+            correctChars = rec.correctChars;
+            incorrectChars = rec.incorrectChars;
+            totalChars = rec.totalChars;
+            correctedErrors = rec.correctedErrors;
+            uncorrectedErrors = rec.uncorrectedErrors;
+            scoringSource = "SERVER_RECONSTRUCTED";
+
+            // Strictly use ACTUAL elapsed time for bounds checking
+            if (rec.lastEventTimeMs > actualElapsedMs + 2000) {
+              integrityStatus = session.trustTier === "FREE" ? "REVIEW" : "INVALID";
+            } else if (
+              session.mode === "TIMED" &&
+              expectedDurationMs > 0 &&
+              actualElapsedMs < expectedDurationMs - GRACE_PERIOD_MS &&
+              // High-trust timed results attest to the full configured duration,
+              // so finishing a short passage early never exempts them. Only FREE
+              // keeps the passage-completed exemption.
+              (session.trustTier !== "FREE" || !rec.isPassageCompleted)
+            ) {
+              integrityStatus = session.trustTier === "FREE" ? "REVIEW" : "INVALID";
+            } else {
+              integrityStatus = "VERIFIED";
+            }
+          } else {
+            integrityStatus = session.trustTier === "FREE" ? "REVIEW" : "INVALID";
+          }
+        }
+      } else {
+        integrityStatus = session.trustTier === "FREE" ? "REVIEW" : "INVALID";
+        scoringSource = "CLIENT_COUNTS";
+      }
+
+      if (integrityStatus === "VERIFIED" || integrityStatus === "REVIEW") {
+        wpm = calculateWpm(correctChars, scoringElapsedMs);
+        rawWpm = calculateRawWpm(totalChars, scoringElapsedMs);
+        accuracy = calculateAccuracy(correctChars, totalChars);
+        netWpm = calculateNetWpm(wpm, uncorrectedErrors, scoringElapsedMs);
+
+        if (wpm > 300 || accuracy < 0 || accuracy > 1) {
+          integrityStatus = "INVALID";
+        }
+      } else {
+        wpm = 0;
+        rawWpm = 0;
+        netWpm = 0;
+        accuracy = 0;
+      }
+
+      if (params.integritySignals.pasteAttempts > 0) {
+        integrityStatus = "INVALID";
+      }
+
+      // 4. Update session to completed (atomic)
+      const updated = await tx.testSession.updateMany({
+        where: { id: session.id, status: "ACTIVE" },
+        data: {
+          status: "COMPLETED",
+          completedAt: now,
+        },
+      });
+
+      if (updated.count === 0) {
+        throw new Error("Session is not ACTIVE (concurrent submission detected)");
+      }
+
+      // 5. Create Result
+      const shareId = randomBytes(10).toString("base64url");
+      const claimToken = session.userId ? null : randomBytes(32).toString("hex");
+
+      let codeMetrics: Prisma.InputJsonValue | undefined;
+      if (session.mode === "CODE" && params.errorMap) {
+        codeMetrics = calculateCodeMetrics(
+          session.passage.content,
+          params.errorMap
+        ) as any;
+      }
+
+      const result = await tx.testResult.create({
+        data: {
+          sessionId: session.id,
+          userId: session.userId,
+          shareId,
+          wpm,
+          rawWpm,
+          netWpm,
+          accuracy,
+          consistency: params.metrics.consistency,
+          correctChars,
+          incorrectChars,
+          totalChars,
+          correctedErrors,
+          uncorrectedErrors,
+          totalKeystrokes: totalChars + correctedErrors,
+          elapsedMs: actualElapsedMs,
+          duration: session.duration,
+          integrityStatus,
+          scoringSource,
+          integritySignals: params.integritySignals as Prisma.InputJsonValue,
+          eventTrace: params.eventTrace as Prisma.InputJsonValue,
+          traceHash: traceHash as any,
+          ...(params.errorMap && { errorMap: params.errorMap }),
+          ...(codeMetrics && { codeMetrics }),
+          claimToken,
+        },
+      });
+
+      if (session.trustTier === "B2B_ASSESSMENT") {
+        const attempt = await tx.assessmentAttempt.findUnique({
+          where: { sessionId: session.id },
+        });
+        if (attempt) {
+          if (
+            integrityStatus === "VERIFIED" &&
+            scoringSource === "SERVER_RECONSTRUCTED"
+          ) {
+            await tx.assessmentAttempt.update({
+              where: { id: attempt.id },
+              data: { status: "COMPLETED", completedAt: now },
+            });
+            await tx.assessmentCandidate.update({
+              where: { id: attempt.candidateId },
+              data: { status: "COMPLETED", resultId: result.id, updatedAt: now },
+            });
+            await tx.auditLog.create({
+              data: {
+                action: "RESULT_COMPLETED",
+                resource: "TestResult",
+                resourceId: result.id,
+                metadata: { candidateId: attempt.candidateId, attemptId: attempt.id },
+              },
+            });
+          } else if (integrityStatus === "INVALID") {
+            await tx.assessmentAttempt.update({
+              where: { id: attempt.id },
+              data: { status: "INVALIDATED", completedAt: now },
+            });
+            await tx.assessmentCandidate.update({
+              where: { id: attempt.candidateId },
+              data: { status: "DISQUALIFIED", resultId: result.id, updatedAt: now },
+            });
+          }
+        }
+      }
+
+      return {
+        resultId: result.id,
+        shareId: result.shareId,
+        shareUrl: `/result/${result.shareId}`,
+        integrityStatus: result.integrityStatus,
+        wpm: result.wpm,
+        accuracy: result.accuracy,
+        claimToken,
+      };
+    });
+  } catch (error: any) {
+    if (
+      error.code === "P2002" &&
+      (error.meta?.target?.includes("traceHash") ||
+        error.meta?.target?.includes("trace_hash"))
+    ) {
+      // Concurrent duplicate submission hit the unique constraint.
+      // Recursively call with a flag to explicitly reject it and preserve transaction semantics.
+      return submitResult({ ...params, _isConcurrentReplay: true });
+    }
+    throw error;
+  }
 }

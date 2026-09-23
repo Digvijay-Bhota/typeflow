@@ -120,8 +120,7 @@ export function TypingTest({
             },
             errorMap: s.keyErrors,
             integritySignals: s.integritySignals,
-            ...(trustTier === "CERTIFICATE" &&
-              s.eventTrace && { eventTrace: s.eventTrace }),
+            ...(s.eventTrace && { eventTrace: s.eventTrace }),
           }),
         });
 

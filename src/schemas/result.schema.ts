@@ -9,7 +9,7 @@ const MetricsSchema = z.object({
   totalChars: z.number().int().nonnegative(),
   correctedErrors: z.number().int().nonnegative(),
   uncorrectedErrors: z.number().int().nonnegative(),
-  consistency: z.number().nullable(),
+  consistency: z.number().min(0).max(1).nullable(),
 });
 
 const IntegritySignalsSchema = z.object({
@@ -22,24 +22,31 @@ const IntegritySignalsSchema = z.object({
   selectionAttempts: z.number().int().nonnegative(),
 });
 
+const KeypressEvent = z.tuple([
+  z.number().int().nonnegative(),
+  z.literal(0),
+  z.number().int().nonnegative(),
+  z.string().max(1),
+]);
+
+const BackspaceEvent = z.tuple([
+  z.number().int().nonnegative(),
+  z.literal(1),
+  z.number().int().nonnegative(),
+]);
+
+const EventTuple = z.union([KeypressEvent, BackspaceEvent]);
+
 /**
  * Compact event trace format for high-trust verification.
- * Format: array of [timestampOffsetMs, eventType (0=char, 1=backspace), expectedIndex, typedChar]
  */
 const EventTraceSchema = z.object({
-  events: z
-    .array(
-      z.tuple([
-        z.number().int().nonnegative(), // offset from start in ms
-        z.number().int().min(0).max(1), // type: 0=char, 1=backspace
-        z.number().int().nonnegative(), // position index
-        z.string().optional(), // typed character (for type 0)
-      ])
-    )
-    .max(12000), // Max realistic keystrokes for a 5-minute test at 300 WPM
+  events: z.array(EventTuple).max(12000),
   totalEvents: z.number().int().nonnegative(),
   durationMs: z.number().int().nonnegative(),
 });
+
+export type EventTrace = z.infer<typeof EventTraceSchema>;
 
 export const SubmitResultSchema = z.object({
   sessionId: z.string().uuid(),

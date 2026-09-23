@@ -64,6 +64,11 @@ enum PassageMode {
   CERTIFICATE
 }
 
+enum ScoringSource {
+  CLIENT_COUNTS
+  SERVER_RECONSTRUCTED
+}
+
 enum TestSessionStatus {
   PENDING
   ACTIVE
@@ -269,10 +274,12 @@ model TestResult {
 
   // ── Integrity ──
   integrityStatus  IntegrityStatus @default(VERIFIED)
+  scoringSource    ScoringSource   @default(CLIENT_COUNTS)
   /// Integrity signals submitted by client (stored for review, not acted on alone)
   integritySignals Json?
   /// Compact typed-character/event trace submitted at end of high-trust tests
   eventTrace       Json?
+  traceHash        String?         @unique @db.VarChar(64)
 
   /// Server-generated unguessable token for guest claiming
   claimToken String? @unique @db.VarChar(128)
@@ -293,7 +300,6 @@ model TestResult {
   candidate   AssessmentCandidate?
 
   @@index([userId, createdAt])
-
   @@index([sessionId])
   @@index([userId])
   @@index([shareId])
@@ -545,18 +551,18 @@ model Assessment {
 }
 
 model AssessmentCandidate {
-  id            String          @id @default(uuid()) @db.Uuid
-  assessmentId  String          @db.Uuid
-  email         String          @db.VarChar(320)
-  name          String?         @db.VarChar(200)
+  id              String          @id @default(uuid()) @db.Uuid
+  assessmentId    String          @db.Uuid
+  email           String          @db.VarChar(320)
+  name            String?         @db.VarChar(200)
   /// Opaque invite token for candidate link
   inviteTokenHash String          @unique @db.VarChar(128)
-  status        CandidateStatus @default(INVITED)
-  expiresAt     DateTime?
-  reviewerNotes String?         @db.Text
-  resultId      String?         @unique @db.Uuid
-  invitedAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  status          CandidateStatus @default(INVITED)
+  expiresAt       DateTime?
+  reviewerNotes   String?         @db.Text
+  resultId        String?         @unique @db.Uuid
+  invitedAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   assessment Assessment          @relation(fields: [assessmentId], references: [id])
   attempts   AssessmentAttempt[]
@@ -569,13 +575,13 @@ model AssessmentCandidate {
 }
 
 model AssessmentAttempt {
-  id          String        @id @default(uuid()) @db.Uuid
-  candidateId String        @db.Uuid
+  id            String        @id @default(uuid()) @db.Uuid
+  candidateId   String        @db.Uuid
   attemptNumber Int           @default(1)
-  sessionId   String?       @unique @db.Uuid
-  status      AttemptStatus @default(STARTED)
-  startedAt   DateTime      @default(now())
-  completedAt DateTime?
+  sessionId     String?       @unique @db.Uuid
+  status        AttemptStatus @default(STARTED)
+  startedAt     DateTime      @default(now())
+  completedAt   DateTime?
 
   candidate AssessmentCandidate @relation(fields: [candidateId], references: [id])
   session   TestSession?        @relation(fields: [sessionId], references: [id])

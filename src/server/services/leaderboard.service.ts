@@ -51,7 +51,11 @@ export async function getLeaderboard(
       WHERE tr."integrityStatus" = 'VERIFIED'
         AND u."leaderboardOptOut" = false
         AND ts."trustTier" IN ('FREE', 'CERTIFICATE')
-        AND (ts."trustTier" = 'FREE' OR (ts."trustTier" = 'CERTIFICATE' AND (c."status" IS NULL OR c."status" NOT IN ('REVOKED', 'EXPIRED'))))
+        AND (
+          (ts."trustTier" = 'FREE' AND tr."scoringSource" = 'SERVER_RECONSTRUCTED'::"ScoringSource")
+          OR 
+          (ts."trustTier" = 'CERTIFICATE' AND (c."status" IS NULL OR c."status" NOT IN ('REVOKED', 'EXPIRED')))
+        )
         AND ts."status" = 'COMPLETED'
         AND tr."createdAt" >= ${gteDate}
         ${query.mode ? Prisma.sql`AND ts."mode" = ${query.mode.toUpperCase()}::"TypingMode"` : Prisma.empty}

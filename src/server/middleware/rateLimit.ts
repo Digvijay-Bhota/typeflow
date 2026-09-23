@@ -1,8 +1,4 @@
-/**
- * Simple Rate Limiter Abstraction
- * Currently uses an in-memory Map.
- * Designed to be easily replaced by Redis/Upstash later.
- */
+import { getRedisClient, executeRateLimitScript } from "../lib/redis";
 
 const rateLimitCache = new Map<string, { count: number; resetAt: number }>();
 let isCleanupRunning = false;
@@ -12,24 +8,56 @@ export async function rateLimit(
   limit: number = 10,
   windowMs: number = 60000
 ): Promise<{ success: boolean; limit: number; remaining: number; reset: number }> {
-  // Use getServerEnv if possible. We'll just read process.env.NODE_ENV and REDIS_URL directly here
-  // to avoid circular dependencies, or use getServerEnv().
   const env = process.env.NODE_ENV || "development";
-  const redisUrl = process.env.REDIS_URL;
+  const now = Date.now();
 
-  if (env === "production") {
-    if (!redisUrl) {
-      throw new Error(
-        "CRITICAL: REDIS_URL is required for rate limiting in production. Distributed rate-limiting is mandatory."
+  try {
+    const redisClient = getRedisClient();
+
+    if (redisClient) {
+      const result = await executeRateLimitScript(
+        redisClient,
+        identifier,
+        limit,
+        windowMs
       );
+
+      if (result) {
+        const resetAt = now + Math.max(0, result.ttl);
+        if (result.allowed) {
+          return {
+            success: true,
+            limit,
+            remaining: Math.max(0, limit - result.count),
+            reset: resetAt,
+          };
+        } else {
+          return {
+            success: false,
+            limit,
+            remaining: 0,
+            reset: resetAt,
+          };
+        }
+      } else {
+        return failClosed(limit, now + windowMs);
+      }
     }
-    // Note: In a real implementation, we would use ioredis/upstash here.
-    // For now, since REDIS_URL is required, we enforce the security requirement.
-    // This satisfies "make production behavior fail safely or clearly require Redis."
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      (err.message.startsWith("Configuration Error") ||
+        err.message.includes("Invalid server environment variables"))
+    ) {
+      throw err;
+    }
+    return failClosed(limit, now + windowMs);
   }
 
-  // Development / Test fallback
-  const now = Date.now();
+  if (env === "production") {
+    throw new Error("Configuration Error: Memory fallback used in production.");
+  }
+
   const record = rateLimitCache.get(identifier);
 
   if (!record || now > record.resetAt) {
@@ -46,6 +74,15 @@ export async function rateLimit(
   return { success: true, limit, remaining: limit - record.count, reset: record.resetAt };
 }
 
+function failClosed(limit: number, resetAt: number) {
+  return {
+    success: false,
+    limit,
+    remaining: 0,
+    reset: resetAt,
+  };
+}
+
 function startCleanupIfNecessary() {
   if (isCleanupRunning) return;
   if (typeof setInterval !== "undefined") {
@@ -58,7 +95,6 @@ function startCleanupIfNecessary() {
         }
       }
     }, 60000);
-    // Unref so it doesn't block process exit if possible
     if (interval.unref) interval.unref();
   }
 }

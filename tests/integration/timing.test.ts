@@ -34,6 +34,7 @@ describe("Result Submission Timing & Metric Validation", () => {
     id: "s1",
     integrityToken: "t1",
     userId: "u1",
+    trustTier: "FREE",
     status: "ACTIVE",
     startedAt: new Date(Date.now() - startedAgoMs),
     expiresAt: new Date(Date.now() + 100000),
@@ -98,7 +99,7 @@ describe("Result Submission Timing & Metric Validation", () => {
     });
 
     expect(res.wpm).toBe(50); // 250 chars / 5 = 50 words in 60 seconds = 50 WPM
-    expect(res.integrityStatus).toBe("VERIFIED");
+    expect(res.integrityStatus).toBe("REVIEW");
   });
 
   it("Case C: client submits fake WPM = 300 -> Server ignores and recalculates", async () => {
