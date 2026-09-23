@@ -142,25 +142,56 @@ export async function createSession(params: CreateSessionRequest) {
   const integrityToken = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_VALIDITY_MS);
 
-  const session = await db.testSession.create({
-    data: {
-      userId: user?.id ?? null,
-      mode: params.mode.toUpperCase() as TypingMode,
-      language: params.language.toUpperCase() as Language,
-      duration: params.duration ?? null,
-      wordCount: params.wordCount ?? null,
-      trustTier: trustTier,
-      status: "PENDING",
-      passageId: passage.id,
-      integrityToken,
-      expiresAt,
-    },
-  });
-
+  let session;
   if (b2bAttemptId) {
-    await db.assessmentAttempt.update({
-      where: { id: b2bAttemptId },
-      data: { sessionId: session.id },
+    session = await db.$transaction(async (tx) => {
+      const newSession = await tx.testSession.create({
+        data: {
+          userId: user?.id ?? null,
+          mode: params.mode.toUpperCase() as TypingMode,
+          language: params.language.toUpperCase() as Language,
+          duration: params.duration ?? null,
+          wordCount: params.wordCount ?? null,
+          trustTier: trustTier,
+          status: "PENDING",
+          passageId: passage.id,
+          integrityToken,
+          expiresAt,
+        },
+      });
+
+      const attached = await tx.assessmentAttempt.updateMany({
+        where: {
+          id: b2bAttemptId,
+          status: "STARTED",
+          sessionId: null, // Strictly prevent overwriting an existing sessionId
+        },
+        data: {
+          sessionId: newSession.id,
+        },
+      });
+
+      if (attached.count === 0) {
+        throw new Error("DUPLICATE_SESSION");
+      }
+
+      return newSession;
+    });
+  } else {
+    // Non-B2B flow (unchanged)
+    session = await db.testSession.create({
+      data: {
+        userId: user?.id ?? null,
+        mode: params.mode.toUpperCase() as TypingMode,
+        language: params.language.toUpperCase() as Language,
+        duration: params.duration ?? null,
+        wordCount: params.wordCount ?? null,
+        trustTier: trustTier,
+        status: "PENDING",
+        passageId: passage.id,
+        integrityToken,
+        expiresAt,
+      },
     });
   }
 

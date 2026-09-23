@@ -56,6 +56,20 @@ export async function POST(req: Request) {
   } catch (error: any) {
     // eslint-disable-line @typescript-eslint/no-explicit-any
     logger.error("Failed to create session", { error: error.message });
+
+    if (error.message === "DUPLICATE_SESSION") {
+      return NextResponse.json(
+        {
+          error: {
+            requestId: crypto.randomUUID(),
+            code: "CONFLICT",
+            message: "A session already exists for this attempt.",
+          },
+        },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       {
         error: {
