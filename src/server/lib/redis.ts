@@ -1,6 +1,6 @@
-import { Redis } from 'ioredis';
-import crypto from 'crypto';
-import { getServerEnv } from '../../lib/env';
+import { Redis } from "ioredis";
+import crypto from "crypto";
+import { getServerEnv } from "../../lib/env";
 
 const globalForRedis = globalThis as unknown as {
   redisClient: Redis | null | undefined;
@@ -15,7 +15,7 @@ export function getRedisClient(): Redis | null {
   const env = envConfig.NODE_ENV;
   let redisUrl = envConfig.REDIS_URL;
 
-  if (env === 'test' && envConfig.TEST_REDIS_URL) {
+  if (env === "test" && envConfig.TEST_REDIS_URL) {
     redisUrl = envConfig.TEST_REDIS_URL;
   }
 
@@ -36,16 +36,16 @@ export function getRedisClient(): Redis | null {
       return 100;
     },
     reconnectOnError(err: Error) {
-      if (err.message.includes('READONLY')) {
+      if (err.message.includes("READONLY")) {
         return true;
       }
       return false;
-    }
+    },
   };
 
   const client = new Redis(redisUrl, options);
-  
-  client.on('error', (err) => {
+
+  client.on("error", (err) => {
     // Only log standard properties to prevent leaking secrets in URL
     console.error(`[Redis Error] ${err.name}: ${err.message}`);
   });
@@ -55,13 +55,13 @@ export function getRedisClient(): Redis | null {
 }
 
 export function generateRateLimitKey(identifier: string): string {
-  const hash = crypto.createHash('sha256').update(identifier).digest('hex');
-  
+  const hash = crypto.createHash("sha256").update(identifier).digest("hex");
+
   // Safe default prefix in case of early import outside server context,
   // though realistically rateLimit runs in server context.
   let env = process.env.NODE_ENV;
   const testPrefix = process.env.TEST_RL_PREFIX;
-  
+
   try {
     const envConfig = getServerEnv();
     env = envConfig.NODE_ENV;
@@ -69,7 +69,7 @@ export function generateRateLimitKey(identifier: string): string {
     // If getServerEnv throws (e.g., config error), fallback to process.env
   }
 
-  if (env === 'test' && testPrefix) {
+  if (env === "test" && testPrefix) {
     return `${testPrefix}:${hash}`;
   }
   return `rl:v1:${hash}`;
@@ -110,21 +110,19 @@ export async function executeRateLimitScript(
   windowMs: number
 ): Promise<{ allowed: boolean; count: number; ttl: number } | null> {
   const key = generateRateLimitKey(identifier);
-  
+
   try {
-    const result = await client.eval(
-      rateLimitLuaScript,
-      1,
-      key,
-      limit,
-      windowMs
-    ) as [number, number, number];
-    
+    const result = (await client.eval(rateLimitLuaScript, 1, key, limit, windowMs)) as [
+      number,
+      number,
+      number,
+    ];
+
     if (result && Array.isArray(result) && result.length === 3) {
       return {
         allowed: result[0] === 1,
         count: result[1],
-        ttl: result[2]
+        ttl: result[2],
       };
     }
     return null;

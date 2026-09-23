@@ -1,4 +1,3 @@
-
 export function getPublicResult(result: any) {
   // Derive intervalWpms
   let intervalWpms: number[] = [];
@@ -16,7 +15,13 @@ export function getPublicResult(result: any) {
   if (result.errorMap && typeof result.errorMap === "object") {
     const entries = Object.entries(result.errorMap as Record<string, any>);
     for (const [key, val] of entries) {
-      if (val && typeof val === "object" && typeof val.count === "number" && Number.isFinite(val.count) && val.count >= 0) {
+      if (
+        val &&
+        typeof val === "object" &&
+        typeof val.count === "number" &&
+        Number.isFinite(val.count) &&
+        val.count >= 0
+      ) {
         weakKeys.push({ key, count: val.count });
       }
     }

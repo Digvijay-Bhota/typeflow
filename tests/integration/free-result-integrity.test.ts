@@ -42,7 +42,11 @@ describe("FREE-Result Integrity & Trust Model", () => {
     passageId = passage.id;
   });
 
-  async function createSession(mode: "TIMED" | "WORDS", duration = 60, startedOffsetMs = 0) {
+  async function createSession(
+    mode: "TIMED" | "WORDS",
+    duration = 60,
+    startedOffsetMs = 0
+  ) {
     const startedAt = new Date(Date.now() - startedOffsetMs);
     const integrityToken = randomBytes(32).toString("hex");
     const session = await db.testSession.create({
@@ -86,7 +90,7 @@ describe("FREE-Result Integrity & Trust Model", () => {
   it("FREE forged-count test: reconstructs instead of trusting client metrics", async () => {
     // 60-second test started 60 seconds ago
     const { session, integrityToken } = await createSession("TIMED", 60, 60000);
-    
+
     // Trace has 5 characters (index 0 to 4), but client metrics claim 1500 correctChars
     const events: ([number, 0, number, string] | [number, 1, number])[] = [
       [100, 0, 0, "t"],
@@ -116,7 +120,7 @@ describe("FREE-Result Integrity & Trust Model", () => {
 
   it("Missing evidence test: degrades to REVIEW status and CLIENT_COUNTS", async () => {
     const { session, integrityToken } = await createSession("TIMED", 60, 60000);
-    
+
     const res = await submitResult({
       sessionId: session.id,
       integrityToken,
@@ -134,7 +138,7 @@ describe("FREE-Result Integrity & Trust Model", () => {
   it("Too-early test: TIMED test submitted early with incomplete trace is not verified", async () => {
     // 60s test started only 1 second ago!
     const { session, integrityToken } = await createSession("TIMED", 60, 1000);
-    
+
     const events: ([number, 0, number, string] | [number, 1, number])[] = [
       [100, 0, 0, "t"],
     ];
@@ -154,7 +158,7 @@ describe("FREE-Result Integrity & Trust Model", () => {
   it("Compressed-time test: trace claims to happen in future", async () => {
     // 60s test, but server thinks only 1 second has elapsed
     const { session, integrityToken } = await createSession("WORDS", 0, 1000);
-    
+
     // Trace timestamp is 15000 (15s), but server elapsed is 1000 (1s)
     const events: ([number, 0, number, string] | [number, 1, number])[] = [
       [15000, 0, 0, "t"],
@@ -174,7 +178,7 @@ describe("FREE-Result Integrity & Trust Model", () => {
 
   it("Honest correction test: backspaces and retypes are correctly scored", async () => {
     const { session, integrityToken } = await createSession("WORDS", 0, 10000);
-    
+
     // Type 't', 'x', backspace, 'h' -> correctChars should be 2 ('t', 'h')
     const events: ([number, 0, number, string] | [number, 1, number])[] = [
       [100, 0, 0, "t"],
@@ -202,39 +206,73 @@ describe("FREE-Result Integrity & Trust Model", () => {
   it("Leaderboard test: legacy CLIENT_COUNTS FREE rows do not rank", async () => {
     // We already have some results in DB. Let's create specific results.
     const user = await db.user.create({
-      data: { authId: crypto.randomUUID(), email: "testlb@example.com" }
+      data: { authId: crypto.randomUUID(), email: "testlb@example.com" },
     });
 
     // Valid RECONSTRUCTED
     const { session: s1 } = await createSession("TIMED", 60, 60000);
-    await db.testSession.update({ where: { id: s1.id }, data: { status: "COMPLETED", userId: user.id } });
+    await db.testSession.update({
+      where: { id: s1.id },
+      data: { status: "COMPLETED", userId: user.id },
+    });
     await db.testResult.create({
       data: {
-        sessionId: s1.id, userId: user.id, shareId: "s1", wpm: 200, rawWpm: 200,
-        netWpm: 200, accuracy: 1, correctChars: 1000, incorrectChars: 0, totalChars: 1000,
-        correctedErrors: 0, uncorrectedErrors: 0, integrityStatus: "VERIFIED", scoringSource: "SERVER_RECONSTRUCTED",
-        elapsedMs: 60000, totalKeystrokes: 1000, duration: 60
-      }
+        sessionId: s1.id,
+        userId: user.id,
+        shareId: "s1",
+        wpm: 200,
+        rawWpm: 200,
+        netWpm: 200,
+        accuracy: 1,
+        correctChars: 1000,
+        incorrectChars: 0,
+        totalChars: 1000,
+        correctedErrors: 0,
+        uncorrectedErrors: 0,
+        integrityStatus: "VERIFIED",
+        scoringSource: "SERVER_RECONSTRUCTED",
+        elapsedMs: 60000,
+        totalKeystrokes: 1000,
+        duration: 60,
+      },
     });
 
     // Legacy CLIENT_COUNTS
     const { session: s2 } = await createSession("TIMED", 60, 60000);
-    await db.testSession.update({ where: { id: s2.id }, data: { status: "COMPLETED", userId: user.id } });
+    await db.testSession.update({
+      where: { id: s2.id },
+      data: { status: "COMPLETED", userId: user.id },
+    });
     await db.testResult.create({
       data: {
-        sessionId: s2.id, userId: user.id, shareId: "s2", wpm: 300, rawWpm: 300,
-        netWpm: 300, accuracy: 1, correctChars: 1500, incorrectChars: 0, totalChars: 1500,
-        correctedErrors: 0, uncorrectedErrors: 0, integrityStatus: "VERIFIED", scoringSource: "CLIENT_COUNTS",
-        elapsedMs: 60000, totalKeystrokes: 1500, duration: 60
-      }
+        sessionId: s2.id,
+        userId: user.id,
+        shareId: "s2",
+        wpm: 300,
+        rawWpm: 300,
+        netWpm: 300,
+        accuracy: 1,
+        correctChars: 1500,
+        incorrectChars: 0,
+        totalChars: 1500,
+        correctedErrors: 0,
+        uncorrectedErrors: 0,
+        integrityStatus: "VERIFIED",
+        scoringSource: "CLIENT_COUNTS",
+        elapsedMs: 60000,
+        totalKeystrokes: 1500,
+        duration: 60,
+      },
     });
 
     const { getLeaderboard } = await import("@/server/services/leaderboard.service");
     const board = await getLeaderboard({ period: "all-time", mode: "timed", limit: 10 });
-    
+
     // It should find the 200 wpm (s1) but NOT the 300 wpm (s2) because s2 is CLIENT_COUNTS
-    const userEntries = board.entries.filter(e => e.displayName === "Anonymous Typist" && e.netWpm >= 200); // we use Anonymous Typist since no displayName set
-    
+    const userEntries = board.entries.filter(
+      (e) => e.displayName === "Anonymous Typist" && e.netWpm >= 200
+    ); // we use Anonymous Typist since no displayName set
+
     expect(userEntries.length).toBeGreaterThan(0);
     expect(userEntries[0]?.netWpm).toBe(200); // the best valid one is 200
   });

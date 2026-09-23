@@ -1,4 +1,4 @@
-import { getRedisClient, executeRateLimitScript } from '../lib/redis';
+import { getRedisClient, executeRateLimitScript } from "../lib/redis";
 
 const rateLimitCache = new Map<string, { count: number; resetAt: number }>();
 let isCleanupRunning = false;
@@ -13,10 +13,15 @@ export async function rateLimit(
 
   try {
     const redisClient = getRedisClient();
-    
+
     if (redisClient) {
-      const result = await executeRateLimitScript(redisClient, identifier, limit, windowMs);
-      
+      const result = await executeRateLimitScript(
+        redisClient,
+        identifier,
+        limit,
+        windowMs
+      );
+
       if (result) {
         const resetAt = now + Math.max(0, result.ttl);
         if (result.allowed) {
@@ -24,14 +29,14 @@ export async function rateLimit(
             success: true,
             limit,
             remaining: Math.max(0, limit - result.count),
-            reset: resetAt
+            reset: resetAt,
           };
         } else {
           return {
             success: false,
             limit,
             remaining: 0,
-            reset: resetAt
+            reset: resetAt,
           };
         }
       } else {
@@ -39,13 +44,17 @@ export async function rateLimit(
       }
     }
   } catch (err) {
-    if (err instanceof Error && (err.message.startsWith('Configuration Error') || err.message.includes('Invalid server environment variables'))) {
+    if (
+      err instanceof Error &&
+      (err.message.startsWith("Configuration Error") ||
+        err.message.includes("Invalid server environment variables"))
+    ) {
       throw err;
     }
     return failClosed(limit, now + windowMs);
   }
 
-  if (env === 'production') {
+  if (env === "production") {
     throw new Error("Configuration Error: Memory fallback used in production.");
   }
 
@@ -70,7 +79,7 @@ function failClosed(limit: number, resetAt: number) {
     success: false,
     limit,
     remaining: 0,
-    reset: resetAt
+    reset: resetAt,
   };
 }
 

@@ -199,28 +199,39 @@ describe("Certificate Service", () => {
       expect(check.reasons[0]).toContain("duration below minimum");
     });
 
-
     it("should fail if CLIENT_COUNTS + VERIFIED", async () => {
-      const { result } = setupResult({ integrityStatus: "VERIFIED", scoringSource: "CLIENT_COUNTS" });
+      const { result } = setupResult({
+        integrityStatus: "VERIFIED",
+        scoringSource: "CLIENT_COUNTS",
+      });
       const check = await checkCertificateEligibility(result.id);
       expect(check.eligible).toBe(false);
       expect(check.reasons[0]).toContain("VERIFIED");
     });
 
     it("should fail if SERVER_RECONSTRUCTED + REVIEW", async () => {
-      const { result } = setupResult({ integrityStatus: "REVIEW", scoringSource: "SERVER_RECONSTRUCTED" });
+      const { result } = setupResult({
+        integrityStatus: "REVIEW",
+        scoringSource: "SERVER_RECONSTRUCTED",
+      });
       const check = await checkCertificateEligibility(result.id);
       expect(check.eligible).toBe(false);
     });
 
     it("should fail if SERVER_RECONSTRUCTED + INVALID", async () => {
-      const { result } = setupResult({ integrityStatus: "INVALID", scoringSource: "SERVER_RECONSTRUCTED" });
+      const { result } = setupResult({
+        integrityStatus: "INVALID",
+        scoringSource: "SERVER_RECONSTRUCTED",
+      });
       const check = await checkCertificateEligibility(result.id);
       expect(check.eligible).toBe(false);
     });
 
     it("should pass if SERVER_RECONSTRUCTED + VERIFIED (with correct metrics)", async () => {
-      const { result } = setupResult({ integrityStatus: "VERIFIED", scoringSource: "SERVER_RECONSTRUCTED" });
+      const { result } = setupResult({
+        integrityStatus: "VERIFIED",
+        scoringSource: "SERVER_RECONSTRUCTED",
+      });
       const check = await checkCertificateEligibility(result.id);
       expect(check.eligible).toBe(true);
     });

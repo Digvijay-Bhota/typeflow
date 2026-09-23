@@ -2,7 +2,10 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { db } from "@/server/db";
 import { randomBytes, createHash } from "crypto";
 import { createSession } from "@/server/services/session.service";
-import { addCandidate, startCandidateAttempt } from "@/server/services/assessment.service";
+import {
+  addCandidate,
+  startCandidateAttempt,
+} from "@/server/services/assessment.service";
 import { TypingMode, Language } from "@prisma/client";
 
 // Mock the auth service to bypass authenticated user checks for candidates
@@ -17,12 +20,14 @@ vi.mock("next/headers", () => ({
   }),
 }));
 vi.mock("@/server/middleware/rateLimit", () => ({
-  rateLimit: vi.fn().mockResolvedValue({ success: true, remaining: 10, limit: 10, reset: 0 }),
+  rateLimit: vi
+    .fn()
+    .mockResolvedValue({ success: true, remaining: 10, limit: 10, reset: 0 }),
 }));
 
 describe("B2B Single-Session Invariant", () => {
   let owner: any;
-  
+
   beforeAll(() => {
     process.env.SUPABASE_URL = "http://localhost:54321";
     process.env.SUPABASE_ANON_KEY = "anon";
@@ -142,8 +147,18 @@ describe("B2B Single-Session Invariant", () => {
     const { candidate, inviteToken } = await createTestEnvironment(1);
     const attempt = await startCandidateAttempt(inviteToken);
 
-    const p1 = createSession({ mode: "timed", language: "english", inviteToken, attemptId: attempt.id });
-    const p2 = createSession({ mode: "timed", language: "english", inviteToken, attemptId: attempt.id });
+    const p1 = createSession({
+      mode: "timed",
+      language: "english",
+      inviteToken,
+      attemptId: attempt.id,
+    });
+    const p2 = createSession({
+      mode: "timed",
+      language: "english",
+      inviteToken,
+      attemptId: attempt.id,
+    });
 
     const results = await Promise.allSettled([p1, p2]);
 
@@ -152,19 +167,32 @@ describe("B2B Single-Session Invariant", () => {
 
     expect(successes.length).toBe(1);
     expect(rejections.length).toBe(1);
-    expect((rejections[0] as PromiseRejectedResult).reason.message).toBe("DUPLICATE_SESSION");
+    expect((rejections[0] as PromiseRejectedResult).reason.message).toBe(
+      "DUPLICATE_SESSION"
+    );
 
-    const attemptInDb = await db.assessmentAttempt.findUnique({ where: { id: attempt.id } });
-    expect(attemptInDb?.sessionId).toBe((successes[0] as PromiseFulfilledResult<any>).value.sessionId);
+    const attemptInDb = await db.assessmentAttempt.findUnique({
+      where: { id: attempt.id },
+    });
+    expect(attemptInDb?.sessionId).toBe(
+      (successes[0] as PromiseFulfilledResult<any>).value.sessionId
+    );
   });
 
   it("3. Eight-way concurrency: prevents race conditions at scale", async () => {
     const { candidate, inviteToken } = await createTestEnvironment(1);
     const attempt = await startCandidateAttempt(inviteToken);
 
-    const promises = Array(8).fill(0).map(() => 
-      createSession({ mode: "timed", language: "english", inviteToken, attemptId: attempt.id })
-    );
+    const promises = Array(8)
+      .fill(0)
+      .map(() =>
+        createSession({
+          mode: "timed",
+          language: "english",
+          inviteToken,
+          attemptId: attempt.id,
+        })
+      );
 
     const results = await Promise.allSettled(promises);
 
@@ -190,7 +218,12 @@ describe("B2B Single-Session Invariant", () => {
     });
 
     await expect(
-      createSession({ mode: "timed", language: "english", inviteToken, attemptId: attempt.id })
+      createSession({
+        mode: "timed",
+        language: "english",
+        inviteToken,
+        attemptId: attempt.id,
+      })
     ).rejects.toThrow("INVALID_ATTEMPT");
   });
 
@@ -199,11 +232,21 @@ describe("B2B Single-Session Invariant", () => {
 
     // Attempt 1
     const attempt1 = await startCandidateAttempt(inviteToken);
-    const s1 = await createSession({ mode: "timed", language: "english", inviteToken, attemptId: attempt1.id });
+    const s1 = await createSession({
+      mode: "timed",
+      language: "english",
+      inviteToken,
+      attemptId: attempt1.id,
+    });
     expect(s1.sessionId).toBeDefined();
 
     await expect(
-      createSession({ mode: "timed", language: "english", inviteToken, attemptId: attempt1.id })
+      createSession({
+        mode: "timed",
+        language: "english",
+        inviteToken,
+        attemptId: attempt1.id,
+      })
     ).rejects.toThrow("DUPLICATE_SESSION");
 
     // Artificially complete attempt1
@@ -214,7 +257,12 @@ describe("B2B Single-Session Invariant", () => {
 
     // Attempt 2
     const attempt2 = await startCandidateAttempt(inviteToken);
-    const s2 = await createSession({ mode: "timed", language: "english", inviteToken, attemptId: attempt2.id });
+    const s2 = await createSession({
+      mode: "timed",
+      language: "english",
+      inviteToken,
+      attemptId: attempt2.id,
+    });
     expect(s2.sessionId).toBeDefined();
 
     // Attempt 3 (Should fail maxAttempts)
@@ -222,8 +270,10 @@ describe("B2B Single-Session Invariant", () => {
       where: { id: attempt2.id },
       data: { status: "COMPLETED", completedAt: new Date() },
     });
-    
-    await expect(startCandidateAttempt(inviteToken)).rejects.toThrow("MAX_ATTEMPTS_REACHED");
+
+    await expect(startCandidateAttempt(inviteToken)).rejects.toThrow(
+      "MAX_ATTEMPTS_REACHED"
+    );
   });
 
   it("6. Authorization regressions: prevents unauthorized access", async () => {
@@ -232,26 +282,43 @@ describe("B2B Single-Session Invariant", () => {
 
     // Wrong invite token
     await expect(
-      createSession({ mode: "timed", language: "english", inviteToken: "wrong", attemptId: attempt.id })
+      createSession({
+        mode: "timed",
+        language: "english",
+        inviteToken: "wrong",
+        attemptId: attempt.id,
+      })
     ).rejects.toThrow("INVALID_OR_CLOSED_ASSESSMENT");
 
     // Invalid attempt ID
     const randomUuid = "00000000-0000-0000-0000-000000000000";
     await expect(
-      createSession({ mode: "timed", language: "english", inviteToken, attemptId: randomUuid })
+      createSession({
+        mode: "timed",
+        language: "english",
+        inviteToken,
+        attemptId: randomUuid,
+      })
     ).rejects.toThrow("INVALID_ATTEMPT");
   });
 
   it("7. Orphan protection: verifies no unreferenced test sessions are created during concurrency", async () => {
     const { candidate, inviteToken } = await createTestEnvironment(1);
     const attempt = await startCandidateAttempt(inviteToken);
-    
+
     // Count sessions before
     const initialSessions = await db.testSession.count();
 
-    const promises = Array(8).fill(0).map(() => 
-      createSession({ mode: "timed", language: "english", inviteToken, attemptId: attempt.id })
-    );
+    const promises = Array(8)
+      .fill(0)
+      .map(() =>
+        createSession({
+          mode: "timed",
+          language: "english",
+          inviteToken,
+          attemptId: attempt.id,
+        })
+      );
 
     await Promise.allSettled(promises);
 
@@ -263,14 +330,20 @@ describe("B2B Single-Session Invariant", () => {
   it("8. Route-level 409 test: maps DUPLICATE_SESSION to HTTP 409", async () => {
     const { candidate, inviteToken } = await createTestEnvironment(1);
     const attempt = await startCandidateAttempt(inviteToken);
-    
+
     // First call succeeds
     const req1 = new Request("http://localhost/api/session/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "timed", language: "english", duration: 60, inviteToken, attemptId: attempt.id }),
+      body: JSON.stringify({
+        mode: "timed",
+        language: "english",
+        duration: 60,
+        inviteToken,
+        attemptId: attempt.id,
+      }),
     });
-    
+
     const { POST } = await import("@/app/api/session/create/route");
     const res1 = await POST(req1);
     const json1 = await res1.json();
@@ -278,17 +351,23 @@ describe("B2B Single-Session Invariant", () => {
       console.log("RES1 FAILED:", JSON.stringify(json1, null, 2));
     }
     expect(res1.status).toBe(201);
-    
+
     // Second call fails with 409
     const req2 = new Request("http://localhost/api/session/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "timed", language: "english", duration: 60, inviteToken, attemptId: attempt.id }),
+      body: JSON.stringify({
+        mode: "timed",
+        language: "english",
+        duration: 60,
+        inviteToken,
+        attemptId: attempt.id,
+      }),
     });
-    
+
     const res2 = await POST(req2);
     expect(res2.status).toBe(409);
-    
+
     const json = await res2.json();
     expect(json.error.code).toBe("CONFLICT");
     expect(json.error.message).toBe("A session already exists for this attempt.");
@@ -297,7 +376,7 @@ describe("B2B Single-Session Invariant", () => {
   it("9. Wrong-candidate attempt / IDOR regression", async () => {
     // 1. Create Assessment & Candidate A
     const { assessment, inviteToken: tokenA } = await createTestEnvironment(1);
-    
+
     // 2. Create Candidate B for the same assessment
     const tokenB = randomBytes(32).toString("hex");
     const tokenBHash = createHash("sha256").update(tokenB).digest("hex");
@@ -316,20 +395,27 @@ describe("B2B Single-Session Invariant", () => {
 
     // 4. Try to create session with B's token and A's attemptId
     await expect(
-      createSession({ mode: "timed", language: "english", inviteToken: tokenB, attemptId: attemptA.id })
+      createSession({
+        mode: "timed",
+        language: "english",
+        inviteToken: tokenB,
+        attemptId: attemptA.id,
+      })
     ).rejects.toThrow("INVALID_ATTEMPT");
 
     // Verify no session was attached or created
     const finalSessionCount = await db.testSession.count();
     expect(finalSessionCount).toBe(initialSessionCount);
 
-    const attemptAInDb = await db.assessmentAttempt.findUnique({ where: { id: attemptA.id } });
+    const attemptAInDb = await db.assessmentAttempt.findUnique({
+      where: { id: attemptA.id },
+    });
     expect(attemptAInDb?.sessionId).toBeNull();
   });
 
   it("10. Unpublished assessment regression", async () => {
     const { candidate, inviteToken } = await createTestEnvironment(1, "DRAFT");
-    
+
     // Note: startCandidateAttempt will naturally fail if assessment is not published,
     // but the vulnerability allows passing ANY attemptId + inviteToken directly to createSession.
     // So we manually craft a STARTED attempt.
@@ -344,7 +430,12 @@ describe("B2B Single-Session Invariant", () => {
     const initialSessionCount = await db.testSession.count();
 
     await expect(
-      createSession({ mode: "timed", language: "english", inviteToken, attemptId: attempt.id })
+      createSession({
+        mode: "timed",
+        language: "english",
+        inviteToken,
+        attemptId: attempt.id,
+      })
     ).rejects.toThrow("INVALID_OR_CLOSED_ASSESSMENT");
 
     const finalSessionCount = await db.testSession.count();

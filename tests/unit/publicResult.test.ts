@@ -33,7 +33,7 @@ describe("publicResult helper", () => {
         user: {
           id: "private-user",
         },
-        internalToken: "secret"
+        internalToken: "secret",
       },
       claimToken: "secret-token",
       userId: "user-1",
@@ -42,17 +42,17 @@ describe("publicResult helper", () => {
         intervalWpms: [100, 110, "bad", -5, 120],
       },
       errorMap: {
-        "a": { count: 10 },
-        "b": { count: 5 },
-        "c": { count: 15 },
-        "d": { count: -1 }, // Should be ignored
-        "e": { count: "not-a-number" }, // Should be ignored
-        "f": { count: 1 },
-        "g": { count: 2 },
-        "h": { count: 3 },
-        "i": { count: 4 },
-        "j": { count: 6 },
-        "k": { count: 7 }, // We have 11 total entries, 2 invalid, 9 valid, limit is 8
+        a: { count: 10 },
+        b: { count: 5 },
+        c: { count: 15 },
+        d: { count: -1 }, // Should be ignored
+        e: { count: "not-a-number" }, // Should be ignored
+        f: { count: 1 },
+        g: { count: 2 },
+        h: { count: 3 },
+        i: { count: 4 },
+        j: { count: 6 },
+        k: { count: 7 }, // We have 11 total entries, 2 invalid, 9 valid, limit is 8
       },
       codeMetrics: { complexity: 10 },
     };

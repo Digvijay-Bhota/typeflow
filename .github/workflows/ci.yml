@@ -114,8 +114,19 @@ jobs:
       - name: Run unit tests with coverage
         run: npm run test:coverage
         env:
+          # Test-only placeholders so getServerEnv() validation passes
+          # (e.g. rateLimit -> getRedisClient -> getServerEnv). Not real secrets.
+          NODE_ENV: "test"
+          SUPABASE_URL: "http://localhost:54321"
+          SUPABASE_ANON_KEY: "test-only-supabase-anon-key"
+          SUPABASE_SERVICE_ROLE_KEY: "test-only-supabase-service-role-key"
           DATABASE_URL: "postgresql://postgres:password@localhost:5432/typeflow_test"
           DIRECT_URL: "postgresql://postgres:password@localhost:5432/typeflow_test"
+          RAZORPAY_KEY_ID: "rzp_test_placeholder"
+          RAZORPAY_KEY_SECRET: "test-only-razorpay-key-secret"
+          RAZORPAY_WEBHOOK_SECRET: "test-only-razorpay-webhook-secret"
+          APP_URL: "http://localhost:3000"
+          SESSION_SECRET: "test-only-session-secret-not-for-production"
           TEST_REDIS_URL: "redis://localhost:6379"
 
       - name: Upload coverage
@@ -163,6 +174,7 @@ jobs:
           RAZORPAY_WEBHOOK_SECRET: "placeholder"
           APP_URL: "http://localhost:3000"
           SESSION_SECRET: "placeholder-session-secret-32-chars-minimum"
+          REDIS_URL: "rediss://placeholder:6379"
           NODE_ENV: "production"
 
       - name: Upload build artifact
