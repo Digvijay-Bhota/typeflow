@@ -7,11 +7,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import { getServerEnv } from "@/lib/env";
+import { getServerEnv, getSupabaseAuthEnv } from "@/lib/env";
 
 export async function createClient() {
   const cookieStore = await cookies();
-  const env = getServerEnv();
+  // Session-bound client only needs URL + anon key; see getSupabaseAuthEnv().
+  const env = getSupabaseAuthEnv();
 
   return createServerClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
     cookies: {

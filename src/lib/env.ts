@@ -124,6 +124,31 @@ export function getServerEnv(): z.infer<typeof serverSchema> {
   return _serverEnv;
 }
 
+// ─── Supabase auth environment (middleware / session refresh) ────────────────
+// Middleware and the cookie-bound Supabase server client only need the
+// Supabase URL + anon key. They must not depend on the full server schema,
+// otherwise an unrelated bad variable (DB, Razorpay, Redis, ...) takes down
+// every request. Not cached, so a fixed env is picked up without a restart;
+// parsing two strings per call is negligible.
+const supabaseAuthSchema = z.object({
+  SUPABASE_URL: serverSchema.innerType().shape.SUPABASE_URL,
+  SUPABASE_ANON_KEY: serverSchema.innerType().shape.SUPABASE_ANON_KEY,
+});
+
+export function getSupabaseAuthEnv(): z.infer<typeof supabaseAuthSchema> {
+  if (typeof window !== "undefined") {
+    throw new Error("getSupabaseAuthEnv() must not be called from client-side code.");
+  }
+  return parseEnv(
+    supabaseAuthSchema,
+    {
+      SUPABASE_URL: process.env.SUPABASE_URL,
+      SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+    },
+    "Supabase auth"
+  );
+}
+
 // Client env — safe to expose; only NEXT_PUBLIC_ vars
 // Lazy singleton to avoid module-load failures when env vars aren't set yet
 let _clientEnv: z.infer<typeof clientSchema> | undefined;

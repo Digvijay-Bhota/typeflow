@@ -4,11 +4,14 @@ import {
   getRedisClient,
   executeRateLimitScript,
   generateRateLimitKey,
+  REDIS_CONNECT_TIMEOUT_MS,
+  REDIS_COMMAND_TIMEOUT_MS,
 } from "../../src/server/lib/redis";
 import Redis from "ioredis";
 import { fork } from "child_process";
 import path from "path";
 import crypto from "crypto";
+import net from "net";
 
 // Use a local redis for tests
 const TEST_REDIS_URL = process.env.TEST_REDIS_URL || "redis://localhost:6379";
@@ -320,6 +323,153 @@ describe("Distributed Rate Limiter", () => {
       expect(key1).toBe(key2);
       expect(key1.length).toBeLessThan(100);
       expect(key1).not.toContain("AAAA");
+    });
+  });
+
+  describe("9. Client resilience", () => {
+    // TCP proxy to the test Redis that holds every new connection for
+    // `delayMs` before piping it through, simulating a slow cold TLS path.
+    async function startDelayedProxy(delayMs: number) {
+      const target = new URL(TEST_REDIS_URL);
+      const server = net.createServer((client) => {
+        client.pause();
+        setTimeout(() => {
+          const upstream = net.connect(
+            Number(target.port || 6379),
+            target.hostname,
+            () => {
+              client.pipe(upstream).pipe(client);
+              client.resume();
+            }
+          );
+          upstream.on("error", () => client.destroy());
+          client.on("error", () => upstream.destroy());
+        }, delayMs);
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const { port } = server.address() as net.AddressInfo;
+      return { url: `redis://127.0.0.1:${port}`, close: () => server.close() };
+    }
+
+    async function waitForStatus(client: Redis, status: string, timeoutMs = 5000) {
+      const deadline = Date.now() + timeoutMs;
+      while (client.status !== status) {
+        if (Date.now() > deadline) {
+          throw new Error(`client stuck in ${client.status}, expected ${status}`);
+        }
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    }
+
+    it("configures cold-start-tolerant timeouts without changing retry behaviour", () => {
+      const client = getRedisClient()!;
+
+      expect(REDIS_CONNECT_TIMEOUT_MS).toBe(3000);
+      expect(REDIS_COMMAND_TIMEOUT_MS).toBe(2000);
+      expect(client.options.connectTimeout).toBe(3000);
+      expect(client.options.commandTimeout).toBe(2000);
+      expect(client.options.lazyConnect).toBe(true);
+      expect(client.options.maxRetriesPerRequest).toBe(1);
+      expect(client.options.retryStrategy!(1)).toBe(100);
+      expect(client.options.retryStrategy!(2)).toBeNull();
+    });
+
+    it("succeeds on a cold connection slower than the old 500ms command timeout", async () => {
+      const proxy = await startDelayedProxy(1200);
+      try {
+        vi.stubEnv("TEST_REDIS_URL", proxy.url);
+
+        const start = Date.now();
+        const result = await rateLimit("cold_start_id", 5, 10000);
+
+        expect(Date.now() - start).toBeGreaterThanOrEqual(1200);
+        expect(result.success).toBe(true);
+        expect(result.remaining).toBe(4);
+      } finally {
+        getRedisClient()?.disconnect();
+        proxy.close();
+      }
+    });
+
+    it("still fails closed within the command timeout when the cold path is too slow", async () => {
+      const proxy = await startDelayedProxy(REDIS_COMMAND_TIMEOUT_MS + 1500);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        vi.stubEnv("TEST_REDIS_URL", proxy.url);
+
+        const start = Date.now();
+        const result = await rateLimit("too_slow_id", 5, 10000);
+
+        expect(result.success).toBe(false);
+        expect(Date.now() - start).toBeLessThan(REDIS_COMMAND_TIMEOUT_MS + 1000);
+      } finally {
+        getRedisClient()?.disconnect();
+        proxy.close();
+      }
+    });
+
+    it("reuses a healthy cached client", async () => {
+      const first = getRedisClient();
+      await rateLimit("reuse_id", 5, 10000);
+
+      expect(getRedisClient()).toBe(first);
+      expect(first!.status).toBe("ready");
+    });
+
+    it("replaces a cached client that has reached the terminal 'end' state", async () => {
+      const dead = getRedisClient()!;
+      await dead.ping();
+      dead.disconnect();
+      await waitForStatus(dead, "end");
+
+      const fresh = getRedisClient();
+      expect(fresh).not.toBe(dead);
+
+      const result = await rateLimit("replaced_client_id", 5, 10000);
+      expect(result.success).toBe(true);
+      expect(fresh!.status).toBe("ready");
+    });
+
+    it("keeps failing closed (no memory fallback) after a failed client is replaced", async () => {
+      vi.stubEnv("TEST_REDIS_URL", "redis://localhost:9999"); // Unreachable
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const dead = getRedisClient()!;
+      const first = await rateLimit("dead_backend_id", 1, 10000);
+      await waitForStatus(dead, "end");
+
+      // A limit of 1 would allow this under the in-memory fallback.
+      const second = await rateLimit("dead_backend_id", 1, 10000);
+
+      expect(first.success).toBe(false);
+      expect(second.success).toBe(false);
+      expect(getRedisClient()).not.toBe(dead);
+    });
+
+    it("does not log Redis credentials or the connection URL on failure", async () => {
+      const secret = "TopSecretPassw0rd";
+      const url = `redis://default:${secret}@localhost:9999`;
+      vi.stubEnv("TEST_REDIS_URL", url);
+      const logged: string[] = [];
+      const capture = (...args: unknown[]) => {
+        logged.push(
+          args.map((a) => (a instanceof Error ? a.stack : String(a))).join(" ")
+        );
+      };
+      for (const level of ["error", "warn", "log", "info", "debug"] as const) {
+        vi.spyOn(console, level).mockImplementation(capture);
+      }
+
+      const dead = getRedisClient()!;
+      await rateLimit("secret_log_id", 5, 10000);
+      await waitForStatus(dead, "end");
+      await rateLimit("secret_log_id", 5, 10000);
+
+      expect(logged.length).toBeGreaterThan(0);
+      for (const line of logged) {
+        expect(line).not.toContain(secret);
+        expect(line).not.toContain("redis://");
+      }
     });
   });
 });
