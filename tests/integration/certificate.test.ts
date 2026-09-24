@@ -3,8 +3,8 @@ import { db } from "@/server/db";
 import {
   checkCertificateEligibility,
   createCertificate,
-  generateCertificatePdfAndQr,
   generateVerificationHash,
+  renderCertificatePdf,
   getCertificateVerification,
   revokeCertificate,
 } from "@/server/services/certificate.service";
@@ -16,7 +16,7 @@ import {
 } from "@/lib/constants";
 import { PDFDocument } from "pdf-lib";
 import { nanoid } from "nanoid";
-import * as SupabaseServer from "@/lib/supabase/server";
+import { createHmac } from "crypto";
 
 // Mock the Prisma DB
 vi.mock("@/server/db", () => ({
@@ -46,6 +46,7 @@ vi.mock("@/server/db", () => ({
       findUnique: vi.fn(),
       findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -55,10 +56,10 @@ vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: vi.fn(),
 }));
 
-// Mock env so tests don't depend on real SESSION_SECRET/Supabase/Razorpay vars being set
+// Mock env so tests don't depend on real signing/Supabase/Razorpay vars being set
 vi.mock("@/lib/env", () => ({
   getServerEnv: vi.fn(() => ({
-    SESSION_SECRET: "test-session-secret-at-least-32-characters-long",
+    CERTIFICATE_SIGNING_SECRET: "test-certificate-signing-secret-32-characters",
   })),
 }));
 
@@ -114,6 +115,16 @@ describe("Certificate Service", () => {
       const cert = { id: nanoid(), ...data };
       mockCertificates.push(cert);
       return Promise.resolve(cert);
+    });
+
+    (db.certificate.updateMany as any).mockImplementation(({ where, data }: any) => {
+      const matching = mockCertificates.filter(
+        (c) =>
+          (c.certificateId === where.certificateId || c.id === where.id) &&
+          c.status !== where.status?.not
+      );
+      for (const c of matching) Object.assign(c, data);
+      return Promise.resolve({ count: matching.length });
     });
 
     (db.certificate.update as any).mockImplementation(({ where, data }: any) => {
@@ -290,10 +301,12 @@ describe("Certificate Service", () => {
       const cert = await createCertificate(user1.id, result.id);
 
       const verification = await getCertificateVerification(cert.certificateId);
-      expect(verification).toBeDefined();
-      expect(verification?.certificateId).toBe(cert.certificateId);
-      expect(verification?.status).toBe("PENDING_PAYMENT");
-      expect(verification?.wpm).toBe(cert.wpm);
+      // An unpaid certificate is not verified and reveals no details.
+      expect(verification).toEqual({
+        certificateId: cert.certificateId,
+        state: "PENDING",
+        message: expect.any(String),
+      });
       // Ensure secrets are NOT exposed
       expect((verification as any).verificationHash).toBeUndefined();
       expect((verification as any).userId).toBeUndefined();
@@ -316,7 +329,7 @@ describe("Certificate Service", () => {
         "Cheating detected post-issue"
       );
       expect(revoked.status).toBe("REVOKED");
-      expect(revoked.revokedReason).toBe("Cheating detected post-issue");
+      expect(revoked.revokedReason).toBe("ADMIN: Cheating detected post-issue");
     });
 
     it("should deny USER from revoking", async () => {
@@ -325,101 +338,93 @@ describe("Certificate Service", () => {
 
       await expect(
         revokeCertificate(user1.id, cert.certificateId, "My reason")
-      ).rejects.toThrow("Unauthorized");
+      ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+      expect(mockCertificates[0]?.status).toBe("PENDING_PAYMENT");
     });
   });
 
-  describe("PDF and QR Generation", () => {
-    it("should generate a valid PDF and handle storage upload correctly (mocked)", async () => {
-      const { result } = setupResult();
-      const cert = await createCertificate(user1.id, result.id);
+  describe("PDF rendering", () => {
+    const snapshot = {
+      certificateId: "TF-2026-ABCDEF",
+      testType: "TIMED Typing Assessment",
+      language: "ENGLISH" as const,
+      duration: 300,
+      wpm: 61.4,
+      accuracy: 0.975,
+      issuedAt: new Date("2026-09-01T10:00:00.000Z"),
+      recipientName: "User 1",
+    };
+    const verifyUrl = "http://localhost:3000/verify/TF-2026-ABCDEF";
 
-      const mockUpload = vi.fn().mockResolvedValue({ error: null });
-      const mockGetPublicUrl = vi.fn().mockReturnValue({
-        data: {
-          publicUrl: `https://mock.storage/certificates/${cert.certificateId}.pdf`,
-        },
-      });
-
-      (SupabaseServer.createAdminClient as any).mockReturnValue({
-        storage: {
-          from: vi.fn().mockReturnValue({
-            upload: mockUpload,
-            getPublicUrl: mockGetPublicUrl,
-          }),
-        },
-      });
-
-      const { pdfBytes, pdfUrl, qrDataUrl, certificate } =
-        await generateCertificatePdfAndQr(cert.certificateId);
-
-      expect(mockUpload).toHaveBeenCalledWith(
-        `certificates/${cert.certificateId}.pdf`,
-        expect.anything(),
-        { contentType: "application/pdf", upsert: true }
-      );
-      expect(pdfUrl).toBe(`https://mock.storage/certificates/${cert.certificateId}.pdf`);
-      expect(qrDataUrl).toContain("data:image/png;base64,");
-
-      const loadedPdf = await PDFDocument.load(pdfBytes);
+    it("renders a one-page PDF", async () => {
+      const bytes = await renderCertificatePdf(snapshot, verifyUrl);
+      const loadedPdf = await PDFDocument.load(bytes);
       expect(loadedPdf.getPageCount()).toBe(1);
+      expect(loadedPdf.getCreationDate()?.toISOString()).toBe(
+        snapshot.issuedAt.toISOString()
+      );
     });
 
-    it("should fallback when upload fails", async () => {
-      const { result } = setupResult();
-      const cert = await createCertificate(user1.id, result.id);
-
-      (SupabaseServer.createAdminClient as any).mockReturnValue({
-        storage: {
-          from: vi.fn().mockReturnValue({
-            upload: vi.fn().mockResolvedValue({ error: new Error("Mock network error") }),
-          }),
-        },
-      });
-
-      const { pdfUrl } = await generateCertificatePdfAndQr(cert.certificateId);
-
-      expect(pdfUrl).toBe(
-        `https://storage.typeflow.app/certificates/${cert.certificateId}.pdf`
-      );
+    it("is deterministic, so a retried upload writes identical bytes", async () => {
+      const a = await renderCertificatePdf(snapshot, verifyUrl);
+      const b = await renderCertificatePdf(snapshot, verifyUrl);
+      expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
     });
   });
 });
 
-describe("generateVerificationHash — SESSION_SECRET configuration", () => {
+describe("generateVerificationHash — CERTIFICATE_SIGNING_SECRET configuration", () => {
+  const certId = "TF-2026-ABCDEF";
+  const userId = "u1";
+  const issuedAt = new Date("2026-01-01T00:00:00.000Z");
+  const withEnv = (env: Record<string, string>) =>
+    vi.mocked(getServerEnv).mockReturnValue(env as ReturnType<typeof getServerEnv>);
+
   afterEach(() => {
-    vi.mocked(getServerEnv).mockReturnValue({
-      SESSION_SECRET: "test-session-secret-at-least-32-characters-long",
-    } as ReturnType<typeof getServerEnv>);
+    withEnv({
+      CERTIFICATE_SIGNING_SECRET: "test-certificate-signing-secret-32-characters",
+    });
   });
 
-  it("derives the hash from getServerEnv(), not a hardcoded secret", () => {
-    const certId = "TF-2026-ABCDEF";
-    const userId = "u1";
-    const issuedAt = new Date("2026-01-01T00:00:00.000Z");
-
-    vi.mocked(getServerEnv).mockReturnValue({
-      SESSION_SECRET: "secret-one-at-least-32-characters-long",
-    } as ReturnType<typeof getServerEnv>);
+  it("derives the hash from the dedicated signing secret, not a hardcoded secret", () => {
+    withEnv({ CERTIFICATE_SIGNING_SECRET: "signing-secret-one-at-least-32-characters" });
     const hashWithSecretOne = generateVerificationHash(certId, userId, issuedAt);
 
-    vi.mocked(getServerEnv).mockReturnValue({
-      SESSION_SECRET: "a-totally-different-secret-32-characters",
-    } as ReturnType<typeof getServerEnv>);
+    withEnv({ CERTIFICATE_SIGNING_SECRET: "a-totally-different-signing-secret-32ch" });
     const hashWithSecretTwo = generateVerificationHash(certId, userId, issuedAt);
 
     // Same inputs, different configured secrets → different hashes proves the
     // secret is read live from getServerEnv(), not a module-level constant.
     expect(hashWithSecretOne).not.toBe(hashWithSecretTwo);
     expect(hashWithSecretOne).toHaveLength(64); // sha256 hex digest
+    expect(hashWithSecretOne).toBe(
+      createHmac("sha256", "signing-secret-one-at-least-32-characters")
+        .update(`${certId}:${userId}:${issuedAt.toISOString()}`)
+        .digest("hex")
+    );
   });
 
-  it("fails closed when SESSION_SECRET is missing/invalid instead of falling back", () => {
+  it("is independent of SESSION_SECRET (rotating it keeps certificates valid)", () => {
+    const signing = "signing-secret-one-at-least-32-characters";
+    withEnv({
+      CERTIFICATE_SIGNING_SECRET: signing,
+      SESSION_SECRET: "session-secret-one-at-least-32-characters",
+    });
+    const before = generateVerificationHash(certId, userId, issuedAt);
+
+    withEnv({
+      CERTIFICATE_SIGNING_SECRET: signing,
+      SESSION_SECRET: "rotated-session-secret-at-least-32-chars",
+    });
+    expect(generateVerificationHash(certId, userId, issuedAt)).toBe(before);
+  });
+
+  it("fails closed when the signing secret is missing/invalid instead of falling back", () => {
     vi.mocked(getServerEnv).mockImplementation(() => {
       throw new Error("Invalid server environment variables. See above.");
     });
 
-    expect(() => generateVerificationHash("TF-2026-ABCDEF", "u1", new Date())).toThrow(
+    expect(() => generateVerificationHash(certId, userId, new Date())).toThrow(
       "Invalid server environment variables"
     );
   });

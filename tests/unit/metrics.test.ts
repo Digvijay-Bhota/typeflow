@@ -28,8 +28,6 @@ import {
   getWeakKeys,
   classifyKey,
   analyzeErrorsByCategory,
-  isCertificateEligible,
-  classifyIntegrity,
 } from "@/features/typing/lib/metrics";
 
 // ─── WPM ─────────────────────────────────────────────────────────────────────
@@ -333,107 +331,5 @@ describe("analyzeErrorsByCategory", () => {
     expect(result.uppercase).toBe(3);
     expect(result.numeric).toBe(2);
     expect(result.punctuation).toBe(4);
-  });
-});
-
-// ─── Certificate Eligibility ──────────────────────────────────────────────────
-
-describe("isCertificateEligible", () => {
-  const base = {
-    wpm: 45,
-    accuracy: 0.96,
-    durationSeconds: 300,
-    integrityStatus: "VERIFIED" as const,
-    minWpm: 30,
-    minAccuracy: 90,
-    minDuration: 300,
-  };
-
-  it("returns eligible for passing result", () => {
-    expect(isCertificateEligible(base).eligible).toBe(true);
-  });
-
-  it("rejects INVALID integrity", () => {
-    const result = isCertificateEligible({
-      ...base,
-      integrityStatus: "INVALID",
-    });
-    expect(result.eligible).toBe(false);
-    expect(result.reason).toContain("integrity");
-  });
-
-  it("rejects short duration", () => {
-    const result = isCertificateEligible({ ...base, durationSeconds: 60 });
-    expect(result.eligible).toBe(false);
-    expect(result.reason).toContain("minimum");
-  });
-
-  it("rejects WPM below threshold", () => {
-    const result = isCertificateEligible({ ...base, wpm: 25 });
-    expect(result.eligible).toBe(false);
-    expect(result.reason).toContain("WPM");
-  });
-
-  it("rejects accuracy below threshold", () => {
-    const result = isCertificateEligible({ ...base, accuracy: 0.85 });
-    expect(result.eligible).toBe(false);
-    expect(result.reason).toContain("accuracy");
-  });
-
-  it("allows REVIEW integrity (borderline)", () => {
-    const result = isCertificateEligible({
-      ...base,
-      integrityStatus: "REVIEW",
-    });
-    // REVIEW is not INVALID — still eligible (server may flag for human review)
-    expect(result.eligible).toBe(true);
-  });
-});
-
-// ─── Integrity Classification ─────────────────────────────────────────────────
-
-describe("classifyIntegrity", () => {
-  const base = {
-    pasteAttempts: 0,
-    copyAttempts: 0,
-    focusLossCount: 0,
-    visibilityChanges: 0,
-    suspiciousPattern: false,
-    wpm: 60,
-    maxPlausibleWpm: 300,
-    minKeystrokeIntervalMs: 20,
-    durationMs: 60_000,
-    expectedDurationMs: 60_000,
-  };
-
-  it("returns VERIFIED for clean session", () => {
-    expect(classifyIntegrity(base)).toBe("VERIFIED");
-  });
-
-  it("returns INVALID for paste attempt", () => {
-    expect(classifyIntegrity({ ...base, pasteAttempts: 1 })).toBe("INVALID");
-  });
-
-  it("returns INVALID for WPM above human maximum", () => {
-    expect(classifyIntegrity({ ...base, wpm: 350 })).toBe("INVALID");
-  });
-
-  it("returns INVALID for suspicious pattern", () => {
-    expect(classifyIntegrity({ ...base, suspiciousPattern: true })).toBe("INVALID");
-  });
-
-  it("returns INVALID for duration anomaly (completed too fast)", () => {
-    // Expected 60s test but completed in 10s (>15% faster)
-    expect(
-      classifyIntegrity({ ...base, durationMs: 10_000, expectedDurationMs: 60_000 })
-    ).toBe("INVALID");
-  });
-
-  it("returns REVIEW for focus loss", () => {
-    expect(classifyIntegrity({ ...base, focusLossCount: 1 })).toBe("REVIEW");
-  });
-
-  it("returns REVIEW for many visibility changes", () => {
-    expect(classifyIntegrity({ ...base, visibilityChanges: 3 })).toBe("REVIEW");
   });
 });

@@ -2,6 +2,10 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CERTIFICATE_PRICE_INR } from "@/lib/constants";
+
+/** CERTIFICATE_PRICE_INR is in paise. */
+const PRICE_LABEL = `₹${(CERTIFICATE_PRICE_INR / 100).toLocaleString("en-IN")}`;
 
 interface CertificateCheckoutButtonProps {
   resultId: string;
@@ -34,6 +38,7 @@ declare global {
 export function CertificateCheckoutButton({ resultId }: CertificateCheckoutButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paid, setPaid] = useState(false);
   const router = useRouter();
 
   const loadRazorpayScript = () => {
@@ -94,10 +99,11 @@ export function CertificateCheckoutButton({ resultId }: CertificateCheckoutButto
         description: "Verified Typing Certificate",
         order_id: data.orderId,
         handler: function (_response: unknown) {
-          // Razorpay returns razorpay_payment_id, razorpay_order_id, razorpay_signature
-          // The webhook handles the actual activation securely.
-          // We can just reload or poll for status.
-          router.push(`/dashboard`);
+          // The client callback proves nothing: the signed webhook records the
+          // capture and fulfils the certificate. Stop offering checkout and
+          // reload the server's certificate state.
+          setPaid(true);
+          router.refresh();
         },
         theme: {
           color: "#3B82F6",
@@ -119,6 +125,14 @@ export function CertificateCheckoutButton({ resultId }: CertificateCheckoutButto
     }
   };
 
+  if (paid) {
+    return (
+      <p className="max-w-xs text-center text-sm font-medium">
+        Payment received. Your certificate is being prepared.
+      </p>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-2">
       <button
@@ -126,7 +140,7 @@ export function CertificateCheckoutButton({ resultId }: CertificateCheckoutButto
         disabled={loading}
         className="rounded-lg bg-amber-500 px-6 py-3 font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
       >
-        {loading ? "Processing..." : "Get Verified Certificate (₹499)"}
+        {loading ? "Processing..." : `Get Verified Certificate (${PRICE_LABEL})`}
       </button>
       {error && <p className="text-sm text-red-500">{error}</p>}
     </div>

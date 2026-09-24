@@ -38,12 +38,24 @@ const serverSchema = z
 
     // Integrity
     SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters"),
+    /// Signs certificate verificationHash values. Separate from SESSION_SECRET so
+    /// issued certificates stay verifiable independently of session-secret rotation.
+    CERTIFICATE_SIGNING_SECRET: z
+      .string()
+      .min(32, "CERTIFICATE_SIGNING_SECRET must be at least 32 characters"),
 
     // Redis
     REDIS_URL: z.string().url("REDIS_URL must be a valid URL").optional(),
     TEST_REDIS_URL: z.string().url("TEST_REDIS_URL must be a valid URL").optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.CERTIFICATE_SIGNING_SECRET === data.SESSION_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "CERTIFICATE_SIGNING_SECRET must differ from SESSION_SECRET.",
+        path: ["CERTIFICATE_SIGNING_SECRET"],
+      });
+    }
     if (data.NODE_ENV === "production") {
       if (!data.REDIS_URL) {
         ctx.addIssue({
@@ -115,6 +127,7 @@ export function getServerEnv(): z.infer<typeof serverSchema> {
         APP_URL: process.env.APP_URL,
         NODE_ENV: process.env.NODE_ENV,
         SESSION_SECRET: process.env.SESSION_SECRET,
+        CERTIFICATE_SIGNING_SECRET: process.env.CERTIFICATE_SIGNING_SECRET,
         REDIS_URL: process.env.REDIS_URL,
         TEST_REDIS_URL: process.env.TEST_REDIS_URL,
       },

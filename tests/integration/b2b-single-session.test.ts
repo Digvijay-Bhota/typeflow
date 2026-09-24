@@ -36,6 +36,7 @@ describe("B2B Single-Session Invariant", () => {
     process.env.RAZORPAY_KEY_SECRET = "rzp";
     process.env.RAZORPAY_WEBHOOK_SECRET = "rzp";
     process.env.SESSION_SECRET = "secretsecretsecretsecretsecretse";
+    process.env.CERTIFICATE_SIGNING_SECRET = "certsecretcertsecretcertsecretce";
   });
   let org: any;
   let passage: any;
@@ -70,6 +71,15 @@ describe("B2B Single-Session Invariant", () => {
   afterAll(async () => {
     // Cleanup if necessary, though vitest global setup might handle it
   });
+
+  // createSession() only ever produces PENDING B2B sessions for a candidate.
+  // Other test files write to the same database in parallel, so an unscoped
+  // global testSession.count() is racy; scope it to what this file creates.
+  function countPendingB2BSessions() {
+    return db.testSession.count({
+      where: { trustTier: "B2B_ASSESSMENT", status: "PENDING" },
+    });
+  }
 
   async function createTestEnvironment(maxAttempts = 1, assessmentStatus = "PUBLISHED") {
     const assessment = await db.assessment.create({
@@ -307,7 +317,7 @@ describe("B2B Single-Session Invariant", () => {
     const attempt = await startCandidateAttempt(inviteToken);
 
     // Count sessions before
-    const initialSessions = await db.testSession.count();
+    const initialSessions = await countPendingB2BSessions();
 
     const promises = Array(8)
       .fill(0)
@@ -323,7 +333,7 @@ describe("B2B Single-Session Invariant", () => {
     await Promise.allSettled(promises);
 
     // Count sessions after
-    const finalSessions = await db.testSession.count();
+    const finalSessions = await countPendingB2BSessions();
 
     expect(finalSessions - initialSessions).toBe(1); // Exactly 1 session created globally
   });
@@ -391,7 +401,7 @@ describe("B2B Single-Session Invariant", () => {
 
     // 3. Start attempt for A
     const attemptA = await startCandidateAttempt(tokenA);
-    const initialSessionCount = await db.testSession.count();
+    const initialSessionCount = await countPendingB2BSessions();
 
     // 4. Try to create session with B's token and A's attemptId
     await expect(
@@ -404,7 +414,7 @@ describe("B2B Single-Session Invariant", () => {
     ).rejects.toThrow("INVALID_ATTEMPT");
 
     // Verify no session was attached or created
-    const finalSessionCount = await db.testSession.count();
+    const finalSessionCount = await countPendingB2BSessions();
     expect(finalSessionCount).toBe(initialSessionCount);
 
     const attemptAInDb = await db.assessmentAttempt.findUnique({
@@ -427,7 +437,7 @@ describe("B2B Single-Session Invariant", () => {
       },
     });
 
-    const initialSessionCount = await db.testSession.count();
+    const initialSessionCount = await countPendingB2BSessions();
 
     await expect(
       createSession({
@@ -438,7 +448,7 @@ describe("B2B Single-Session Invariant", () => {
       })
     ).rejects.toThrow("INVALID_OR_CLOSED_ASSESSMENT");
 
-    const finalSessionCount = await db.testSession.count();
+    const finalSessionCount = await countPendingB2BSessions();
     expect(finalSessionCount).toBe(initialSessionCount);
   });
 });

@@ -25,6 +25,7 @@ describe("FREE-Result Integrity & Trust Model", () => {
     process.env.SUPABASE_ANON_KEY = "anon";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service";
     process.env.SESSION_SECRET = "secretsecretsecretsecretsecretse";
+    process.env.CERTIFICATE_SIGNING_SECRET = "certsecretcertsecretcertsecretce";
   });
 
   beforeAll(async () => {

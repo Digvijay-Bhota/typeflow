@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processRazorpayWebhook } from "@/server/services/payment.service";
+import { isServiceError } from "@/server/errors";
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +23,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await processRazorpayWebhook(payload, signature, payloadRawString);
+    await processRazorpayWebhook(
+      payload,
+      signature,
+      payloadRawString,
+      req.headers.get("x-razorpay-event-id")
+    );
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
@@ -40,6 +46,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: { code: "PAYMENT_AMOUNT_MISMATCH", message: "Amount mismatch" } },
         { status: 400 }
+      );
+    }
+
+    // e.g. FULFILLMENT_FAILED (503): the payment is recorded, but a non-2xx
+    // makes Razorpay redeliver so certificate fulfillment is retried.
+    if (isServiceError(error)) {
+      return NextResponse.json(
+        { error: { code: error.code, message: error.message } },
+        { status: error.status }
       );
     }
 

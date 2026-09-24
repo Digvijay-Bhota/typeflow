@@ -3,6 +3,7 @@ import { CreateSessionSchema } from "@/schemas/session.schema";
 import { createSession } from "@/server/services/session.service";
 import { rateLimit } from "@/server/middleware/rateLimit";
 import { logger } from "@/lib/logger";
+import { isServiceError } from "@/server/errors";
 
 export async function POST(req: Request) {
   try {
@@ -67,6 +68,19 @@ export async function POST(req: Request) {
           },
         },
         { status: 409 }
+      );
+    }
+
+    if (isServiceError(error)) {
+      return NextResponse.json(
+        {
+          error: {
+            requestId: crypto.randomUUID(),
+            code: error.code,
+            message: error.message,
+          },
+        },
+        { status: error.status }
       );
     }
 

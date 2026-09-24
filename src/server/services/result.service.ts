@@ -1,5 +1,6 @@
 import { db } from "@/server/db";
 import { TestResultPublic } from "@/types/typing";
+import { evaluateCertificateEligibility } from "@/lib/certificateEligibility";
 
 export async function getResultByShareId(
   shareId: string
@@ -22,7 +23,6 @@ export async function getResultByShareId(
   if (!result) return null;
 
   const publicResult: TestResultPublic = {
-    resultId: result.id,
     shareId: result.shareId,
     shareUrl: `/result/${result.shareId}`,
     wpm: result.wpm,
@@ -46,9 +46,17 @@ export async function getResultByShareId(
         >)
       : null,
     integrityStatus: result.integrityStatus as "VERIFIED" | "REVIEW" | "INVALID",
+    scoringSource: result.scoringSource,
     createdAt: result.createdAt.toISOString(),
-    isCertificateEligible:
-      result.session.trustTier === "CERTIFICATE" && result.integrityStatus === "VERIFIED",
+    isCertificateEligible: evaluateCertificateEligibility({
+      netWpm: result.netWpm,
+      accuracy: result.accuracy,
+      duration: result.session.duration,
+      integrityStatus: result.integrityStatus,
+      scoringSource: result.scoringSource,
+      trustTier: result.session.trustTier,
+      userId: result.userId,
+    }).eligible,
     displayName: result.user?.displayName || null,
     certificateId:
       result.certificate?.status === "ACTIVE" ? result.certificate.certificateId : null,

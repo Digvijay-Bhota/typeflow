@@ -51,6 +51,7 @@ describe("middleware", () => {
     vi.stubEnv("RAZORPAY_KEY_SECRET", "");
     vi.stubEnv("RAZORPAY_WEBHOOK_SECRET", "");
     vi.stubEnv("SESSION_SECRET", "too-short");
+    vi.stubEnv("CERTIFICATE_SIGNING_SECRET", "");
   });
 
   afterEach(() => {

@@ -3,6 +3,10 @@ import { getAuthenticatedUser } from "@/server/services/auth.service";
 import { createCertificate } from "@/server/services/certificate.service";
 
 import { rateLimit } from "@/server/middleware/rateLimit";
+import { isServiceError } from "@/server/errors";
+import { z } from "zod";
+
+const IssueCertificateSchema = z.object({ resultId: z.string().uuid() });
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,31 +27,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
-    const { resultId } = body;
-
-    if (!resultId) {
+    const parsed = IssueCertificateSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: { code: "BAD_REQUEST", message: "Missing resultId" } },
+        { error: { code: "BAD_REQUEST", message: "A valid resultId is required" } },
         { status: 400 }
       );
     }
 
-    const cert = await createCertificate(user.id, resultId);
+    // Eligibility and ownership are re-checked server-side; the client's
+    // isCertificateEligible flag is never trusted.
+    const cert = await createCertificate(user.id, parsed.data.resultId);
 
     return NextResponse.json({
       certificateId: cert.certificateId,
     });
   } catch (error: unknown) {
+    if (isServiceError(error)) {
+      return NextResponse.json(
+        { error: { code: error.code, message: error.message } },
+        { status: error.status }
+      );
+    }
+
+    // Unexpected failure: never expose database/provider details.
     console.error("Issue certificate error:", error);
     return NextResponse.json(
-      {
-        error: {
-          code: "BAD_REQUEST",
-          message: (error as Error).message || "Failed to issue certificate",
-        },
-      },
-      { status: 400 }
+      { error: { code: "INTERNAL_ERROR", message: "Failed to issue certificate" } },
+      { status: 500 }
     );
   }
 }

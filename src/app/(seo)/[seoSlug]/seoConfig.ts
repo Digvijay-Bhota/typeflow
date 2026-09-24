@@ -380,7 +380,7 @@ export function getSeoRouteConfig(slug: string) {
         testConfig: {
           mode: "timed" as const,
           language: "english" as const,
-          duration: 180,
+          duration: 300,
           trustTier: "CERTIFICATE" as const,
         },
         faqs: [

@@ -3,6 +3,20 @@
 import React from "react";
 import Link from "next/link";
 import {
+  CERTIFICATE_MIN_ACCURACY,
+  CERTIFICATE_MIN_DURATION,
+  CERTIFICATE_MIN_WPM,
+} from "@/lib/constants";
+import { CertificateCheckoutButton } from "@/features/payment/components/CertificateCheckoutButton";
+import { CertificatePreparingActions } from "@/features/payment/components/CertificatePreparingActions";
+import { GuestClaimBanner } from "@/features/auth/components/GuestClaimBanner";
+import {
+  canStartCheckout,
+  certificateVerifyPath,
+  type CertificateOwnerState,
+  type OwnerCertificate,
+} from "@/lib/certificateStatus";
+import {
   Activity,
   ShieldCheck,
   Share2,
@@ -21,7 +35,51 @@ import {
   LineChart,
 } from "recharts";
 
-export function ResultClient({ result, comparison }: { result: any; comparison?: any }) {
+/** Panel text for a certificate that has already been paid for or issued. */
+const OWNED_CERTIFICATE_MESSAGES: Partial<Record<CertificateOwnerState, string>> = {
+  PROCESSING:
+    "Payment received. Your certificate is being prepared and will be ready shortly.",
+  ACTIVE:
+    "Your TypeFlow Typing Certificate for this result is active and publicly verifiable.",
+  REVOKED: "The certificate for this result has been revoked and is no longer valid.",
+  EXPIRED: "The certificate for this result has expired and is no longer valid.",
+};
+
+/** Guest without a claim token in this browser: still give them a way forward. */
+export function CertificateGuestFallback() {
+  return (
+    <div className="flex max-w-xs flex-col items-center gap-3 text-center">
+      <p className="text-muted text-sm">
+        This result can only be claimed in the browser that took the test. Sign in and
+        retake the certificate test to get a certificate.
+      </p>
+      <div className="flex items-center gap-3">
+        <Link href="/login" className="text-sm font-semibold hover:underline">
+          Sign In
+        </Link>
+        <Link
+          href="/typing-test-with-certificate"
+          className="bg-accent rounded-lg px-4 py-2 text-sm font-medium text-white"
+        >
+          Retake Certificate Test
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export function ResultClient({
+  result,
+  comparison,
+  certificate,
+}: {
+  result: any;
+  comparison?: any;
+  /** Server-read certificate state; only ever passed for the result's owner. */
+  certificate?: OwnerCertificate | null;
+}) {
+  const certificateState = certificate?.state ?? "NONE";
+  const ownedCertificateMessage = OWNED_CERTIFICATE_MESSAGES[certificateState];
   const wpm = Math.round(result.wpm);
   const rawWpm = Math.round(result.rawWpm || wpm);
   const accuracy = Math.round(result.accuracy * 100);
@@ -277,15 +335,18 @@ export function ResultClient({ result, comparison }: { result: any; comparison?:
                     </div>
                   ))}
                 </div>
-                <div className="mt-6 flex justify-center">
-                  <Link
-                    href={`/practice?sourceResultId=${result.id}`}
-                    className="bg-accent hover:bg-accent/90 text-accent-foreground flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-95"
-                  >
-                    <Target className="h-4 w-4" />
-                    Practice these keys
-                  </Link>
-                </div>
+                {/* Only the owner receives result.id; practice is owner-only anyway. */}
+                {result.id && (
+                  <div className="mt-6 flex justify-center">
+                    <Link
+                      href={`/practice?sourceResultId=${result.id}`}
+                      className="bg-accent hover:bg-accent/90 text-accent-foreground flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-95"
+                    >
+                      <Target className="h-4 w-4" />
+                      Practice these keys
+                    </Link>
+                  </div>
+                )}
               </>
             ) : (
               <div className="py-10 text-center">
@@ -419,18 +480,43 @@ export function ResultClient({ result, comparison }: { result: any; comparison?:
                 <Award className="h-10 w-10 text-emerald-500" />
               </div>
               <div>
-                <h2 className="mb-2 text-2xl font-black">Certificate Eligibility</h2>
+                <h2 className="mb-2 text-2xl font-black">
+                  {ownedCertificateMessage
+                    ? "Your Certificate"
+                    : "Certificate Eligibility"}
+                </h2>
                 <p className="text-muted max-w-lg leading-relaxed font-medium">
-                  {isVerified && wpm >= 40 && accuracy >= 95
-                    ? "Outstanding performance. Your verified test meets the official requirements for a TypeFlow Typing Certificate."
-                    : "Keep practicing. You need a verified test with at least 40 WPM and 95% accuracy to qualify for a certificate."}
+                  {ownedCertificateMessage
+                    ? ownedCertificateMessage
+                    : result.isCertificateEligible
+                      ? "Outstanding performance. Your verified test meets the official requirements for a TypeFlow Typing Certificate."
+                      : result.certificateEligibleAfterClaim
+                        ? "This test qualifies for a TypeFlow Typing Certificate. Sign in or create an account on this device to claim the result, then get your certificate."
+                        : `Keep practicing. You need a verified ${CERTIFICATE_MIN_DURATION / 60}-minute test with at least ${CERTIFICATE_MIN_WPM} net WPM and ${CERTIFICATE_MIN_ACCURACY}% accuracy to qualify for a certificate.`}
                 </p>
               </div>
             </div>
-            {isVerified && wpm >= 40 && accuracy >= 95 && (
-              <button className="shadow-glow transform rounded-2xl bg-emerald-500 px-8 py-4 font-black tracking-wide whitespace-nowrap text-white shadow-emerald-500/30 transition-all hover:-translate-y-1 hover:bg-emerald-400">
-                Claim Certificate
-              </button>
+            {/* Checkout only for the signed-in owner (only owners receive result.id)
+                while nothing has been paid. The server re-checks ownership,
+                eligibility and payment state on issuance and order creation. */}
+            {result.isCertificateEligible &&
+              result.id &&
+              canStartCheckout(certificateState) && (
+                <CertificateCheckoutButton resultId={result.id} />
+              )}
+            {certificateState === "PROCESSING" && certificate?.certificateId && (
+              <CertificatePreparingActions certificateId={certificate.certificateId} />
+            )}
+            {certificateState === "ACTIVE" && certificate?.certificateId && (
+              <Link
+                href={certificateVerifyPath(certificate.certificateId)}
+                className="rounded-lg bg-emerald-500 px-6 py-3 font-bold text-white transition-colors hover:bg-emerald-400"
+              >
+                View Certificate
+              </Link>
+            )}
+            {!result.isCertificateEligible && result.certificateEligibleAfterClaim && (
+              <GuestClaimBanner fallback={<CertificateGuestFallback />} />
             )}
           </div>
         </div>

@@ -1,8 +1,13 @@
 import { randomBytes, createHash } from "crypto";
 import { Language, TypingMode, Prisma } from "@prisma/client";
 import { db } from "@/server/db";
-import { CreateSessionRequest, StartSessionRequest } from "@/schemas/session.schema";
-import { SubmitResultRequest } from "@/schemas/result.schema";
+import {
+  CreateSessionRequest,
+  StartSessionRequest,
+  requestsCertificateTier,
+} from "@/schemas/session.schema";
+import { CERTIFICATE_MIN_DURATION } from "@/lib/constants";
+import { SubmitResultRequest, type EventTrace } from "@/schemas/result.schema";
 import {
   calculateWpm,
   calculateRawWpm,
@@ -10,6 +15,11 @@ import {
   calculateAccuracy,
 } from "@/features/typing/lib/metrics";
 import { calculateCodeMetrics } from "@/features/typing/lib/codeMetrics";
+import {
+  deriveTraceDiagnostics,
+  type TraceDiagnostics,
+} from "@/features/typing/lib/traceAnalysis";
+import { ServiceError } from "@/server/errors";
 
 const GRACE_PERIOD_MS = 5000; // 5 seconds grace period for submission latency
 const SESSION_VALIDITY_MS = 60 * 60 * 1000; // 1 hour overall expiry to start
@@ -17,7 +27,9 @@ const SESSION_VALIDITY_MS = 60 * 60 * 1000; // 1 hour overall expiry to start
 export async function createSession(params: CreateSessionRequest) {
   let trustTier: "FREE" | "CERTIFICATE" | "B2B_ASSESSMENT" = "FREE";
 
-  if (params.certificateMode) {
+  // The client may opt into the stricter CERTIFICATE tier. It can never
+  // choose B2B: that is granted below only for a valid invite + attempt.
+  if (requestsCertificateTier(params)) {
     trustTier = "CERTIFICATE";
   }
 
@@ -33,7 +45,7 @@ export async function createSession(params: CreateSessionRequest) {
     });
 
     if (!candidate || candidate.assessment.status !== "PUBLISHED") {
-      throw new Error("INVALID_OR_CLOSED_ASSESSMENT");
+      throw new ServiceError("INVALID_OR_CLOSED_ASSESSMENT", "NOT_FOUND", 404);
     }
 
     const attempt = await db.assessmentAttempt.findUnique({
@@ -45,7 +57,7 @@ export async function createSession(params: CreateSessionRequest) {
       attempt.candidateId !== candidate.id ||
       attempt.status !== "STARTED"
     ) {
-      throw new Error("INVALID_ATTEMPT");
+      throw new ServiceError("INVALID_ATTEMPT", "FORBIDDEN", 403);
     }
 
     trustTier = "B2B_ASSESSMENT";
@@ -60,6 +72,17 @@ export async function createSession(params: CreateSessionRequest) {
     params.duration = candidate.assessment.duration;
   }
 
+  if (
+    trustTier === "CERTIFICATE" &&
+    (params.mode !== "timed" || (params.duration ?? 0) < CERTIFICATE_MIN_DURATION)
+  ) {
+    throw new ServiceError(
+      `Certificate tests must be timed tests of at least ${CERTIFICATE_MIN_DURATION} seconds`,
+      "VALIDATION_ERROR",
+      400
+    );
+  }
+
   const { getAuthenticatedUser } = await import("./auth.service");
   const user = await getAuthenticatedUser();
 
@@ -71,7 +94,7 @@ export async function createSession(params: CreateSessionRequest) {
 
     if (params.sourceResultId) {
       if (!user) {
-        throw new Error("UNAUTHORIZED_PRACTICE");
+        throw new ServiceError("UNAUTHORIZED_PRACTICE", "FORBIDDEN", 403);
       }
       // Practice from a specific result (must be owned by the user)
       const sourceResult = await db.testResult.findUnique({
@@ -80,7 +103,7 @@ export async function createSession(params: CreateSessionRequest) {
 
       // IDOR protection: strictly verify ownership
       if (!sourceResult || sourceResult.userId !== user.id) {
-        throw new Error("UNAUTHORIZED_PRACTICE");
+        throw new ServiceError("UNAUTHORIZED_PRACTICE", "FORBIDDEN", 403);
       }
 
       if (sourceResult.errorMap && typeof sourceResult.errorMap === "object") {
@@ -128,7 +151,7 @@ export async function createSession(params: CreateSessionRequest) {
           ? { codeLanguage: params.codeLanguage.toUpperCase() as any }
           : {}),
         isActive: true,
-        mode: params.certificateMode ? "CERTIFICATE" : "NORMAL",
+        mode: trustTier === "CERTIFICATE" ? "CERTIFICATE" : "NORMAL",
       },
     });
 
@@ -172,7 +195,7 @@ export async function createSession(params: CreateSessionRequest) {
       });
 
       if (attached.count === 0) {
-        throw new Error("DUPLICATE_SESSION");
+        throw new ServiceError("DUPLICATE_SESSION", "CONFLICT", 409);
       }
 
       return newSession;
@@ -239,10 +262,20 @@ export async function startSession(params: StartSessionRequest) {
   if (updatedSession.count === 0) {
     // Find out why it failed to give a good error
     const session = await db.testSession.findUnique({ where: { id: params.sessionId } });
-    if (!session) throw new Error("Session not found");
+    if (!session) throw new ServiceError("Session not found", "INVALID_SESSION", 400);
+    if (
+      session.integrityToken !== params.integrityToken ||
+      session.userId !== (user?.id ?? null)
+    )
+      throw new ServiceError("Not allowed to start this session", "FORBIDDEN", 403);
     if (session.status !== "PENDING")
-      throw new Error(`Session is already ${session.status}`);
-    if (session.expiresAt <= now) throw new Error("Session has expired");
+      throw new ServiceError(
+        `Session is already ${session.status}`,
+        "INVALID_SESSION",
+        400
+      );
+    if (session.expiresAt <= now)
+      throw new ServiceError("Session has expired", "INVALID_SESSION", 400);
     throw new Error("Failed to start session");
   }
 
@@ -274,9 +307,9 @@ export async function submitResult(
         include: { passage: true },
       });
 
-      if (!session) throw new Error("Session not found");
+      if (!session) throw new ServiceError("Session not found", "INVALID_SESSION", 400);
       if (session.integrityToken !== params.integrityToken)
-        throw new Error("Invalid integrity token");
+        throw new ServiceError("Invalid integrity token", "FORBIDDEN", 403);
       if (session.trustTier === "B2B_ASSESSMENT") {
         const attempt = await tx.assessmentAttempt.findUnique({
           where: { sessionId: session.id },
@@ -293,12 +326,21 @@ export async function submitResult(
         }
       } else {
         if (session.userId !== (user?.id ?? null)) {
-          throw new Error("Unauthorized to submit for this session");
+          throw new ServiceError(
+            "Unauthorized to submit for this session",
+            "FORBIDDEN",
+            403
+          );
         }
       }
       if (session.status !== "ACTIVE")
-        throw new Error(`Session is not ACTIVE, currently ${session.status}`);
-      if (!session.startedAt) throw new Error("Session has no startedAt time");
+        throw new ServiceError(
+          `Session is not ACTIVE, currently ${session.status}`,
+          "INVALID_SESSION",
+          400
+        );
+      if (!session.startedAt)
+        throw new ServiceError("Session has no startedAt time", "INVALID_SESSION", 400);
 
       // 2. Validate expiration / duration limit
       let expectedDurationMs = 0;
@@ -314,7 +356,11 @@ export async function submitResult(
           where: { id: session.id },
           data: { status: "EXPIRED" },
         });
-        throw new Error("Session duration exceeded grace period");
+        throw new ServiceError(
+          "Session duration exceeded grace period",
+          "INVALID_SESSION",
+          400
+        );
       }
 
       if (session.expiresAt <= now) {
@@ -322,12 +368,16 @@ export async function submitResult(
           where: { id: session.id },
           data: { status: "EXPIRED" },
         });
-        throw new Error("Session has expired");
+        throw new ServiceError("Session has expired", "INVALID_SESSION", 400);
       }
 
       if (session.mode === "CODE") {
         if (params.codeLanguage && params.codeLanguage !== session.codeLanguage) {
-          throw new Error("Mismatched code language in submission");
+          throw new ServiceError(
+            "Mismatched code language in submission",
+            "VALIDATION_ERROR",
+            400
+          );
         }
       }
 
@@ -354,6 +404,9 @@ export async function submitResult(
       let integrityStatus: "VERIFIED" | "REVIEW" | "INVALID" = "VERIFIED";
       let scoringSource: "CLIENT_COUNTS" | "SERVER_RECONSTRUCTED" = "CLIENT_COUNTS";
       let traceHash: string | undefined = undefined;
+      // Set only when the trace was reconstructed; otherwise the stored
+      // diagnostics are the client-reported values (scoringSource tells which).
+      let diagnostics: TraceDiagnostics | undefined;
 
       if (params._isConcurrentReplay) {
         integrityStatus = "INVALID";
@@ -381,6 +434,10 @@ export async function submitResult(
           );
 
           if (rec.isValidTrace) {
+            diagnostics = deriveTraceDiagnostics(
+              session.passage.content,
+              params.eventTrace as EventTrace
+            );
             correctChars = rec.correctChars;
             incorrectChars = rec.incorrectChars;
             totalChars = rec.totalChars;
@@ -413,6 +470,11 @@ export async function submitResult(
         scoringSource = "CLIENT_COUNTS";
       }
 
+      // Any paste attempt invalidates the result, whatever the trace says.
+      if (params.integritySignals.pasteAttempts > 0) {
+        integrityStatus = "INVALID";
+      }
+
       if (integrityStatus === "VERIFIED" || integrityStatus === "REVIEW") {
         wpm = calculateWpm(correctChars, scoringElapsedMs);
         rawWpm = calculateRawWpm(totalChars, scoringElapsedMs);
@@ -422,15 +484,15 @@ export async function submitResult(
         if (wpm > 300 || accuracy < 0 || accuracy > 1) {
           integrityStatus = "INVALID";
         }
-      } else {
+      }
+
+      // INVALID results carry no trusted metrics. Character/error counts are
+      // kept for audit and display.
+      if (integrityStatus === "INVALID") {
         wpm = 0;
         rawWpm = 0;
         netWpm = 0;
         accuracy = 0;
-      }
-
-      if (params.integritySignals.pasteAttempts > 0) {
-        integrityStatus = "INVALID";
       }
 
       // 4. Update session to completed (atomic)
@@ -443,20 +505,27 @@ export async function submitResult(
       });
 
       if (updated.count === 0) {
-        throw new Error("Session is not ACTIVE (concurrent submission detected)");
+        throw new ServiceError(
+          "Session is not ACTIVE (concurrent submission detected)",
+          "INVALID_SESSION",
+          400
+        );
       }
 
       // 5. Create Result
       const shareId = randomBytes(10).toString("base64url");
       const claimToken = session.userId ? null : randomBytes(32).toString("hex");
 
+      // Code metrics need per-position errors, which only a reconstructed
+      // trace provides (the client's errorMap is keyed by expected character).
       let codeMetrics: Prisma.InputJsonValue | undefined;
-      if (session.mode === "CODE" && params.errorMap) {
+      if (session.mode === "CODE" && diagnostics) {
         codeMetrics = calculateCodeMetrics(
           session.passage.content,
-          params.errorMap
-        ) as any;
+          diagnostics.positionErrors
+        ) as unknown as Prisma.InputJsonValue;
       }
+      const errorMap = diagnostics ? diagnostics.keyErrors : params.errorMap;
 
       const result = await tx.testResult.create({
         data: {
@@ -467,7 +536,7 @@ export async function submitResult(
           rawWpm,
           netWpm,
           accuracy,
-          consistency: params.metrics.consistency,
+          consistency: diagnostics ? diagnostics.consistency : params.metrics.consistency,
           correctChars,
           incorrectChars,
           totalChars,
@@ -481,7 +550,7 @@ export async function submitResult(
           integritySignals: params.integritySignals as Prisma.InputJsonValue,
           eventTrace: params.eventTrace as Prisma.InputJsonValue,
           traceHash: traceHash as any,
-          ...(params.errorMap && { errorMap: params.errorMap }),
+          ...(errorMap && { errorMap: errorMap as Prisma.InputJsonValue }),
           ...(codeMetrics && { codeMetrics }),
           claimToken,
         },

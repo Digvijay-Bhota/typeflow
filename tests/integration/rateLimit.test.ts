@@ -34,6 +34,7 @@ describe("Distributed Rate Limiter", () => {
     vi.stubEnv("RAZORPAY_KEY_SECRET", "placeholder");
     vi.stubEnv("RAZORPAY_WEBHOOK_SECRET", "placeholder");
     vi.stubEnv("SESSION_SECRET", "12345678901234567890123456789012");
+    vi.stubEnv("CERTIFICATE_SIGNING_SECRET", "abcdefghijabcdefghijabcdefghijab");
     vi.stubEnv("APP_URL", "http://localhost:3000");
 
     // Clear _serverEnv cache
