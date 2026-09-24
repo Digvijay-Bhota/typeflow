@@ -29,7 +29,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { EventTrace } from "@/schemas/result.schema";
 import {
   calculateWpm,
@@ -141,6 +141,15 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
   const totalKeystrokes = useRef(0);
   const eventTraceRef = useRef<EventTrace["events"]>([]);
 
+  // Latest onComplete, read when the test finishes. The rAF `tick` loop is
+  // memoized per (mode, duration), so anything it closes over can be from the
+  // first render — before the caller had a session. Reading through a ref
+  // keeps timer expiry calling the current onComplete.
+  const onCompleteRef = useRef(onComplete);
+  useLayoutEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
   // ── Derived ──
   const chars = passage.split("");
   const durationMs = (duration ?? 0) * 1000;
@@ -246,6 +255,8 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
 
     flushState();
     rafRef.current = requestAnimationFrame(tick);
+    // finishInternal is stable (it reads onComplete through onCompleteRef), so
+    // omitting it here cannot capture a stale completion handler.
   }, [mode, durationMs, flushState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Internal finish ────────────────────────────────────────────────────────
@@ -302,8 +313,8 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
     };
 
     setState(finalState);
-    onComplete?.(finalState);
-  }, [onComplete]);
+    onCompleteRef.current?.(finalState);
+  }, []);
 
   // ─── Public API ─────────────────────────────────────────────────────────────
 

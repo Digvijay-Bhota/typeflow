@@ -32,6 +32,11 @@ export default defineConfig({
       },
     },
   },
+  // tsconfig has "jsx": "preserve" for Next; tests that render components
+  // need esbuild to compile JSX with the React 17+ automatic runtime.
+  esbuild: {
+    jsx: "automatic",
+  },
   resolve: {
     alias: {
       "@": resolve(__dirname, "./src"),
