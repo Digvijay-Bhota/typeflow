@@ -81,6 +81,9 @@ export function ResultClient({
   const certificateState = certificate?.state ?? "NONE";
   const ownedCertificateMessage = OWNED_CERTIFICATE_MESSAGES[certificateState];
   const wpm = Math.round(result.wpm);
+  // Net WPM is what certificate eligibility uses; show it exactly as stored
+  // (one decimal), so 29.6 is never displayed as a passing 30.
+  const netWpm = Number(result.netWpm ?? 0).toFixed(1);
   const rawWpm = Math.round(result.rawWpm || wpm);
   const accuracy = Math.round(result.accuracy * 100);
   const consistency = result.consistency ? Math.round(result.consistency * 100) : 0;
@@ -152,7 +155,9 @@ export function ResultClient({
           <span className="text-muted relative z-10 mb-3 flex items-center gap-2 text-sm font-bold tracking-widest uppercase">
             <Activity className="text-accent h-4 w-4" /> Net WPM
           </span>
-          <span className="text-foreground relative z-10 text-7xl font-black">{wpm}</span>
+          <span className="text-foreground relative z-10 text-7xl font-black">
+            {netWpm}
+          </span>
         </div>
         <div className="bg-surface border-border group relative flex flex-col items-center justify-center overflow-hidden rounded-3xl border p-8 text-center shadow-sm">
           <div className="absolute inset-0 bg-emerald-500/5 opacity-0 transition-opacity group-hover:opacity-100" />

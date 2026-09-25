@@ -83,6 +83,18 @@ describe("ResultClient certificate panel", () => {
     expect(html).toContain("5-minute test with at least 30 net WPM and 90% accuracy");
   });
 
+  it("shows net WPM to one decimal in the Net WPM tile, not the rounded gross WPM", () => {
+    // Result d20d73e0: 30 correct-character WPM, 29.6 net WPM — ineligible.
+    const html = render({ id: "r", wpm: 30, netWpm: 29.6, isCertificateEligible: false });
+    const tile = html.match(/Net WPM<\/span><span[^>]*>([^<]*)</)?.[1];
+    expect(tile).toBe("29.6");
+    expect(html).toContain("Keep practicing");
+
+    expect(
+      render({ wpm: 45, netWpm: 45 }).match(/Net WPM<\/span><span[^>]*>([^<]*)</)?.[1]
+    ).toBe("45.0");
+  });
+
   it("treats a missing flag as not eligible", () => {
     const html = render({ id: "r" });
     expect(html).not.toContain(CHECKOUT);
