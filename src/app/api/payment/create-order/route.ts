@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/server/services/auth.service";
 import { createCertificateOrder } from "@/server/services/payment.service";
+import { getServerEnv } from "@/lib/env";
 
 import { rateLimit } from "@/server/middleware/rateLimit";
 import { isServiceError } from "@/server/errors";
@@ -37,15 +38,14 @@ export async function POST(req: NextRequest) {
 
     const orderData = await createCertificateOrder(parsed.data.certificateId, user.id);
 
-    // Add public key id from client env (or server env but it's safe to expose for checkout)
-    const { getClientEnv } = await import("@/lib/env");
-    const clientEnv = getClientEnv();
-
+    // The key id is public (Checkout needs it). Take it from the validated
+    // server env — the same key that created the order — not NEXT_PUBLIC_*,
+    // which are not reliably present in process.env at server runtime.
     return NextResponse.json({
       orderId: orderData.orderId,
       amount: orderData.amount,
       currency: orderData.currency,
-      keyId: clientEnv.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      keyId: getServerEnv().RAZORPAY_KEY_ID,
     });
   } catch (error: unknown) {
     if (isServiceError(error)) {
