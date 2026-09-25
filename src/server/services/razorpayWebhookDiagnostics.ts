@@ -21,7 +21,8 @@ export function signatureMismatchDiagnostics(
   signature: string,
   headers: Headers
 ) {
-  const secret = getServerEnv().RAZORPAY_WEBHOOK_SECRET;
+  const env = getServerEnv();
+  const secret = env.RAZORPAY_WEBHOOK_SECRET;
   const matches = (candidate: string) =>
     hmacHex(candidate, payloadRawString) === signature.toLowerCase();
   const unquoted = secret.trim().replace(/^(["'])(.*)\1$/, "$2");
@@ -43,6 +44,8 @@ export function signatureMismatchDiagnostics(
     matchSecretPlusSpace: matches(`${secret} `),
     matchSecretTrimmed: matches(secret.trim()),
     matchSecretUnquoted: matches(unquoted),
+    // Was the Razorpay API key secret saved as the webhook secret by mistake?
+    matchRazorpayKeySecret: matches(env.RAZORPAY_KEY_SECRET),
   };
 }
 
