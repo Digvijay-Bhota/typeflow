@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useMemo, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useMemo,
+  type KeyboardEvent,
+} from "react";
 import { cn } from "@/lib/utils";
+import { nextActiveLineScrollTop } from "../lib/activeLineScroll";
 import type { ErrorMap, EngineStatus } from "@/types/typing";
 
 interface TypingAreaProps {
@@ -48,6 +56,14 @@ function getCharClass(
   return syntaxClass ? `${syntaxClass} opacity-100` : "text-emerald-500 opacity-100";
 }
 
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 export function TypingArea({
   chars,
   currentIndex,
@@ -63,6 +79,11 @@ export function TypingArea({
   const charRefsMap = useRef<Map<number, HTMLElement>>(new Map());
   const caretRef = useRef<HTMLDivElement>(null);
   const linesContainerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  // Where the viewport is, or is smoothly scrolling to. Scroll decisions use
+  // this rather than the live scrollTop, which lags behind during a smooth
+  // scroll and would otherwise re-trigger or undo it.
+  const targetScrollTopRef = useRef(0);
 
   const isActive = status === "active" || status === "idle";
   const isCode = language === "code" || language === "CODE";
@@ -81,36 +102,90 @@ export function TypingArea({
     return l;
   }, [chars]);
 
-  const updateCaret = useCallback(() => {
+  /**
+   * Draws the caret on the active character and scrolls the viewport so that
+   * character stays visible. Everything is measured in the viewport's content
+   * coordinates (offset + scrollTop): the caret is positioned inside the
+   * scrolled content, so it moves with it, and the scroll target is an
+   * absolute offset that does not depend on where a smooth scroll currently is.
+   */
+  const syncActivePosition = useCallback(() => {
     if (status === "completed") return;
+    const viewport = linesContainerRef.current;
+    const caret = caretRef.current;
     const currentEl = charRefsMap.current.get(currentIndex);
-    if (!currentEl || !caretRef.current || !containerRef.current) return;
+    if (!viewport || !caret || !currentEl) return;
 
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const charRect = currentEl.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    // First fragment: a character that wraps (e.g. "↵\n") starts on its first line.
+    const charRect = currentEl.getClientRects()[0] ?? currentEl.getBoundingClientRect();
+    const charLeft = charRect.left - viewportRect.left + viewport.scrollLeft;
+    const charTop = charRect.top - viewportRect.top + viewport.scrollTop;
 
-    const caretX = charRect.left - containerRect.left;
-    const caretY = charRect.top - containerRect.top;
+    caret.style.transform = `translate(${charLeft}px, ${charTop}px)`;
+    caret.style.height = `${charRect.height}px`;
 
-    caretRef.current.style.transform = `translate(${caretX}px, ${caretY}px)`;
-    caretRef.current.style.height = `${charRect.height}px`;
+    // An inline box is shorter than its line box; centre it in the line.
+    const lineHeight = Math.max(
+      charRect.height,
+      parseFloat(getComputedStyle(currentEl).lineHeight) || 0
+    );
+    const target = nextActiveLineScrollTop({
+      lineTop: charTop - (lineHeight - charRect.height) / 2,
+      lineHeight,
+      scrollTop: targetScrollTopRef.current,
+      viewportHeight: viewport.clientHeight,
+      maxScrollTop: viewport.scrollHeight - viewport.clientHeight,
+    });
+    if (target === null) return;
 
-    // Smooth scroll if needed
-    if (linesContainerRef.current) {
-      const scrollTarget = caretY - containerRect.height / 2 + charRect.height / 2;
-      if (Math.abs(linesContainerRef.current.scrollTop - scrollTarget) > 20) {
-        linesContainerRef.current.scrollTo({
-          top: Math.max(0, scrollTarget),
-          behavior: "smooth",
-        });
-      }
-    }
-  }, [currentIndex, status]);
+    targetScrollTopRef.current = target;
+    viewport.scrollTo({
+      top: target,
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    });
+    // `lines` changes only with a new passage, which re-renders every character.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, status, lines]);
+
+  // Before paint, so the caret and viewport never show a stale position. Runs
+  // only when the active index or status changes, not on every rerender.
+  useLayoutEffect(() => {
+    syncActivePosition();
+  }, [syncActivePosition]);
+
+  // Layout can also change without typing: window/container resizes, mobile
+  // rotation, and the web font swapping in after first paint.
+  const syncRef = useRef(syncActivePosition);
+  useLayoutEffect(() => {
+    syncRef.current = syncActivePosition;
+  }, [syncActivePosition]);
 
   useEffect(() => {
-    const af = requestAnimationFrame(updateCaret);
-    return () => cancelAnimationFrame(af);
-  }, [updateCaret]);
+    const resync = () => {
+      // A taller viewport lowers the maximum offset and the browser clamps
+      // scrollTop to it; keep the remembered target in step.
+      const viewport = linesContainerRef.current;
+      if (viewport) {
+        targetScrollTopRef.current = Math.min(
+          targetScrollTopRef.current,
+          Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+        );
+      }
+      syncRef.current();
+    };
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resync);
+    if (linesContainerRef.current) observer?.observe(linesContainerRef.current);
+    if (contentRef.current) observer?.observe(contentRef.current);
+
+    const fonts = typeof document === "undefined" ? undefined : document.fonts;
+    fonts?.addEventListener?.("loadingdone", resync);
+    return () => {
+      observer?.disconnect();
+      fonts?.removeEventListener?.("loadingdone", resync);
+    };
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
@@ -175,7 +250,11 @@ export function TypingArea({
         </div>
       )}
 
-      <div ref={linesContainerRef} className="relative h-full w-full overflow-hidden">
+      <div
+        ref={linesContainerRef}
+        data-testid="typing-viewport"
+        className="relative h-full w-full overflow-hidden"
+      >
         <div
           ref={caretRef}
           className={cn(
@@ -184,7 +263,13 @@ export function TypingArea({
           )}
         />
 
-        <div className="flex flex-col pb-20 text-left break-all whitespace-pre-wrap">
+        {/* Wrap at spaces, not mid-word: spaces are real (break-spaces keeps
+            each one visible and caret-sized at a line end, never hanging past
+            the edge), and only a token longer than a line is broken. */}
+        <div
+          ref={contentRef}
+          className="flex flex-col pb-20 text-left wrap-break-word whitespace-break-spaces"
+        >
           {lines.map((line, lineIdx) => (
             <div key={lineIdx} className="group flex">
               {isCode && (
@@ -202,8 +287,7 @@ export function TypingArea({
                     isCode
                   );
                   let displayChar = char;
-                  if (char === " ") displayChar = "\u00A0";
-                  else if (char === "\n") displayChar = isCode ? "↵\n" : "\n";
+                  if (char === "\n") displayChar = isCode ? "↵\n" : "\n";
                   else if (char === "\t") displayChar = "⇥\t";
 
                   return (

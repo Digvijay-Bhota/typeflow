@@ -29,7 +29,14 @@
  */
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { EventTrace } from "@/schemas/result.schema";
 import {
   calculateWpm,
@@ -151,7 +158,9 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
   }, [onComplete]);
 
   // ── Derived ──
-  const chars = passage.split("");
+  // Stable per passage: the rAF loop re-renders every frame, and a fresh array
+  // would recreate handleKey and the rendered passage lines each time.
+  const chars = useMemo(() => passage.split(""), [passage]);
   const durationMs = (duration ?? 0) * 1000;
 
   // ─── rAF loop ──────────────────────────────────────────────────────────────
