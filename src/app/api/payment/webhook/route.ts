@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processRazorpayWebhook } from "@/server/services/payment.service";
 import { isServiceError } from "@/server/errors";
-import { logSignatureMismatchDiagnostics } from "@/server/services/razorpayWebhookDiagnostics";
 
 export async function POST(req: NextRequest) {
-  const signature = req.headers.get("x-razorpay-signature");
-  let payloadRawString: string | undefined;
   try {
+    const signature = req.headers.get("x-razorpay-signature");
     if (!signature) {
       return NextResponse.json(
         { error: { code: "UNAUTHORIZED", message: "Missing signature" } },
@@ -14,7 +12,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    payloadRawString = await req.text();
+    const payloadRawString = await req.text();
     let payload;
     try {
       payload = JSON.parse(payloadRawString);
@@ -37,10 +35,6 @@ export async function POST(req: NextRequest) {
     const err = error as Error;
     if (err.message === "INVALID_PAYMENT_SIGNATURE") {
       console.error("Razorpay webhook signature mismatch");
-      // TEMPORARY Phase 5B diagnostics; the webhook is still rejected below.
-      if (signature && payloadRawString !== undefined) {
-        logSignatureMismatchDiagnostics(payloadRawString, signature, req.headers);
-      }
       return NextResponse.json(
         { error: { code: "INVALID_PAYMENT_SIGNATURE", message: "Invalid signature" } },
         { status: 401 }
