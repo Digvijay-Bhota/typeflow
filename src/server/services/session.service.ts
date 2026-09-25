@@ -6,7 +6,7 @@ import {
   StartSessionRequest,
   requestsCertificateTier,
 } from "@/schemas/session.schema";
-import { CERTIFICATE_MIN_DURATION } from "@/lib/constants";
+import { CERTIFICATE_MIN_DURATION, CERTIFICATE_MIN_PASSAGE_CHARS } from "@/lib/constants";
 import { SubmitResultRequest, type EventTrace } from "@/schemas/result.schema";
 import {
   calculateWpm,
@@ -152,6 +152,11 @@ export async function createSession(params: CreateSessionRequest) {
           : {}),
         isActive: true,
         mode: trustTier === "CERTIFICATE" ? "CERTIFICATE" : "NORMAL",
+        // A certificate test that runs out of text ends early and is INVALID,
+        // so never serve one a passage too short to last its full duration.
+        ...(trustTier === "CERTIFICATE"
+          ? { charCount: { gte: CERTIFICATE_MIN_PASSAGE_CHARS } }
+          : {}),
       },
     });
 

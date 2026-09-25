@@ -9,7 +9,7 @@ import { createSession } from "@/server/services/session.service";
 import { CreateSessionSchema } from "@/schemas/session.schema";
 import { POST as createRoute } from "@/app/api/session/create/route";
 import { getSeoRouteConfig } from "@/app/(seo)/[seoSlug]/seoConfig";
-import { CERTIFICATE_MIN_DURATION } from "@/lib/constants";
+import { CERTIFICATE_MIN_DURATION, CERTIFICATE_MIN_PASSAGE_CHARS } from "@/lib/constants";
 
 vi.mock("@/server/services/auth.service", () => ({
   getAuthenticatedUser: vi.fn().mockResolvedValue(null),
@@ -33,12 +33,16 @@ const passageMode = async (passageId: string) =>
   (await db.passage.findUniqueOrThrow({ where: { id: passageId } })).mode;
 
 beforeAll(async () => {
-  // Guarantee both kinds of active English passage exist in the test DB.
+  // Guarantee both kinds of active English passage exist in the test DB. A
+  // certificate passage must be long enough to last the whole test.
+  const certificateContent = "certificate passage for the certificate session tests "
+    .repeat(Math.ceil(CERTIFICATE_MIN_PASSAGE_CHARS / 54))
+    .trim();
   await db.passage.create({
     data: {
-      content: "certificate passage for the certificate session tests",
-      wordCount: 8,
-      charCount: 54,
+      content: certificateContent,
+      wordCount: certificateContent.split(/\s+/).length,
+      charCount: certificateContent.length,
       mode: "CERTIFICATE",
     },
   });
