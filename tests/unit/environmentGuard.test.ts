@@ -355,3 +355,102 @@ describe("G. errors and logs never contain credential values", () => {
     for (const spy of spies) expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe("isolation matrix (A–J): one misconfiguration at a time", () => {
+  const stagingRemoteDb = stagingPooledDb;
+  const pastedSecret = "sb_secret_PASTED-BY-MISTAKE-DO-NOT-LOG";
+  const secrets = [DB_PASSWORD, PROD_REF, LIVE_KEY, pastedSecret, "typeflow.example.com"];
+
+  const rejected: Array<[string, Record<string, string>, string[]]> = [
+    [
+      "A. preview + production database",
+      { ...isolatedPreviewEnv, DATABASE_URL: prodPooledDb, DIRECT_URL: prodDirectDb },
+      ["DATABASE_URL", "DIRECT_URL"],
+    ],
+    [
+      "B. preview + production Supabase URL",
+      {
+        ...isolatedPreviewEnv,
+        SUPABASE_URL: `https://${PROD_REF}.supabase.co`,
+        NEXT_PUBLIC_SUPABASE_URL: `https://${PROD_REF}.supabase.co`,
+      },
+      ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"],
+    ],
+    [
+      "C. preview + live Razorpay key",
+      {
+        ...isolatedPreviewEnv,
+        RAZORPAY_KEY_ID: LIVE_KEY,
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: LIVE_KEY,
+      },
+      ["RAZORPAY_KEY_ID", "NEXT_PUBLIC_RAZORPAY_KEY_ID"],
+    ],
+    [
+      "D. preview + production APP_URL",
+      {
+        ...isolatedPreviewEnv,
+        APP_URL: "https://typeflow.example.com",
+        NEXT_PUBLIC_APP_URL: "https://typeflow.example.com",
+      },
+      ["APP_URL", "NEXT_PUBLIC_APP_URL"],
+    ],
+    [
+      // Not production, but nothing proves it: fail closed.
+      "G. local development + a remote (non-production) database, no production ref",
+      {
+        ...localDevelopmentEnv,
+        SUPABASE_URL: "http://localhost:54321",
+        DATABASE_URL: stagingRemoteDb,
+        DIRECT_URL: stagingDirectDb,
+      },
+      ["DATABASE_URL", "DIRECT_URL"],
+    ],
+    [
+      // A malformed ref is not trusted, so remote URLs are refused as if it were unset.
+      "J. malformed production project ref",
+      { ...isolatedPreviewEnv, PRODUCTION_SUPABASE_PROJECT_REF: pastedSecret },
+      [
+        "PRODUCTION_SUPABASE_PROJECT_REF",
+        "DATABASE_URL",
+        "DIRECT_URL",
+        "SUPABASE_URL",
+        "NEXT_PUBLIC_SUPABASE_URL",
+      ],
+    ],
+  ];
+
+  it.each(rejected)("%s => rejected, naming variables only", (_label, env, expected) => {
+    expect(variables(env)).toEqual(expected);
+    let message = "";
+    try {
+      assertEnvironmentIsolation(env);
+    } catch (e) {
+      expect(e).toBeInstanceOf(EnvironmentIsolationError);
+      message = (e as Error).message;
+    }
+    expect(message).toMatch(
+      /^Configuration Error: refusing to run a (preview|development)/
+    );
+    for (const value of [...secrets, env.DATABASE_URL, env.SUPABASE_URL, env.APP_URL]) {
+      expect(message).not.toContain(value);
+    }
+  });
+
+  const accepted: Array<[string, Record<string, string>]> = [
+    ["E. preview + valid staging infrastructure", isolatedPreviewEnv],
+    [
+      "F. local development + local Postgres",
+      { ...localDevelopmentEnv, SUPABASE_URL: "http://localhost:54321" },
+    ],
+    ["H. production + production infrastructure", productionEnv],
+    [
+      "I. test environment",
+      { ...productionEnv, VERCEL: "", VERCEL_ENV: "", NODE_ENV: "test" },
+    ],
+  ];
+
+  it.each(accepted)("%s => accepted", (_label, env) => {
+    expect(environmentIsolationViolations(env)).toEqual([]);
+    expect(() => assertEnvironmentIsolation(env)).not.toThrow();
+  });
+});
