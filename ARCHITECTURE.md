@@ -84,3 +84,30 @@ If a recurring payment fails:
 - Separate from the certificate webhook (`/api/subscription/webhook`).
 - Signature verification requires reading the raw body string + HMAC-SHA256.
 - Idempotent processing ensures duplicate events are skipped by tracking `providerEventId` in `SubscriptionEvent`.
+
+## Payment Reconciliation (Phase 5C-5)
+
+The signed Razorpay webhook remains the primary path for certificate purchases. `src/server/services/payment.reconciliation.service.ts` is a safety net for when that path did not complete (a missed delivery, or Razorpay giving up on redelivery). **It never creates an order, captures, refunds or charges**: it only reads Razorpay (`fetchRazorpayOrderPayments`, `fetchRazorpayPayment` in `razorpay.service.ts`).
+
+**Coverage** (stale payments only: last changed ≥ 15 min ago, created ≤ 7 days ago):
+
+| Case                          | Database                             | Razorpay                            | REPORT                           | APPLY                                                                                        |
+| ----------------------------- | ------------------------------------ | ----------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------- |
+| C1 missed capture             | PENDING/FAILED                       | exactly one captured payment        | `recon:report:captured:<pay>`    | capture transition (`recon:captured:<pay>`), then fulfilment                                 |
+| C1 captured and refunded      | PENDING/FAILED                       | that payment fully refunded         | `recon:report:refunded:<pay>`    | full-refund transition (`recon:refunded:<pay>`): REFUNDED + REVOKED                          |
+| C2 stuck fulfilment           | COMPLETED, cert PENDING_FULFILLMENT  | not refunded                        | `recon:report:fulfillment:<pay>` | `fulfillCertificate()` (`recon:fulfilled:<pay>` on success); storage failure → stays pending |
+| C3 amount / currency mismatch | PENDING/FAILED                       | captured with other amount/currency | anomaly                          | anomaly only                                                                                 |
+| C3 multiple captures          | PENDING/FAILED                       | > 1 captured payment                | anomaly (`…:<order>`)            | anomaly only                                                                                 |
+| C4 held for review            | COMPLETED, cert PENDING_PAYMENT      | —                                   | anomaly                          | anomaly only (human decision)                                                                |
+| C5 authorized only            | PENDING/FAILED                       | authorized, none captured           | anomaly (`…:<order>`)            | anomaly only (never captured)                                                                |
+| C6 missed full refund         | COMPLETED, cert ACTIVE / PENDING\_\* | fully refunded                      | `recon:report:refunded:<pay>`    | full-refund transition                                                                       |
+
+Anomalies are `recon:anomaly:<kind>:<razorpay payment or order id>`, eventType `reconciliation.anomaly`. Partial refunds change nothing, as in the webhook. Nothing paid (abandoned or failed attempts, an auto-refunded authorization) changes nothing.
+
+**Modes** (`PAYMENT_RECONCILE_MODE`): `off` (default; also any unknown value) does nothing; `report` writes only audit/anomaly `PaymentEvent` rows and never changes payment or certificate state; `apply` also runs the repairs above. `?dryRun=1` writes nothing in either mode.
+
+**Idempotency:** repairs are the webhook's own transitions, extracted as `applyCaptureTx` / `applyFullRefundTx` in `payment.service.ts` (same compare-and-set, amount/currency check, refund-wins rule), run in one transaction with their audit event. Audit keys are deterministic `PaymentEvent.providerEventId` values; an existing key, or losing the insert race, records and applies nothing. REPORT findings use separate `recon:report:*` keys so they never block a later APPLY. Concurrent runs, the webhook, owner retries and admin revocation converge through the existing compare-and-set; there are no locks. A Razorpay read failure skips that payment. Each run is bounded (25 payments, 20 s budget; the route's `maxDuration` is 60 s) and returns/logs counts only, no provider payloads or customer data.
+
+**Cron endpoint:** `GET /api/cron/reconcile-payments`, `Authorization: Bearer <CRON_SECRET>` (what Vercel Cron sends), compared in constant time. `CRON_SECRET` unset or shorter than 32 characters → 503; missing/wrong token → 401. Not behind the user rate limiter. **No cron schedule is committed** (`vercel.json` has no `crons`), so merging this does not start any job.
+
+**Before activation (external, not verifiable from the repo):** Razorpay account auto-capture setting; webhook active events (`payment.captured`, `payment.failed`, `refund.processed`) and status; Razorpay webhook retry/disable policy; Vercel plan cron frequency limits (Hobby: daily); staging readiness (PR #7). Activation order: set `CRON_SECRET` (Production only) → run `report` and review anomalies → add the `crons` entry → `apply` only after the report findings are understood.

@@ -47,6 +47,16 @@ const serverSchema = z
     // Redis
     REDIS_URL: z.string().url("REDIS_URL must be a valid URL").optional(),
     TEST_REDIS_URL: z.string().url("TEST_REDIS_URL must be a valid URL").optional(),
+
+    // Payment reconciliation (src/server/services/payment.reconciliation.service.ts).
+    // Deliberately loose: a malformed value only disables reconciliation (the
+    // cron route answers 503, the mode falls back to "off"); it never fails
+    // validation for the whole app.
+    /// Bearer token for /api/cron/* (Vercel Cron sends it). Unset or shorter
+    /// than 32 characters → the cron route refuses to run.
+    CRON_SECRET: z.string().optional(),
+    /// off (default) | report | apply
+    PAYMENT_RECONCILE_MODE: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.CERTIFICATE_SIGNING_SECRET === data.SESSION_SECRET) {
@@ -130,6 +140,8 @@ export function getServerEnv(): z.infer<typeof serverSchema> {
         CERTIFICATE_SIGNING_SECRET: process.env.CERTIFICATE_SIGNING_SECRET,
         REDIS_URL: process.env.REDIS_URL,
         TEST_REDIS_URL: process.env.TEST_REDIS_URL,
+        CRON_SECRET: process.env.CRON_SECRET,
+        PAYMENT_RECONCILE_MODE: process.env.PAYMENT_RECONCILE_MODE,
       },
       "server"
     );

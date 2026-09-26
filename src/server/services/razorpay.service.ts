@@ -37,6 +37,56 @@ export async function createRazorpayOrder(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Read-only access (payment reconciliation). Nothing here creates, captures or
+// refunds anything; keep mutation calls out of this section.
+// ---------------------------------------------------------------------------
+
+/** The fields of a Razorpay payment that reconciliation reads. */
+export type RazorpayPaymentSnapshot = {
+  id: string;
+  orderId: string | null;
+  /** created | authorized | captured | refunded | failed */
+  status: string;
+  /** Smallest currency unit (paise). */
+  amount: number;
+  currency: string;
+  captured: boolean;
+  amountRefunded: number;
+  /** "partial" | "full" | null */
+  refundStatus: string | null;
+};
+
+function toSnapshot(p: Record<string, unknown>): RazorpayPaymentSnapshot {
+  const refundStatus = typeof p.refund_status === "string" ? p.refund_status : null;
+  return {
+    id: String(p.id),
+    orderId: typeof p.order_id === "string" ? p.order_id : null,
+    status: String(p.status),
+    amount: Number(p.amount),
+    currency: String(p.currency),
+    captured: p.captured === true,
+    amountRefunded: Number(p.amount_refunded ?? 0),
+    refundStatus: refundStatus === "null" ? null : refundStatus,
+  };
+}
+
+/** GET /v1/orders/:id/payments — every payment attempt on an order. */
+export async function fetchRazorpayOrderPayments(
+  orderId: string
+): Promise<RazorpayPaymentSnapshot[]> {
+  const { items } = await getRazorpayClient().orders.fetchPayments(orderId);
+  return items.map((item) => toSnapshot(item as unknown as Record<string, unknown>));
+}
+
+/** GET /v1/payments/:id */
+export async function fetchRazorpayPayment(
+  paymentId: string
+): Promise<RazorpayPaymentSnapshot> {
+  const payment = await getRazorpayClient().payments.fetch(paymentId);
+  return toSnapshot(payment as unknown as Record<string, unknown>);
+}
+
 /**
  * Stable idempotency key for a Razorpay webhook delivery.
  *
