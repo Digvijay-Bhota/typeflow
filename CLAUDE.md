@@ -59,6 +59,8 @@ Test locations: `tests/unit/**`, `tests/integration/**` (vitest, Node env), `src
 
 **Auth:** Supabase handles auth; `auth.service.ts#getAuthenticatedUser()` syncs the Supabase user into the Prisma `User` table (`authId` is the FK to `auth.users.id`), upserting on first sight. Always go through this helper rather than reading the Supabase session directly in services.
 
+**Database access is server-only:** application tables in `public` are read and written only by the server through Prisma (the `postgres` role, which owns them). Supabase is used for Auth and Storage only — never `supabase.from(...)`/the Data API for application data, from the browser or the server. Supabase's Data API roles (`anon`, `authenticated`) are locked out by migration `20260926000000_lock_down_public_schema_data_api`: RLS on every table with no policies, and their table/sequence/function privileges and default privileges revoked. **Every migration that adds a table must also `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`** (no policies for `anon`/`authenticated`); `tests/integration/db-privileges-pg.test.ts` fails otherwise. The test database reproduces Supabase's roles and grants before migrating (`tests/setup/supabase-roles.sql`, run by `tests/setup/global-db.ts`, CI and `npm run db:test:migrate`).
+
 ## Conventions
 
 - Path alias `@/*` → `src/*`.
