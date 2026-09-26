@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
     "/api/certificate/fulfill": [
       "./src/server/assets/fonts/NotoSansDevanagari-Regular.ttf",
     ],
+    // Payment reconciliation fulfils certificates too (fulfillCertificate).
+    "/api/cron/reconcile-payments": [
+      "./src/server/assets/fonts/NotoSansDevanagari-Regular.ttf",
+    ],
   },
 
   // Security headers

@@ -37,7 +37,11 @@ describe("certificate font asset", () => {
 
   it("is traced into every function that renders certificates", () => {
     const includes = nextConfig.outputFileTracingIncludes ?? {};
-    for (const route of ["/api/payment/webhook", "/api/certificate/fulfill"]) {
+    for (const route of [
+      "/api/payment/webhook",
+      "/api/certificate/fulfill",
+      "/api/cron/reconcile-payments",
+    ]) {
       expect(includes[route]).toContain(`./${DEVANAGARI_FONT_FILE}`);
     }
   });

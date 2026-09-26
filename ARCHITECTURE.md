@@ -16,7 +16,7 @@ Application data is server-only. The browser never reads or writes application t
 `renderCertificatePdf` draws the "Recipient:" line with `src/lib/certificateRecipient.ts` (pure, deterministic):
 
 - **Latin names** Helvetica (WinAnsi) can draw render exactly as before: one `drawText`, 18 pt, no extra font embedded.
-- **Devanagari** (Hindi, Marathi, …) is drawn with Noto Sans Devanagari Regular (OFL 1.1), bundled at `src/server/assets/fonts/` and subsetted into the PDF through `@pdf-lib/fontkit`. It is read from disk (never fetched) and traced into `/api/payment/webhook` and `/api/certificate/fulfill` by `outputFileTracingIncludes` in `next.config.ts`. `regenerator-runtime` is only there because fontkit's shaper expects it as a global.
+- **Devanagari** (Hindi, Marathi, …) is drawn with Noto Sans Devanagari Regular (OFL 1.1), bundled at `src/server/assets/fonts/` and subsetted into the PDF through `@pdf-lib/fontkit`. It is read from disk (never fetched) and traced into every function that renders certificates (`/api/payment/webhook`, `/api/certificate/fulfill`, `/api/cron/reconcile-payments`) by `outputFileTracingIncludes` in `next.config.ts`. `regenerator-runtime` is only there because fontkit's shaper expects it as a global.
 - **Emoji**, control, bidi and invisible format characters are removed; text is NFC-normalized and whitespace collapsed.
 - **Any other script** (e.g. CJK, Greek, Cyrillic, Latin letters outside WinAnsi such as `Ł`) replaces the whole name with `(see verification page)`, never a partial name. The verification page (HTML) shows the stored name, and the QR code links to it.
 - **Long names** shrink from 18 pt to 11 pt, then are cut at a grapheme boundary with `…`, so they never overlap the WPM column or fail.
