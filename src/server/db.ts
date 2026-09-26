@@ -9,6 +9,11 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { logger } from "@/lib/logger";
+import { assertEnvironmentIsolation } from "@/lib/environmentGuard";
+
+// Before any client exists: a non-production runtime must not connect to the
+// production database (Prisma reads DATABASE_URL directly, not getServerEnv()).
+assertEnvironmentIsolation(process.env);
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
