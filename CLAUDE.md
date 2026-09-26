@@ -29,12 +29,15 @@ npx playwright test tests/e2e/some.spec.ts   # single e2e spec
 
 npm run db:generate       # prisma generate
 npm run db:push           # push schema without migration
-npm run db:migrate        # prisma migrate dev
+npm run db:migrate:new -- <name>  # write a migration for schema.prisma changes (db:migrate is an alias)
+npm run db:migrate:check  # fail if schema.prisma has changes no migration captures (CI runs this)
 npm run db:studio
 npm run db:seed           # tsx prisma/seed.ts
 
 npm run validate          # typecheck + lint + test + build — run before considering work done
 ```
+
+**Migrations — never `prisma migrate dev`:** its shadow database lacks `_prisma_migrations`, so it fails (P3006) on the applied migration `20260926000000_lock_down_public_schema_data_api`, and it reads the database URL from `.env`. Write migrations with `npm run db:migrate:new -- <name>` (replays the history into a throwaway **local** database with `migrate deploy`, diffs it against `schema.prisma`, appends RLS for new tables), then apply them with `prisma migrate deploy` — locally, to staging and to production alike. Never edit an applied migration: `tests/unit/prismaMigrationWorkflow.test.ts` pins their checksums. See `ARCHITECTURE.md` → Migration Workflow.
 
 Test locations: `tests/unit/**`, `tests/integration/**` (vitest, Node env), `src/**/*.test.ts` (co-located unit tests are also picked up), `tests/e2e/**` (Playwright, separate runner). Coverage instrumentation is scoped to `src/features/typing/lib/**` and `src/lib/**` — the pure calculation layer.
 
