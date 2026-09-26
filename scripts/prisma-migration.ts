@@ -103,10 +103,15 @@ function diffAgainstReplayedHistory(): { sql: string; exitCode: number } {
       fail("prisma migrate diff failed", diff.stderr);
     return { sql: diff.stdout, exitCode: diff.status };
   } finally {
-    prisma(["db", "execute", "--url", serverUrl, "--stdin"], {
+    const drop = prisma(["db", "execute", "--url", serverUrl, "--stdin"], {
       url: serverUrl,
       input: `DROP DATABASE IF EXISTS "${scratch}" WITH (FORCE);`,
     });
+    if (drop.status !== 0) {
+      console.error(
+        `⚠ Could not drop the scratch database ${scratch} on ${describeUrl(serverUrl)}; drop it manually.`
+      );
+    }
   }
 }
 

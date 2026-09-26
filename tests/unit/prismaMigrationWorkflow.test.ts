@@ -116,7 +116,28 @@ describe("scratch server URL", () => {
       "a hostaddr= override",
       "postgresql://u:pw-SECRET@localhost:5432/postgres?hostaddr=10.0.0.5",
     ],
+    ["a remote IPv4 address", "postgresql://u:pw-SECRET@203.0.113.10:5432/postgres"],
+    ["a private-network IPv4 address", "postgresql://u:pw-SECRET@10.0.0.5:5432/postgres"],
+    ["a remote IPv6 address", "postgresql://u:pw-SECRET@[2001:db8::1]:5432/postgres"],
+    ["a wildcard address", "postgresql://u:pw-SECRET@0.0.0.0:5432/postgres"],
+    [
+      "an upper-case HOST= override",
+      "postgresql://u:pw-SECRET@localhost:5432/postgres?HOST=db.example.com",
+    ],
+    [
+      "a URL-encoded host= override",
+      "postgresql://u:pw-SECRET@localhost:5432/postgres?h%6Fst=db.example.com",
+    ],
+    [
+      "a mixed-case hostAddr= override",
+      "postgresql://u:pw-SECRET@127.0.0.1:5432/postgres?sslmode=disable&hostAddr=10.0.0.5",
+    ],
+    [
+      "a service= override",
+      "postgresql://u:pw-SECRET@localhost:5432/postgres?service=production",
+    ],
     ["another protocol", "mysql://u:pw-SECRET@localhost:3306/db"],
+    ["an empty value", ""],
     ["an invalid URL", "not a url pw-SECRET"],
   ])("refuses %s, without echoing the URL", (_label, raw) => {
     let message = "";

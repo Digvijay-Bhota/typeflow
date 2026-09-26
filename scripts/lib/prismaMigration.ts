@@ -15,6 +15,8 @@
 /** Hosts a scratch database may be created on. Never a remote server. */
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
+const REDIRECT_PARAMETERS = new Set(["host", "hostaddr", "service", "servicefile"]);
+
 export const DEFAULT_SCRATCH_SERVER_URL =
   "postgresql://postgres:postgres@localhost:5434/postgres";
 
@@ -36,11 +38,15 @@ export function localServerUrl(raw: string): URL {
   if (url.protocol !== "postgresql:" && url.protocol !== "postgres:") {
     throw new Error("MIGRATION_SCRATCH_SERVER_URL must be a postgresql:// URL");
   }
-  // libpq honours host/hostaddr over the URL's host, so they could point elsewhere.
-  if (url.searchParams.has("host") || url.searchParams.has("hostaddr")) {
-    throw new Error(
-      "MIGRATION_SCRATCH_SERVER_URL must not carry host/hostaddr parameters"
-    );
+  // Connection parameters that can point the connection at another server than
+  // the URL's host (Prisma honours host=; libpq also hostaddr= and service=).
+  // Matched case-insensitively, failing closed.
+  for (const key of url.searchParams.keys()) {
+    if (REDIRECT_PARAMETERS.has(key.toLowerCase())) {
+      throw new Error(
+        "MIGRATION_SCRATCH_SERVER_URL must not carry host/hostaddr/service parameters"
+      );
+    }
   }
   if (!LOCAL_HOSTS.has(url.hostname.toLowerCase())) {
     throw new Error(

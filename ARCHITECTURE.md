@@ -125,9 +125,10 @@ Anomalies are `recon:anomaly:<kind>:<razorpay payment or order id>`, eventType `
 | Apply (local dev database, staging, production) | `prisma migrate deploy` — run manually; builds never migrate |
 | CI                                              | `npm run db:migrate:check`                                   |
 
-`scripts/prisma-migration.ts` replays every committed migration with `prisma migrate deploy` — which creates `_prisma_migrations` first, as in production — into a throwaway database on a **local** Postgres (`MIGRATION_SCRATCH_SERVER_URL`, default the docker-compose container on port 5434; remote hosts are refused), diffs it against `schema.prisma` with `prisma migrate diff --from-url`, and drops it. It never reads `.env`'s database URLs.
+`scripts/prisma-migration.ts` replays every committed migration with `prisma migrate deploy` — which creates `_prisma_migrations` first, as in production — into a throwaway database on a **local** Postgres (`MIGRATION_SCRATCH_SERVER_URL`, default the docker-compose container on port 5434; only `localhost`, `127.0.0.1` and `::1` are accepted, and `host`/`hostaddr`/`service` connection parameters, in any case, are refused), diffs it against `schema.prisma` with `prisma migrate diff --from-url`, and drops it. It never reads `.env`'s database URLs.
 
 - `new` writes `prisma/migrations/<timestamp>_<name>/migration.sql` and appends `ENABLE ROW LEVEL SECURITY` for every table it creates (Database Access Model).
 - `check` fails when `schema.prisma` has changes that no migration captures, or when the history does not apply cleanly.
 - Applied migrations are immutable: `tests/unit/prismaMigrationWorkflow.test.ts` pins their checksums. Add a new migration once it is deployed there.
 - Future migrations must not reference `_prisma_migrations` unguarded.
+- `new` with no schema change writes nothing and exits 0; `check` exits non-zero on any uncaptured change or replay failure. The scratch database is dropped in every case (a failed drop is reported). `tests/integration/prisma-migration-workflow-pg.test.ts` runs both commands end to end against the local test Postgres.
