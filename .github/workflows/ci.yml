@@ -115,6 +115,14 @@ jobs:
           DATABASE_URL: "postgresql://postgres:password@localhost:5432/typeflow_test"
           DIRECT_URL: "postgresql://postgres:password@localhost:5432/typeflow_test"
 
+      # Replays the whole history into a scratch database with migrate deploy
+      # and fails if schema.prisma has changes no migration captures. Replaces
+      # a shadow-database check, which migrate dev cannot pass (P3006).
+      - name: Check migrations match schema.prisma
+        run: npm run db:migrate:check
+        env:
+          MIGRATION_SCRATCH_SERVER_URL: "postgresql://postgres:password@localhost:5432/postgres"
+
       - name: Run unit tests with coverage
         run: npm run test:coverage
         env:

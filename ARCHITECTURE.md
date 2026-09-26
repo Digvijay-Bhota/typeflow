@@ -127,3 +127,21 @@ Anomalies are `recon:anomaly:<kind>:<razorpay payment or order id>`, eventType `
 **Cron endpoint:** `GET /api/cron/reconcile-payments`, `Authorization: Bearer <CRON_SECRET>` (what Vercel Cron sends), compared in constant time. `CRON_SECRET` unset or shorter than 32 characters → 503; missing/wrong token → 401. Not behind the user rate limiter. **No cron schedule is committed** (`vercel.json` has no `crons`), so merging this does not start any job.
 
 **Before activation (external, not verifiable from the repo):** Razorpay account auto-capture setting; webhook active events (`payment.captured`, `payment.failed`, `refund.processed`) and status; Razorpay webhook retry/disable policy; Vercel plan cron frequency limits (Hobby: daily). Staging environment provisioning and verification remains an external prerequisite; PR #7 provides repository-level environment guards only. Activation order: set `CRON_SECRET` (Production only) → run `report` and review anomalies → add the `crons` entry → `apply` only after the report findings are understood.
+
+## Migration Workflow
+
+`prisma migrate dev` is not used. Its shadow database replays migrations without Prisma's `_prisma_migrations` table, so the applied migration `20260926000000_lock_down_public_schema_data_api` (which enables RLS on that table) fails there with P3006/P1014. That migration is deployed and stays unchanged: editing it would change its checksum, and every database that applied it would then need a reset.
+
+| Where                                           | Command                                                      |
+| ----------------------------------------------- | ------------------------------------------------------------ |
+| Write a migration                               | `npm run db:migrate:new -- <name>`                           |
+| Apply (local dev database, staging, production) | `prisma migrate deploy` — run manually; builds never migrate |
+| CI                                              | `npm run db:migrate:check`                                   |
+
+`scripts/prisma-migration.ts` replays every committed migration with `prisma migrate deploy` — which creates `_prisma_migrations` first, as in production — into a throwaway database on a **local** Postgres (`MIGRATION_SCRATCH_SERVER_URL`, default the docker-compose container on port 5434; only `localhost`, `127.0.0.1` and `::1` are accepted, and `host`/`hostaddr`/`service` connection parameters, in any case, are refused), diffs it against `schema.prisma` with `prisma migrate diff --from-url`, and drops it. It never reads `.env`'s database URLs.
+
+- `new` writes `prisma/migrations/<timestamp>_<name>/migration.sql` and appends `ENABLE ROW LEVEL SECURITY` for every table it creates (Database Access Model).
+- `check` fails when `schema.prisma` has changes that no migration captures, or when the history does not apply cleanly.
+- Applied migrations are immutable: `tests/unit/prismaMigrationWorkflow.test.ts` pins their checksums. Add a new migration once it is deployed there.
+- Future migrations must not reference `_prisma_migrations` unguarded.
+- `new` with no schema change writes nothing and exits 0; `check` exits non-zero on any uncaptured change or replay failure. The scratch database is dropped in every case (a failed drop is reported). `tests/integration/prisma-migration-workflow-pg.test.ts` runs both commands end to end against the local test Postgres.
