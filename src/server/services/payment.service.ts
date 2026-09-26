@@ -6,7 +6,7 @@ import {
   razorpayEventKey,
   verifyRazorpaySignature,
 } from "./razorpay.service";
-import { Prisma } from "@prisma/client";
+import { Prisma, type Payment } from "@prisma/client";
 import { isTrustedResult } from "@/lib/certificateEligibility";
 import { fulfillCertificate, revokeCertificateTx } from "./certificate.service";
 import { logger } from "@/lib/logger";
@@ -258,60 +258,118 @@ async function applyPaymentEvent(
 
     // 3. Process Event Type
     if (eventType === "payment.captured") {
-      // Already settled (COMPLETED/REFUNDED): never touched by a capture again.
-      if (payment.status === "COMPLETED" || payment.status === "REFUNDED") return;
-      if (!entity || entity.status !== "captured") return;
-
-      if (entity.amount !== payment.amount || entity.currency !== payment.currency) {
-        throw new Error("PAYMENT_AMOUNT_MISMATCH");
-      }
-
-      // A retry on the same order can capture after an earlier attempt FAILED.
-      // Compare-and-set: a refund committed concurrently is not overwritten.
-      const { count } = await tx.payment.updateMany({
-        where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } },
-        data: { status: "COMPLETED", paymentId: paymentId ?? null },
-      });
-      if (count === 1 && payment.certificateId) {
-        await markCertificatePaid(payment.certificateId, tx);
-      }
+      await applyCaptureTx(tx, payment, entity);
     } else if (eventType === "payment.failed") {
       await tx.payment.updateMany({
         where: { id: payment.id, status: "PENDING" },
         data: { status: "FAILED", paymentId: paymentId ?? null },
       });
     } else if (eventType === "refund.processed") {
-      // Only a processed (completed) refund counts; refund.created is only a
-      // request and refund.failed means nothing was returned.
-      if (refundEntity?.status !== undefined && refundEntity.status !== "processed") {
-        return;
-      }
-      if (!isFullRefund(entity, refundEntity, payment.amount)) {
-        logger.warn("Partial certificate refund processed; certificate left unchanged", {
-          paymentId: payment.id,
-        });
-        return;
-      }
-
-      // Razorpay auto-refunds uncaptured authorizations: nothing was paid, so
-      // the purchase stays open for another attempt on the same order.
-      if (payment.status !== "COMPLETED" && entity?.captured === false) return;
-
-      // Otherwise from any state: a refund delivered before its capture event
-      // must still prevent the late capture from activating the certificate.
-      await tx.payment.updateMany({
-        where: { id: payment.id, status: { not: "REFUNDED" } },
-        data: { status: "REFUNDED" },
-      });
-      if (payment.certificateId) {
-        await revokeCertificateTx(
-          tx,
-          { id: payment.certificateId },
-          "REFUND: payment refunded"
-        );
-      }
+      await applyFullRefundTx(tx, payment, entity, refundEntity);
     }
   });
+}
+
+type PaymentRow = Pick<
+  Payment,
+  "id" | "status" | "amount" | "currency" | "certificateId"
+>;
+
+/**
+ * The capture check shared by the webhook and reconciliation: a Razorpay
+ * payment entity must carry exactly the order's amount and currency (strict
+ * equality). Returns what differs, or null.
+ */
+export function orderAmountMismatch(
+  entity: Record<string, unknown>,
+  payment: Pick<Payment, "amount" | "currency">
+): "amount" | "currency" | null {
+  if (entity.amount !== payment.amount) return "amount";
+  if (entity.currency !== payment.currency) return "currency";
+  return null;
+}
+
+/**
+ * Capture transition, inside the caller's transaction (the webhook's, after it
+ * recorded the PaymentEvent; or the reconciler's). `entity` is a Razorpay
+ * payment entity. Returns true only for the call that moved the payment to
+ * COMPLETED.
+ *
+ * - Already settled (COMPLETED/REFUNDED): never touched by a capture again.
+ * - The entity must be captured, with the order's exact amount and currency;
+ *   a mismatch throws PAYMENT_AMOUNT_MISMATCH (rolling the transaction back).
+ * - Compare-and-set PENDING/FAILED → COMPLETED (a retry on the same order can
+ *   capture after an earlier attempt FAILED; a refund committed concurrently
+ *   is not overwritten), then PENDING_PAYMENT → PENDING_FULFILLMENT.
+ */
+export async function applyCaptureTx(
+  tx: Prisma.TransactionClient,
+  payment: PaymentRow,
+  entity: Record<string, unknown> | undefined
+): Promise<boolean> {
+  if (payment.status === "COMPLETED" || payment.status === "REFUNDED") return false;
+  if (!entity || entity.status !== "captured") return false;
+
+  if (orderAmountMismatch(entity, payment)) {
+    throw new Error("PAYMENT_AMOUNT_MISMATCH");
+  }
+
+  const paymentId = entity.id as string | undefined;
+  const { count } = await tx.payment.updateMany({
+    where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } },
+    data: { status: "COMPLETED", paymentId: paymentId ?? null },
+  });
+  if (count === 1 && payment.certificateId) {
+    await markCertificatePaid(payment.certificateId, tx);
+  }
+  return count === 1;
+}
+
+/**
+ * Full-refund transition (refund.processed), inside the caller's transaction.
+ * `entity` is the Razorpay payment entity, `refundEntity` the refund entity
+ * when there is one. Returns true only for the call that moved the payment to
+ * REFUNDED.
+ *
+ * - Only a processed refund counts; refund.created is only a request and
+ *   refund.failed means nothing was returned.
+ * - A partial refund is recorded by the caller but changes nothing here.
+ * - Razorpay auto-refunds uncaptured authorizations: nothing was paid, so the
+ *   purchase stays open for another attempt on the same order.
+ * - Otherwise from any state (refund wins): a refund delivered before its
+ *   capture must still prevent the late capture from activating the
+ *   certificate, which is revoked.
+ */
+export async function applyFullRefundTx(
+  tx: Prisma.TransactionClient,
+  payment: PaymentRow,
+  entity: Record<string, unknown> | undefined,
+  refundEntity: Record<string, unknown> | undefined
+): Promise<boolean> {
+  if (refundEntity?.status !== undefined && refundEntity.status !== "processed") {
+    return false;
+  }
+  if (!isFullRefund(entity, refundEntity, payment.amount)) {
+    logger.warn("Partial certificate refund processed; certificate left unchanged", {
+      paymentId: payment.id,
+    });
+    return false;
+  }
+
+  if (payment.status !== "COMPLETED" && entity?.captured === false) return false;
+
+  const { count } = await tx.payment.updateMany({
+    where: { id: payment.id, status: { not: "REFUNDED" } },
+    data: { status: "REFUNDED" },
+  });
+  if (payment.certificateId) {
+    await revokeCertificateTx(
+      tx,
+      { id: payment.certificateId },
+      "REFUND: payment refunded"
+    );
+  }
+  return count === 1;
 }
 
 /** Payment captured: PENDING_PAYMENT → PENDING_FULFILLMENT (same transaction). */
