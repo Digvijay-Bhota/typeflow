@@ -16,7 +16,8 @@ import {
 } from "@/lib/constants";
 import { PDFDocument } from "pdf-lib";
 import { nanoid } from "nanoid";
-import { createHmac } from "crypto";
+import { createHash, createHmac } from "crypto";
+import { pdfFontNames } from "../setup/pdfFonts";
 
 // Mock the Prisma DB
 vi.mock("@/server/db", () => ({
@@ -369,6 +370,91 @@ describe("Certificate Service", () => {
       const a = await renderCertificatePdf(snapshot, verifyUrl);
       const b = await renderCertificatePdf(snapshot, verifyUrl);
       expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
+    });
+
+    describe("recipient names", () => {
+      const render = (recipientName: string) =>
+        renderCertificatePdf({ ...snapshot, recipientName }, verifyUrl);
+      const sha256 = (bytes: Uint8Array) =>
+        createHash("sha256").update(bytes).digest("hex");
+      const LATIN = ["Helvetica", "Helvetica-Bold"];
+      const WITH_DEVANAGARI = [...LATIN, "NotoSansDevanagari-Regular"];
+
+      it("renders Latin names byte-for-byte as before Unicode support", async () => {
+        // Captured from the Helvetica-only renderer this replaced, with the
+        // same snapshot and verify URL. A pdf-lib or qrcode upgrade may
+        // legitimately change them; re-capture only then.
+        const before: Record<string, string> = {
+          "User 1": "d5acdf8ea0863b6c4dc8d1f7612f888ed5bdc075553e30a142ac9545e87e8ded",
+          "Anonymous Typist":
+            "462b8e04e9e2b67e92baf5defe7150ffd1e3e160d0f6b04a749d4d3aa12c9b85",
+          "José Müller-Øster":
+            "0bf1c0c2ea4332790793201892747b747817bd1af4a8431efcce24d6ee7b276d",
+          "Anne-Marie O'Neil, Jr.":
+            "e1c9e3868c491fea93294a9815251ef11c815ed444ef6b49b391f0528e5efde3",
+        };
+        for (const [name, hash] of Object.entries(before)) {
+          expect(sha256(await render(name))).toBe(hash);
+        }
+        expect(await pdfFontNames(await render("User 1"))).toEqual(LATIN);
+      });
+
+      it("renders a Hindi name with the embedded, subsetted Devanagari font", async () => {
+        const bytes = await render("प्रिया शर्मा");
+        expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+        expect(await pdfFontNames(bytes)).toEqual(WITH_DEVANAGARI);
+        // Only the glyphs used are embedded, not the whole 221 KB font.
+        expect(bytes.length).toBeLessThan(20_000);
+        expect(sha256(bytes)).toBe(sha256(await render("प्रिया शर्मा")));
+      });
+
+      it("renders mixed Latin and Devanagari names", async () => {
+        const bytes = await render("Priya (प्रिया) Sharma");
+        expect(await pdfFontNames(bytes)).toEqual(WITH_DEVANAGARI);
+      });
+
+      it("renders punctuation-heavy Latin names with Helvetica only", async () => {
+        expect(
+          await pdfFontNames(await render("O'Brien-Smith, Jr. (Dr.) & Co."))
+        ).toEqual(LATIN);
+      });
+
+      it("renders a name in an unsupported script as the fixed fallback, not a partial name", async () => {
+        const chinese = await render("李明");
+        expect(await pdfFontNames(chinese)).toEqual(LATIN);
+        // Every unsupported name yields the same bytes: nothing of it is drawn.
+        expect(sha256(chinese)).toBe(sha256(await render("王小明")));
+        expect(sha256(chinese)).toBe(sha256(await render("Ming 李")));
+      });
+
+      it("drops emoji deterministically", async () => {
+        expect(sha256(await render("Sam 🚀 Lee"))).toBe(sha256(await render("Sam Lee")));
+        expect(sha256(await render("🚀🔥"))).toBe(sha256(await render("李明")));
+      });
+
+      it("renders the longest stored names (100 characters) on one page", async () => {
+        for (const name of ["W".repeat(100), "क्षत्रिय ".repeat(12).slice(0, 100)]) {
+          const bytes = await render(name);
+          expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+          expect(sha256(bytes)).toBe(sha256(await render(name)));
+        }
+      });
+
+      it("falls back to the fixed text if the Devanagari font cannot be drawn", async () => {
+        const embedFont = PDFDocument.prototype.embedFont;
+        const spy = vi
+          .spyOn(PDFDocument.prototype, "embedFont")
+          .mockImplementation(function (this: PDFDocument, font, options) {
+            if (typeof font !== "string")
+              return Promise.reject(new Error("embed failed"));
+            return embedFont.call(this, font, options);
+          });
+        try {
+          expect(sha256(await render("प्रिया शर्मा"))).toBe(sha256(await render("李明")));
+        } finally {
+          spy.mockRestore();
+        }
+      });
     });
   });
 });
