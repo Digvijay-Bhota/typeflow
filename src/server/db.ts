@@ -9,6 +9,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { logger } from "@/lib/logger";
+import { logPrismaError, logPrismaWarn } from "@/server/prismaLogging";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -34,9 +35,8 @@ if (process.env.VERCEL && connectionUrl) {
   }
 }
 
-export const db: PrismaClient =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+function createPrismaClient(): PrismaClient {
+  const client = new PrismaClient({
     ...(connectionUrl && { datasources: { db: { url: connectionUrl } } }),
     log:
       process.env.NODE_ENV === "development"
@@ -51,24 +51,27 @@ export const db: PrismaClient =
           ],
   });
 
+  // Registered once per client, in every environment (see prismaLogging.ts).
+  client.$on("warn" as never, logPrismaWarn);
+  client.$on("error" as never, logPrismaError);
+
+  if (process.env.NODE_ENV === "development") {
+    // Log slow queries in development (helps identify N+1s)
+    client.$on("query" as never, (e: { query: string; duration: number }) => {
+      if (e.duration > 100) {
+        logger.warn("Slow query detected", {
+          query: e.query.slice(0, 200),
+          durationMs: e.duration,
+        });
+      }
+    });
+  }
+
+  return client;
+}
+
+export const db: PrismaClient = globalForPrisma.prisma ?? createPrismaClient();
+
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = db;
-
-  // Log queries in development (helps identify N+1s)
-  db.$on("query" as never, (e: { query: string; duration: number }) => {
-    if (e.duration > 100) {
-      logger.warn("Slow query detected", {
-        query: e.query.slice(0, 200),
-        durationMs: e.duration,
-      });
-    }
-  });
-
-  db.$on("warn" as never, (e: { message: string }) => {
-    logger.warn("Prisma warning", { message: e.message });
-  });
-
-  db.$on("error" as never, (e: { message: string }) => {
-    logger.error("Prisma error", new Error(e.message));
-  });
 }

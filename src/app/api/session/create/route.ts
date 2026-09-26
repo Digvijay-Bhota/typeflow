@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { CreateSessionSchema } from "@/schemas/session.schema";
 import { createSession } from "@/server/services/session.service";
 import { rateLimit } from "@/server/middleware/rateLimit";
-import { logger } from "@/lib/logger";
+import { logRequestFailure } from "@/lib/logger";
 import { isServiceError } from "@/server/errors";
 
 export async function POST(req: Request) {
+  const requestId = crypto.randomUUID();
   try {
     const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
     const { success, remaining, limit, reset } = await rateLimit(
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error: {
-            requestId: crypto.randomUUID(),
+            requestId,
             code: "RATE_LIMITED",
             message: "Too many requests.",
           },
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error: {
-            requestId: crypto.randomUUID(),
+            requestId,
             code: "VALIDATION_ERROR",
             message: "Invalid request payload.",
             details: parsed.error.issues,
@@ -54,15 +55,17 @@ export async function POST(req: Request) {
     const session = await createSession(parsed.data);
 
     return NextResponse.json(session, { status: 201 });
-  } catch (error: any) {
-    // eslint-disable-line @typescript-eslint/no-explicit-any
-    logger.error("Failed to create session", { error: error.message });
+  } catch (error) {
+    logRequestFailure("Failed to create session", error, {
+      requestId,
+      route: "POST /api/session/create",
+    });
 
-    if (error.message === "DUPLICATE_SESSION") {
+    if (error instanceof Error && error.message === "DUPLICATE_SESSION") {
       return NextResponse.json(
         {
           error: {
-            requestId: crypto.randomUUID(),
+            requestId,
             code: "CONFLICT",
             message: "A session already exists for this attempt.",
           },
@@ -75,7 +78,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error: {
-            requestId: crypto.randomUUID(),
+            requestId,
             code: error.code,
             message: error.message,
           },
@@ -87,7 +90,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: {
-          requestId: crypto.randomUUID(),
+          requestId,
           code: "INTERNAL_ERROR",
           message: "Failed to create session.",
         },
