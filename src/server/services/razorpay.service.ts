@@ -87,6 +87,51 @@ export async function fetchRazorpayPayment(
   return toSnapshot(payment as unknown as Record<string, unknown>);
 }
 
+/** The fields of a Razorpay refund that reconciliation reads. */
+export type RazorpayRefundSnapshot = {
+  id: string;
+  paymentId: string | null;
+  /** pending | processed | failed */
+  status: string;
+  /** Smallest currency unit (paise). */
+  amount: number;
+  currency: string;
+};
+
+function toRefundSnapshot(r: Record<string, unknown>): RazorpayRefundSnapshot {
+  return {
+    id: String(r.id),
+    paymentId: typeof r.payment_id === "string" ? r.payment_id : null,
+    status: String(r.status),
+    amount: Number(r.amount),
+    currency: String(r.currency),
+  };
+}
+
+const REFUND_PAGE_SIZE = 100; // Razorpay's maximum
+const REFUND_MAX_PAGES = 10;
+
+/**
+ * GET /v1/payments/:id/refunds — every refund of a payment, all pages.
+ * Throws rather than return a partial list.
+ */
+export async function fetchRazorpayPaymentRefunds(
+  paymentId: string
+): Promise<RazorpayRefundSnapshot[]> {
+  const refunds: RazorpayRefundSnapshot[] = [];
+  for (let page = 0; page < REFUND_MAX_PAGES; page++) {
+    const { items } = await getRazorpayClient().payments.fetchMultipleRefund(paymentId, {
+      count: REFUND_PAGE_SIZE,
+      skip: page * REFUND_PAGE_SIZE,
+    });
+    refunds.push(
+      ...items.map((item) => toRefundSnapshot(item as unknown as Record<string, unknown>))
+    );
+    if (items.length < REFUND_PAGE_SIZE) return refunds;
+  }
+  throw new Error("Too many refunds to list for one payment");
+}
+
 /**
  * Stable idempotency key for a Razorpay webhook delivery.
  *

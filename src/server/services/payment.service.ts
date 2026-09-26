@@ -276,6 +276,20 @@ type PaymentRow = Pick<
 >;
 
 /**
+ * The capture check shared by the webhook and reconciliation: a Razorpay
+ * payment entity must carry exactly the order's amount and currency (strict
+ * equality). Returns what differs, or null.
+ */
+export function orderAmountMismatch(
+  entity: Record<string, unknown>,
+  payment: Pick<Payment, "amount" | "currency">
+): "amount" | "currency" | null {
+  if (entity.amount !== payment.amount) return "amount";
+  if (entity.currency !== payment.currency) return "currency";
+  return null;
+}
+
+/**
  * Capture transition, inside the caller's transaction (the webhook's, after it
  * recorded the PaymentEvent; or the reconciler's). `entity` is a Razorpay
  * payment entity. Returns true only for the call that moved the payment to
@@ -296,7 +310,7 @@ export async function applyCaptureTx(
   if (payment.status === "COMPLETED" || payment.status === "REFUNDED") return false;
   if (!entity || entity.status !== "captured") return false;
 
-  if (entity.amount !== payment.amount || entity.currency !== payment.currency) {
+  if (orderAmountMismatch(entity, payment)) {
     throw new Error("PAYMENT_AMOUNT_MISMATCH");
   }
 

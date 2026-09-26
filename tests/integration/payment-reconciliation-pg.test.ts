@@ -39,7 +39,9 @@ import {
   createRazorpayOrder,
   fetchRazorpayOrderPayments,
   fetchRazorpayPayment,
+  fetchRazorpayPaymentRefunds,
   type RazorpayPaymentSnapshot,
+  type RazorpayRefundSnapshot,
 } from "@/server/services/razorpay.service";
 import {
   retryCertificateFulfillment,
@@ -67,6 +69,7 @@ vi.mock("@/server/services/razorpay.service", async (importOriginal) => ({
   }),
   fetchRazorpayOrderPayments: vi.fn(),
   fetchRazorpayPayment: vi.fn(),
+  fetchRazorpayPaymentRefunds: vi.fn(),
 }));
 
 const TEST_ENV: Record<string, string> = {
@@ -118,17 +121,44 @@ function rzpPayment(
   };
 }
 
+/** Razorpay's view: refund records per payment id. */
+const refundsByPayment = new Map<string, RazorpayRefundSnapshot[]>();
+
+type RefundSpec = { status: "processed" | "pending" | "failed"; amount: number };
+
+function setRefunds(rp: RazorpayPaymentSnapshot, specs: RefundSpec[]) {
+  refundsByPayment.set(
+    rp.id,
+    specs.map((r, i) => ({
+      id: `rfnd_${rp.id.slice(4)}_${i}`,
+      paymentId: rp.id,
+      status: r.status,
+      amount: r.amount,
+      currency: "INR",
+    }))
+  );
+}
+
+const PROCESSED_FULL: RefundSpec[] = [
+  { status: "processed", amount: CERTIFICATE_PRICE_INR },
+];
+
 const outage = () => Object.assign(new Error("Bad gateway"), { statusCode: 502 });
 
 beforeEach(() => {
   vi.clearAllMocks();
   razorpay.clear();
+  refundsByPayment.clear();
   razorpayDown = false;
   certificateStorage.failNext = 0;
   certificateStorage.gate = null;
   vi.mocked(fetchRazorpayOrderPayments).mockImplementation(async (orderId) => {
     if (razorpayDown) throw outage();
     return structuredClone(razorpay.get(orderId) ?? []);
+  });
+  vi.mocked(fetchRazorpayPaymentRefunds).mockImplementation(async (paymentId) => {
+    if (razorpayDown) throw outage();
+    return structuredClone(refundsByPayment.get(paymentId) ?? []);
   });
   vi.mocked(fetchRazorpayPayment).mockImplementation(async (paymentId) => {
     if (razorpayDown) throw outage();
@@ -164,6 +194,9 @@ async function seed(opts: Seed = {}) {
       authId: randomUUID(),
       email: `recon-${tag}@example.com`,
       displayName: "Recon User",
+      // Keep these fixtures out of the shared leaderboard population that other
+      // test files query concurrently. It does not affect the trust rule.
+      leaderboardOptOut: true,
     },
   });
   const passage = await db.passage.create({
@@ -416,6 +449,20 @@ describe("C1: captured on Razorpay, webhook missed", () => {
     expect(certificateStorage.uploadsFor(p.certificateId)).toBe(1);
   });
 
+  it("fixture users are opted out of the leaderboard, which does not affect the trust rule", async () => {
+    const w = newWindow();
+    const p = await seed();
+    razorpay.set(p.orderId, [rzpPayment(p.orderId)]);
+    await age(p, w.t0);
+
+    const user = await db.user.findUniqueOrThrow({ where: { id: p.userId } });
+    expect(user.leaderboardOptOut).toBe(true);
+    expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({
+      captured_applied: 1,
+    });
+    expect((await state(p)).certificate).toBe("ACTIVE");
+  });
+
   it("a REPORT finding does not block a later APPLY", async () => {
     const w = newWindow();
     const p = await seed();
@@ -482,6 +529,7 @@ describe("C1: captured on Razorpay, webhook missed", () => {
       refundStatus: "full",
     });
     razorpay.set(p.orderId, [rp]);
+    setRefunds(rp, PROCESSED_FULL);
     await age(p, w.t0);
 
     expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({
@@ -669,11 +717,15 @@ describe("C5: authorized but never captured", () => {
 // C6 — missed refund
 // ---------------------------------------------------------------------------
 
-async function seedIssued(refund: Partial<RazorpayPaymentSnapshot>) {
+async function seedIssued(
+  refund: Partial<RazorpayPaymentSnapshot>,
+  refunds: RefundSpec[] = []
+) {
   const rpId = `pay_${randomBytes(6).toString("hex")}`;
   const p = await seed({ payment: "COMPLETED", certificate: "ACTIVE", paymentId: rpId });
   const rp = rzpPayment(p.orderId, { id: rpId, ...refund });
   razorpay.set(p.orderId, [rp]);
+  setRefunds(rp, refunds);
   return { p, rp };
 }
 
@@ -686,7 +738,7 @@ const FULL_REFUND = {
 describe("C6: full refund on Razorpay, refund webhook missed", () => {
   it("REPORT flags it without revoking", async () => {
     const w = newWindow();
-    const { p, rp } = await seedIssued(FULL_REFUND);
+    const { p, rp } = await seedIssued(FULL_REFUND, PROCESSED_FULL);
     await age(p, w.t0);
 
     expect((await reconcilePayments(w.opts("report"))).counts).toEqual({
@@ -699,7 +751,7 @@ describe("C6: full refund on Razorpay, refund webhook missed", () => {
 
   it("APPLY refunds and revokes through the webhook's transition, once", async () => {
     const w = newWindow();
-    const { p, rp } = await seedIssued(FULL_REFUND);
+    const { p, rp } = await seedIssued(FULL_REFUND, PROCESSED_FULL);
     await age(p, w.t0);
 
     expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({
@@ -716,7 +768,9 @@ describe("C6: full refund on Razorpay, refund webhook missed", () => {
 
   it("a partial refund changes nothing", async () => {
     const w = newWindow();
-    const { p } = await seedIssued({ amountRefunded: 100, refundStatus: "partial" });
+    const { p } = await seedIssued({ amountRefunded: 100, refundStatus: "partial" }, [
+      { status: "processed", amount: 100 },
+    ]);
     await age(p, w.t0);
 
     expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({
@@ -734,6 +788,275 @@ describe("C6: full refund on Razorpay, refund webhook missed", () => {
     const { p } = await seedIssued({});
     await age(p, w.t0);
     expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({ in_sync: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Refund records decide (C1 captured-then-refunded, C6 missed refund)
+// ---------------------------------------------------------------------------
+
+const HALF = Math.floor(CERTIFICATE_PRICE_INR / 2);
+
+type RefundCase = {
+  name: string;
+  /** Payment-level fields, as Razorpay would show them; only a hint. */
+  hint: Partial<RazorpayPaymentSnapshot>;
+  refunds: RefundSpec[];
+  verdict: "refund" | "pending" | "failed" | "partial";
+};
+
+const REFUND_CASES: RefundCase[] = [
+  {
+    name: "A: one processed refund of the full amount",
+    hint: FULL_REFUND,
+    refunds: PROCESSED_FULL,
+    verdict: "refund",
+  },
+  {
+    name: "B: a pending refund",
+    hint: FULL_REFUND,
+    refunds: [{ status: "pending", amount: CERTIFICATE_PRICE_INR }],
+    verdict: "pending",
+  },
+  {
+    name: "C: a failed refund",
+    hint: FULL_REFUND,
+    refunds: [{ status: "failed", amount: CERTIFICATE_PRICE_INR }],
+    verdict: "failed",
+  },
+  {
+    name: "D: a partial processed refund",
+    hint: { amountRefunded: 100, refundStatus: "partial" },
+    refunds: [{ status: "processed", amount: 100 }],
+    verdict: "partial",
+  },
+  {
+    name: "E: one processed and one pending refund",
+    hint: FULL_REFUND,
+    refunds: [
+      { status: "processed", amount: HALF },
+      { status: "pending", amount: CERTIFICATE_PRICE_INR - HALF },
+    ],
+    verdict: "pending",
+  },
+  {
+    name: "F: several processed refunds totalling the amount",
+    hint: FULL_REFUND,
+    refunds: [
+      { status: "processed", amount: HALF },
+      { status: "processed", amount: CERTIFICATE_PRICE_INR - HALF },
+    ],
+    verdict: "refund",
+  },
+];
+
+describe.each(REFUND_CASES)("refund records — $name", ({ hint, refunds, verdict }) => {
+  it("C1 (unsettled purchase): only a fully processed refund is applied; repeat runs change nothing", async () => {
+    const w = newWindow();
+    const p = await seed();
+    const rp = rzpPayment(p.orderId, hint);
+    razorpay.set(p.orderId, [rp]);
+    setRefunds(rp, refunds);
+    await age(p, w.t0);
+
+    const expected = {
+      refund: {
+        counts: { refund_applied: 1 },
+        state: { payment: "REFUNDED", certificate: "REVOKED" },
+        keys: [reconcileKeys.refunded(rp.id)],
+      },
+      pending: {
+        counts: { anomaly_refund_pending: 1 },
+        state: { payment: "PENDING", certificate: "PENDING_PAYMENT" },
+        keys: [reconcileKeys.anomaly("refund_pending", rp.id)],
+      },
+      failed: {
+        counts: { anomaly_refund_failed: 1 },
+        state: { payment: "PENDING", certificate: "PENDING_PAYMENT" },
+        keys: [reconcileKeys.anomaly("refund_failed", rp.id)],
+      },
+      // A partially refunded payment is still captured: the capture applies.
+      partial: {
+        counts: { captured_applied: 1 },
+        state: { payment: "COMPLETED", certificate: "ACTIVE" },
+        keys: [reconcileKeys.captured(rp.id), reconcileKeys.fulfilled(rp.id)].sort(),
+      },
+    }[verdict];
+
+    expect((await reconcilePayments(w.opts("apply"))).counts).toEqual(expected.counts);
+    let s = await state(p);
+    expect(s).toMatchObject(expected.state);
+    expect(s.keys).toEqual(expected.keys);
+
+    await age(p, w.t0);
+    await reconcilePayments(w.opts("apply"));
+    s = await state(p);
+    expect(s).toMatchObject(expected.state);
+    expect(s.keys).toEqual(expected.keys);
+  });
+
+  it("C6 (issued certificate): only a fully processed refund revokes; repeat runs change nothing", async () => {
+    const w = newWindow();
+    const { p, rp } = await seedIssued(hint, refunds);
+    await age(p, w.t0);
+
+    const expected = {
+      refund: {
+        counts: { refund_applied: 1 },
+        state: { payment: "REFUNDED", certificate: "REVOKED" },
+        keys: [reconcileKeys.refunded(rp.id)],
+      },
+      pending: {
+        counts: { anomaly_refund_pending: 1 },
+        state: { payment: "COMPLETED", certificate: "ACTIVE" },
+        keys: [reconcileKeys.anomaly("refund_pending", rp.id)],
+      },
+      failed: {
+        counts: { anomaly_refund_failed: 1 },
+        state: { payment: "COMPLETED", certificate: "ACTIVE" },
+        keys: [reconcileKeys.anomaly("refund_failed", rp.id)],
+      },
+      partial: {
+        counts: { partial_refund: 1 },
+        state: { payment: "COMPLETED", certificate: "ACTIVE" },
+        keys: [] as string[],
+      },
+    }[verdict];
+
+    expect((await reconcilePayments(w.opts("apply"))).counts).toEqual(expected.counts);
+    let s = await state(p);
+    expect(s).toMatchObject(expected.state);
+    expect(s.keys).toEqual(expected.keys);
+
+    await age(p, w.t0);
+    await reconcilePayments(w.opts("apply"));
+    s = await state(p);
+    expect(s).toMatchObject(expected.state);
+    expect(s.keys).toEqual(expected.keys);
+  });
+});
+
+describe("refund records: unclear provider states never revoke", () => {
+  it("a payment-level refund signal without refund records is reported as pending", async () => {
+    const w = newWindow();
+    const { p, rp } = await seedIssued(FULL_REFUND, []);
+    await age(p, w.t0);
+
+    expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({
+      anomaly_refund_pending: 1,
+    });
+    const s = await state(p);
+    expect(s).toMatchObject({ payment: "COMPLETED", certificate: "ACTIVE" });
+    expect(s.keys).toEqual([reconcileKeys.anomaly("refund_pending", rp.id)]);
+  });
+
+  it("a processed refund in another currency does not count", async () => {
+    const w = newWindow();
+    const { p } = await seedIssued(FULL_REFUND, PROCESSED_FULL);
+    refundsByPayment.forEach((list) => list.forEach((r) => (r.currency = "USD")));
+    await age(p, w.t0);
+
+    expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({
+      anomaly_refund_pending: 1,
+    });
+    expect(await state(p)).toMatchObject({ payment: "COMPLETED", certificate: "ACTIVE" });
+  });
+
+  it("REPORT with a fully processed refund records the finding only", async () => {
+    const w = newWindow();
+    const p = await seed();
+    const rp = rzpPayment(p.orderId, FULL_REFUND);
+    razorpay.set(p.orderId, [rp]);
+    setRefunds(rp, PROCESSED_FULL);
+    await age(p, w.t0);
+
+    expect((await reconcilePayments(w.opts("report"))).counts).toEqual({
+      refund_detected: 1,
+    });
+    const s = await state(p);
+    expect(s).toMatchObject({ payment: "PENDING", certificate: "PENDING_PAYMENT" });
+    expect(s.keys).toEqual([reconcileKeys.report("refunded", rp.id)]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Paid path: the provider payment must be this order's, unambiguously
+// ---------------------------------------------------------------------------
+
+describe("paid path: provider payment identity", () => {
+  it.each([
+    ["order", { orderId: "order_someone_else" }, "order_mismatch"],
+    ["amount", { amount: 1 }, "amount_mismatch"],
+    ["currency", { currency: "USD" }, "currency_mismatch"],
+  ] as const)(
+    "%s mismatch on the recorded payment → anomaly only, no fulfilment or revocation",
+    async (_label, over, kind) => {
+      const w = newWindow();
+      const rpId = `pay_${randomBytes(6).toString("hex")}`;
+      const p = await seed({
+        payment: "COMPLETED",
+        certificate: "PENDING_FULFILLMENT",
+        paymentId: rpId,
+      });
+      const rp = rzpPayment(p.orderId, { id: rpId, ...FULL_REFUND, ...over });
+      razorpay.set(p.orderId, [rp]);
+      setRefunds(rp, PROCESSED_FULL);
+      await age(p, w.t0);
+
+      expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({
+        [`anomaly_${kind}`]: 1,
+      });
+      const s = await state(p);
+      expect(s).toMatchObject({
+        payment: "COMPLETED",
+        certificate: "PENDING_FULFILLMENT",
+      });
+      expect(s.keys).toEqual([reconcileKeys.anomaly(kind, rpId)]);
+      expect(certificateStorage.uploadsFor(p.certificateId)).toBe(0);
+      expect(fetchRazorpayPaymentRefunds).not.toHaveBeenCalled();
+    }
+  );
+
+  it("no recorded payment id and no captured payment → missing_capture anomaly", async () => {
+    const w = newWindow();
+    const p = await seed({ payment: "COMPLETED", certificate: "PENDING_FULFILLMENT" });
+    razorpay.set(p.orderId, [
+      rzpPayment(p.orderId, { status: "failed", captured: false }),
+    ]);
+    await age(p, w.t0);
+
+    expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({
+      anomaly_missing_capture: 1,
+    });
+    const s = await state(p);
+    expect(s).toMatchObject({ payment: "COMPLETED", certificate: "PENDING_FULFILLMENT" });
+    expect(s.keys).toEqual([reconcileKeys.anomaly("missing_capture", p.orderId)]);
+  });
+
+  it("no recorded payment id and several captured payments → multiple_captures anomaly, never the first one", async () => {
+    const w = newWindow();
+    const p = await seed({ payment: "COMPLETED", certificate: "PENDING_FULFILLMENT" });
+    razorpay.set(p.orderId, [rzpPayment(p.orderId), rzpPayment(p.orderId)]);
+    await age(p, w.t0);
+
+    expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({
+      anomaly_multiple_captures: 1,
+    });
+    expect(await state(p)).toMatchObject({ certificate: "PENDING_FULFILLMENT" });
+    expect(certificateStorage.uploadsFor(p.certificateId)).toBe(0);
+  });
+
+  it("no recorded payment id and exactly one captured payment → proceeds", async () => {
+    const w = newWindow();
+    const p = await seed({ payment: "COMPLETED", certificate: "PENDING_FULFILLMENT" });
+    razorpay.set(p.orderId, [
+      rzpPayment(p.orderId, { status: "failed", captured: false }),
+      rzpPayment(p.orderId),
+    ]);
+    await age(p, w.t0);
+
+    expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({ fulfilled: 1 });
+    expect((await state(p)).certificate).toBe("ACTIVE");
   });
 });
 
@@ -783,7 +1106,7 @@ describe("concurrency", () => {
 
   it("reconciler refund vs webhook refund: converge on refunded and revoked", async () => {
     const w = newWindow();
-    const { p, rp } = await seedIssued(FULL_REFUND);
+    const { p, rp } = await seedIssued(FULL_REFUND, PROCESSED_FULL);
     await age(p, w.t0);
 
     await Promise.all([
@@ -965,7 +1288,7 @@ describe("end to end: cron route in APPLY mode", () => {
     const mismatch = await seed();
     razorpay.set(mismatch.orderId, [rzpPayment(mismatch.orderId, { amount: 1 })]);
     const { p: stuck } = await seedPaidPendingFulfillment();
-    const { p: refunded } = await seedIssued(FULL_REFUND);
+    const { p: refunded } = await seedIssued(FULL_REFUND, PROCESSED_FULL);
     const all = [missed, mismatch, stuck, refunded];
     for (const p of all) await age(p, at);
 

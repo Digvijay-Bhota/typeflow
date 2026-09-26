@@ -6,16 +6,23 @@
  * path did not complete (missed or exhausted deliveries). It reads Razorpay
  * (read-only API calls) and compares with the database:
  *
- *   C1  PENDING/FAILED payment, captured on Razorpay     → capture transition
- *       …and already fully refunded on Razorpay           → full-refund transition
+ *   C1  PENDING/FAILED payment, exactly one captured Razorpay payment
+ *                                                        → capture transition
+ *       …already fully refunded (processed refunds)       → full-refund transition
  *   C2  COMPLETED payment, certificate PENDING_FULFILLMENT → fulfillCertificate()
- *   C3  captured with a different amount or currency       → anomaly only
- *       more than one captured payment on the order        → anomaly only
+ *   C3  order / amount / currency differs from the order   → anomaly only
+ *       more than one (or no) captured payment             → anomaly only
  *   C4  COMPLETED payment, certificate PENDING_PAYMENT     → anomaly only
  *       (held for review: needs a human decision)
  *   C5  authorized but never captured                      → anomaly only
- *   C6  COMPLETED payment fully refunded on Razorpay       → full-refund transition
- *       (partial refunds change nothing, as in the webhook)
+ *   C6  COMPLETED payment, processed refunds ≥ its amount  → full-refund transition
+ *
+ * Refunds are decided from the payment's refund records, never from its
+ * payment-level refund fields: only refunds with status "processed" count
+ * (the webhook likewise acts only on refund.processed). Processed refunds
+ * short of the full amount with a pending or failed refund, or any other
+ * unclear refund state, are anomalies that change nothing; a partial refund
+ * changes nothing.
  *
  * Modes (PAYMENT_RECONCILE_MODE): "off" (default) does nothing; "report"
  * records audit events and anomalies but never changes payment or certificate
@@ -23,8 +30,9 @@
  * all and only counts what it finds (as "detected", in either mode).
  *
  * Safety:
- *  - Never creates an order, captures, refunds or charges: only
- *    fetchRazorpayOrderPayments / fetchRazorpayPayment are called.
+ *  - Never creates an order, captures, refunds or charges: only the read-only
+ *    fetchRazorpayOrderPayments / fetchRazorpayPayment /
+ *    fetchRazorpayPaymentRefunds are called.
  *  - Transitions are the webhook's own (applyCaptureTx / applyFullRefundTx),
  *    with the same compare-and-set, amount/currency check and refund-wins
  *    rule, inside one transaction with their audit event.
@@ -32,7 +40,7 @@
  *    action, so concurrent or repeated runs (and the webhook) converge: the
  *    loser of a race does nothing. No locks.
  *  - A Razorpay read failure skips that payment; nothing is changed.
- *  - Bounded: at most `limit` payments (one Razorpay read each) and
+ *  - Bounded: at most `limit` payments (one or two Razorpay reads each) and
  *    `timeBudgetMs` per run, stale payments only (last change older than
  *    `minAgeMs`, created within `maxAgeMs`).
  */
@@ -44,9 +52,15 @@ import { isServiceError, isUniqueViolation } from "@/server/errors";
 import {
   fetchRazorpayOrderPayments,
   fetchRazorpayPayment,
+  fetchRazorpayPaymentRefunds,
   type RazorpayPaymentSnapshot,
+  type RazorpayRefundSnapshot,
 } from "./razorpay.service";
-import { applyCaptureTx, applyFullRefundTx } from "./payment.service";
+import {
+  applyCaptureTx,
+  applyFullRefundTx,
+  orderAmountMismatch,
+} from "./payment.service";
 import { fulfillCertificate } from "./certificate.service";
 
 export type ReconcileMode = "off" | "report" | "apply";
@@ -76,6 +90,10 @@ export type ReconcileOutcome =
   | "anomaly_multiple_captures"
   | "anomaly_held_for_review"
   | "anomaly_authorized_not_captured"
+  | "anomaly_order_mismatch"
+  | "anomaly_missing_capture"
+  | "anomaly_refund_pending"
+  | "anomaly_refund_failed"
   | "already_reconciled"
   | "razorpay_error"
   | "error";
@@ -202,9 +220,13 @@ export const reconcileKeys = {
 type AnomalyKind =
   | "amount_mismatch"
   | "currency_mismatch"
+  | "order_mismatch"
   | "multiple_captures"
+  | "missing_capture"
   | "held_for_review"
-  | "authorized_not_captured";
+  | "authorized_not_captured"
+  | "refund_pending"
+  | "refund_failed";
 
 type Ctx = { mode: ReconcileMode; dryRun: boolean };
 
@@ -361,24 +383,92 @@ async function fulfill(
   }
 }
 
-function isFullyRefunded(p: RazorpayPaymentSnapshot): boolean {
-  return (
-    p.status === "refunded" || p.refundStatus === "full" || p.amountRefunded >= p.amount
+// ---------------------------------------------------------------------------
+// Provider checks
+// ---------------------------------------------------------------------------
+
+/** The Razorpay payment belongs to this order, with its exact amount and currency. */
+function providerMismatch(
+  payment: Candidate,
+  p: RazorpayPaymentSnapshot
+): "order_mismatch" | "amount_mismatch" | "currency_mismatch" | null {
+  if (p.orderId !== payment.orderId) return "order_mismatch";
+  const differs = orderAmountMismatch(toEntity(p), payment);
+  return differs ? `${differs}_mismatch` : null;
+}
+
+/** Payment-level hint that refunds exist; the decision uses the refund records. */
+function hasRefundActivity(p: RazorpayPaymentSnapshot): boolean {
+  return p.status === "refunded" || p.refundStatus !== null || p.amountRefunded > 0;
+}
+
+export type RefundAssessment =
+  | { state: "none" }
+  | { state: "partial"; processedAmount: number }
+  | { state: "full"; processedAmount: number; refundIds: string[] }
+  | { state: "pending"; processedAmount: number }
+  | { state: "failed"; processedAmount: number };
+
+/**
+ * Classifies a payment's refund records. Only refunds with status
+ * "processed" in the payment's currency count towards the refunded amount.
+ *
+ *  - processed total ≥ amount                   → full (the refund may be applied)
+ *  - otherwise, any failed refund               → failed  (anomaly)
+ *  - otherwise, any pending or unclear refund   → pending (anomaly)
+ *  - otherwise, some processed amount           → partial (no change)
+ *  - no refunds                                 → none
+ */
+export function assessRefunds(
+  refunds: RazorpayRefundSnapshot[],
+  payment: { amount: number; currency: string }
+): RefundAssessment {
+  const counted = refunds.filter(
+    (r) => r.status === "processed" && r.currency === payment.currency
   );
+  const processedAmount = counted.reduce((sum, r) => sum + r.amount, 0);
+  if (counted.length > 0 && processedAmount >= payment.amount) {
+    return { state: "full", processedAmount, refundIds: counted.map((r) => r.id).sort() };
+  }
+  const rest = refunds.filter((r) => !counted.includes(r));
+  if (rest.some((r) => r.status === "failed"))
+    return { state: "failed", processedAmount };
+  if (rest.length > 0) return { state: "pending", processedAmount };
+  if (processedAmount > 0) return { state: "partial", processedAmount };
+  return { state: "none" };
+}
+
+/**
+ * Reads and classifies the refunds of a captured payment that shows refund
+ * activity. A payment-level refund signal without refund records is unclear,
+ * so it is reported as pending.
+ */
+async function refundsOf(p: RazorpayPaymentSnapshot, payment: Candidate) {
+  if (!p.captured || !hasRefundActivity(p)) return { state: "none" } as const;
+  const assessment = assessRefunds(await fetchRazorpayPaymentRefunds(p.id), payment);
+  return assessment.state === "none"
+    ? ({ state: "pending", processedAmount: 0 } as const)
+    : assessment;
 }
 
 async function refund(
   ctx: Ctx,
   payment: Candidate,
-  p: RazorpayPaymentSnapshot
+  p: RazorpayPaymentSnapshot,
+  refunds: Extract<RefundAssessment, { state: "full" }>
 ): Promise<ReconcileOutcome> {
   if (ctx.dryRun) return "refund_detected";
+  const meta = {
+    ...snapshotMeta(p),
+    processedRefundAmount: refunds.processedAmount,
+    refundIds: refunds.refundIds,
+  };
   if (ctx.mode === "report") {
     const { recorded } = await recordOnce(
       payment,
       reconcileKeys.report("refunded", p.id),
       "reconciliation.refunded",
-      { mode: "report", ...snapshotMeta(p) }
+      { mode: "report", ...meta }
     );
     if (recorded) {
       logger.warn("Payment reconciliation: full refund not reflected", {
@@ -388,12 +478,25 @@ async function refund(
     }
     return "refund_detected";
   }
+  // The webhook's refund.processed transition, given the facts established
+  // from the processed refund records (not the payment-level refund fields).
+  const entity = {
+    ...toEntity(p),
+    captured: true,
+    amount_refunded: refunds.processedAmount,
+    refund_status: "full",
+  };
+  const refundEntity = {
+    status: "processed",
+    amount: refunds.processedAmount,
+    payment_id: p.id,
+  };
   const { recorded, transitioned } = await recordOnce(
     payment,
     reconcileKeys.refunded(p.id),
     "reconciliation.refunded",
-    { mode: "apply", ...snapshotMeta(p) },
-    (tx, fresh) => applyFullRefundTx(tx, fresh, toEntity(p), undefined)
+    { mode: "apply", ...meta },
+    (tx, fresh) => applyFullRefundTx(tx, fresh, entity, refundEntity)
   );
   if (transitioned) {
     logger.warn("Payment reconciliation applied a missed full refund", {
@@ -402,6 +505,29 @@ async function refund(
     });
   }
   return recorded ? "refund_applied" : "already_reconciled";
+}
+
+/** Refund outcome for a captured payment, or null to continue with it. */
+async function refundOutcome(
+  ctx: Ctx,
+  payment: Candidate,
+  p: RazorpayPaymentSnapshot
+): Promise<ReconcileOutcome | "partial" | null> {
+  const refunds = await refundsOf(p, payment);
+  switch (refunds.state) {
+    case "full":
+      return refund(ctx, payment, p, refunds);
+    case "pending":
+    case "failed":
+      return anomaly(ctx, payment, `refund_${refunds.state}`, p.id, {
+        ...snapshotMeta(p),
+        processedRefundAmount: refunds.processedAmount,
+      });
+    case "partial":
+      return "partial";
+    case "none":
+      return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -433,18 +559,18 @@ async function reconcileUnsettled(
     return "in_sync"; // nothing was paid (abandoned or failed attempts)
   }
 
-  if (p.amount !== payment.amount) {
-    return anomaly(ctx, payment, "amount_mismatch", p.id, snapshotMeta(p));
-  }
-  if (p.currency !== payment.currency) {
-    return anomaly(ctx, payment, "currency_mismatch", p.id, snapshotMeta(p));
-  }
+  const mismatch = providerMismatch(payment, p);
+  if (mismatch) return anomaly(ctx, payment, mismatch, p.id, snapshotMeta(p));
 
   // Captured, then fully refunded, with neither webhook applied: refund wins,
-  // exactly as when both deliveries arrive.
-  if (isFullyRefunded(p)) return refund(ctx, payment, p);
+  // exactly as when both deliveries arrive. Pending/failed refunds: anomaly.
+  const refunded = await refundOutcome(ctx, payment, p);
+  if (refunded !== null && refunded !== "partial") return refunded;
 
-  if (p.status !== "captured") return "in_sync";
+  if (p.status !== "captured") {
+    // e.g. "refunded" without processed refunds covering it: unclear.
+    return anomaly(ctx, payment, "refund_pending", p.id, snapshotMeta(p));
+  }
 
   if (ctx.dryRun) return "captured_detected";
 
@@ -494,14 +620,39 @@ async function reconcileUnsettled(
   return recorded ? "captured_applied" : "already_reconciled";
 }
 
+/**
+ * The provider payment of a paid purchase: the recorded one, or, if none was
+ * recorded, the order's only captured payment. Never a guess.
+ */
+async function paidProviderPayment(
+  ctx: Ctx,
+  payment: Candidate
+): Promise<RazorpayPaymentSnapshot | ReconcileOutcome> {
+  if (payment.paymentId) return fetchRazorpayPayment(payment.paymentId);
+  const captured = (await fetchRazorpayOrderPayments(payment.orderId)).filter(
+    (x) => x.captured
+  );
+  if (captured.length > 1) {
+    return anomaly(ctx, payment, "multiple_captures", payment.orderId, {
+      razorpayPaymentIds: captured.map((p) => p.id).sort(),
+    });
+  }
+  return captured[0] ?? anomaly(ctx, payment, "missing_capture", payment.orderId, {});
+}
+
 /** C2, C4 and C6: a paid purchase. */
 async function reconcilePaid(ctx: Ctx, payment: Candidate): Promise<ReconcileOutcome> {
-  const p = payment.paymentId
-    ? await fetchRazorpayPayment(payment.paymentId)
-    : (await fetchRazorpayOrderPayments(payment.orderId)).find((x) => x.captured);
-  if (!p) return "in_sync";
+  const p = await paidProviderPayment(ctx, payment);
+  if (typeof p === "string") return p;
 
-  if (p.captured && isFullyRefunded(p)) return refund(ctx, payment, p);
+  const mismatch = providerMismatch(payment, p);
+  if (mismatch) return anomaly(ctx, payment, mismatch, p.id, snapshotMeta(p));
+  if (!p.captured) {
+    return anomaly(ctx, payment, "missing_capture", p.id, snapshotMeta(p));
+  }
+
+  const refunded = await refundOutcome(ctx, payment, p);
+  if (refunded !== null && refunded !== "partial") return refunded;
 
   const certificateStatus = payment.certificate?.status;
   if (certificateStatus === "PENDING_PAYMENT") {
@@ -520,7 +671,7 @@ async function reconcilePaid(ctx: Ctx, payment: Candidate): Promise<ReconcileOut
     }
     return fulfill(payment, p.id);
   }
-  return p.amountRefunded > 0 ? "partial_refund" : "in_sync";
+  return refunded === "partial" ? "partial_refund" : "in_sync";
 }
 
 function errorSummary(error: unknown) {
