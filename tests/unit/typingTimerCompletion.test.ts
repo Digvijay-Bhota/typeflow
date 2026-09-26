@@ -10,17 +10,9 @@
  * the whole passage (which goes through the fresh handleKey path) worked.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { createElement } from "react";
-import {
-  act,
-  fireEvent,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, renderHook, screen, waitFor } from "@testing-library/react";
 import { useTypingEngine } from "@/features/typing/hooks/useTypingEngine";
-import { TypingTest } from "@/features/typing/components/TypingTest";
+import { renderReadyTypingTest } from "../setup/typingTestHarness";
 import type { TypingEngineState } from "@/types/typing";
 
 const push = vi.hoisted(() => vi.fn());
@@ -110,16 +102,13 @@ describe("TypingTest — timer expiry submits the result", () => {
 
   it("POSTs /api/result exactly once with the live session, then navigates", async () => {
     const fetchMock = stubApi();
-    render(
-      createElement(TypingTest, {
-        mode: "timed",
-        language: "english",
-        duration: DURATION_S,
-        trustTier: "CERTIFICATE",
-        hideConfig: true,
-      })
-    );
-    const textbox = await screen.findByRole("textbox");
+    const textbox = await renderReadyTypingTest({
+      mode: "timed",
+      language: "english",
+      duration: DURATION_S,
+      trustTier: "CERTIFICATE",
+      hideConfig: true,
+    });
 
     vi.useFakeTimers({ toFake: [...FAKE_TIMERS.toFake] });
     fireEvent.keyDown(textbox, { key: "t" });
