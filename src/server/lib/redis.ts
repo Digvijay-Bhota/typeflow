@@ -1,6 +1,7 @@
 import { Redis } from "ioredis";
 import crypto from "crypto";
 import { getServerEnv } from "../../lib/env";
+import { deploymentEnvironment } from "../../lib/environmentGuard";
 
 const globalForRedis = globalThis as unknown as {
   redisClient: Redis | null | undefined;
@@ -71,22 +72,16 @@ export function getRedisClient(): Redis | null {
 export function generateRateLimitKey(identifier: string): string {
   const hash = crypto.createHash("sha256").update(identifier).digest("hex");
 
-  // Safe default prefix in case of early import outside server context,
-  // though realistically rateLimit runs in server context.
-  let env = process.env.NODE_ENV;
-  const testPrefix = process.env.TEST_RL_PREFIX;
-
-  try {
-    const envConfig = getServerEnv();
-    env = envConfig.NODE_ENV;
-  } catch {
-    // If getServerEnv throws (e.g., config error), fallback to process.env
+  // Keys are scoped by environment, so a preview or local run that shares a
+  // Redis instance with production can never touch production's counters.
+  // Tests keep their own isolation: a per-run TEST_RL_PREFIX, else the
+  // unscoped key.
+  const environment = deploymentEnvironment(process.env);
+  if (environment === "test") {
+    const testPrefix = process.env.TEST_RL_PREFIX;
+    return testPrefix ? `${testPrefix}:${hash}` : `rl:v1:${hash}`;
   }
-
-  if (env === "test" && testPrefix) {
-    return `${testPrefix}:${hash}`;
-  }
-  return `rl:v1:${hash}`;
+  return `rl:v1:${environment}:${hash}`;
 }
 
 const rateLimitLuaScript = `
