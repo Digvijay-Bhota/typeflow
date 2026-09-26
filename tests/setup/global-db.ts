@@ -10,8 +10,11 @@
  *
  * Responsibilities:
  *   1. Resolve + validate DATABASE_URL/DIRECT_URL (same rules as db-env.ts).
- *   2. Apply committed Prisma migrations to the (already-validated) test DB.
- *   3. Discover the application tables from information_schema and truncate
+ *   2. Create Supabase's Data API roles and their grants in the test DB
+ *      (tests/setup/supabase-roles.sql), so migrations run against the same
+ *      privileges they do on Supabase.
+ *   3. Apply committed Prisma migrations to the (already-validated) test DB.
+ *   4. Discover the application tables from information_schema and truncate
  *      them so every test run starts clean, regardless of whether the
  *      previous run's cleanup hooks succeeded.
  *
@@ -24,6 +27,7 @@ import { execSync } from "node:child_process";
 
 const REPO_ROOT = resolve(__dirname, "../..");
 const TEST_ENV_PATH = resolve(REPO_ROOT, ".env.test");
+const SUPABASE_ROLES_SQL = "tests/setup/supabase-roles.sql";
 const REQUIRED_DB_NAME = "typeflow_test";
 
 // WHATWG URL returns IPv6 hosts in bracketed form, so the loopback literal
@@ -213,6 +217,13 @@ export default async function globalSetup(): Promise<void> {
   // Passed explicitly so the migrate subprocess sees the validated test
   // URLs regardless of what .env on disk contains.
   const childEnv = { ...process.env, DATABASE_URL: databaseUrl, DIRECT_URL: directUrl };
+
+  // Before migrating: the lock-down migration must meet Supabase's grants to
+  // prove it removes them (tests/integration/db-privileges-pg.test.ts).
+  execSync(
+    `npx prisma db execute --schema prisma/schema.prisma --file ${SUPABASE_ROLES_SQL}`,
+    { cwd: REPO_ROOT, env: childEnv, stdio: "inherit" }
+  );
 
   execSync("npx prisma migrate deploy", {
     cwd: REPO_ROOT,
