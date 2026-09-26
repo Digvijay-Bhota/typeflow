@@ -29,7 +29,7 @@ npx playwright test tests/e2e/some.spec.ts   # single e2e spec
 
 npm run db:generate       # prisma generate
 npm run db:push           # push schema without migration
-npm run db:migrate        # prisma migrate dev
+npm run db:migrate        # prisma migrate dev — local Postgres ONLY, never a remote/production DB
 npm run db:studio
 npm run db:seed           # tsx prisma/seed.ts
 
@@ -60,6 +60,8 @@ Test locations: `tests/unit/**`, `tests/integration/**` (vitest, Node env), `src
 **Auth:** Supabase handles auth; `auth.service.ts#getAuthenticatedUser()` syncs the Supabase user into the Prisma `User` table (`authId` is the FK to `auth.users.id`), upserting on first sight. Always go through this helper rather than reading the Supabase session directly in services.
 
 **Database access is server-only:** application tables in `public` are read and written only by the server through Prisma (the `postgres` role, which owns them). Supabase is used for Auth and Storage only — never `supabase.from(...)`/the Data API for application data, from the browser or the server. Supabase's Data API roles (`anon`, `authenticated`) are locked out by migration `20260926000000_lock_down_public_schema_data_api`: RLS on every table with no policies, and their table/sequence/function privileges and default privileges revoked. **Every migration that adds a table must also `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`** (no policies for `anon`/`authenticated`); `tests/integration/db-privileges-pg.test.ts` fails otherwise. The test database reproduces Supabase's roles and grants before migrating (`tests/setup/supabase-roles.sql`, run by `tests/setup/global-db.ts`, CI and `npm run db:test:migrate`).
+
+**Environment isolation:** production data and infrastructure are never used by Preview or development. Preview/staging need their own database, Supabase project, Redis and Razorpay **Test Mode** credentials; local development uses a local Postgres (never a production `.env`). `src/lib/environmentGuard.ts` enforces this fail-closed in `getServerEnv()` and `src/server/db.ts`: a non-production runtime (`VERCEL_ENV` ≠ `production`, or `next dev`) is refused if its database/Supabase URLs point at the production project (`PRODUCTION_SUPABASE_PROJECT_REF`, or any remote database when that is unset), its Razorpay keys are not `rzp_test_`, or its `APP_URL` is the production domain. Errors name variables, never values. Redis rate-limit keys are environment scoped (`rl:v1:<environment>:<hash>`). Migrations: `migrate dev` only against local Postgres; staging and production use `prisma migrate deploy` only. See `ARCHITECTURE.md` → Environment Isolation.
 
 ## Conventions
 

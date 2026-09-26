@@ -11,6 +11,36 @@ Application data is server-only. The browser never reads or writes application t
 
 **Rule for new tables:** every migration that adds a table to `public` must enable RLS on it and add no `anon`/`authenticated` policies. `tests/integration/db-privileges-pg.test.ts` enforces this against a test database that reproduces Supabase's roles and grants (`tests/setup/supabase-roles.sql`).
 
+## Environment Isolation (Phase 5C-2)
+
+Production data and infrastructure are never used by Preview or development.
+
+|                             | Production        | Preview / staging                           | Local development       |
+| --------------------------- | ----------------- | ------------------------------------------- | ----------------------- |
+| Database + Supabase project | production        | separate project                            | local Postgres          |
+| Redis                       | production        | separate instance (keys are also scoped)    | local                   |
+| Razorpay                    | live keys         | Test Mode (`rzp_test_`), own webhook secret | Test Mode               |
+| `APP_URL`                   | production domain | preview/staging URL                         | `http://localhost:3000` |
+
+**Guard.** `src/lib/environmentGuard.ts` refuses a non-production runtime — `VERCEL_ENV` other than `production` (previews, custom environments, `vercel dev`), or `next dev` — before it can use production infrastructure. It runs in `getServerEnv()` (Redis, Razorpay, Storage, auth rate limits) and when `src/server/db.ts` loads (Prisma). It rejects:
+
+- `DATABASE_URL` / `DIRECT_URL` that point at the production Supabase project. The production project is named by `PRODUCTION_SUPABASE_PROJECT_REF` (a public project ref, not a secret); while it is unset, every non-local database is rejected, because nothing proves it is not production.
+- `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` that point at the production project (deployed previews also fail closed while the ref is unset).
+- Razorpay key IDs that are not Test Mode (`rzp_test_`).
+- `APP_URL` / `NEXT_PUBLIC_APP_URL` equal to the production domain Vercel reports (`VERCEL_PROJECT_PRODUCTION_URL`); branch/deployment preview URLs pass.
+
+Errors name the variables only, never their values, and start with `Configuration Error` so they surface as failures rather than silent rate-limit rejections. Production and test configurations are not checked.
+
+**Redis.** Rate-limit keys are `rl:v1:<environment>:<hash>` (`production`, `preview`, `development`), so environments sharing a Redis instance never share counters. Tests keep `TEST_RL_PREFIX`.
+
+**Migrations.** `prisma migrate dev` only against a local Postgres — never a remote or production database. Staging and production use `prisma migrate deploy` only, run manually from `main`; builds never migrate. `migrate dev` currently fails with P3006 on migration `20260926000000_lock_down_public_schema_data_api` (its shadow database has no `_prisma_migrations`); resolving that is a separate task.
+
+**Manual configuration still required (Vercel, external).** Until done, the guard makes misconfigured previews fail by design:
+
+1. Split every variable currently shared by Production and Preview into Production-only and Preview-only records, with Preview pointing at staging: database URLs, Supabase keys, `REDIS_URL`, Razorpay keys/webhook secret/plan IDs, `SESSION_SECRET`, `APP_URL`, `NEXT_PUBLIC_APP_URL`.
+2. Set `PRODUCTION_SUPABASE_PROJECT_REF` for Preview and Development.
+3. Remove the stale `phase-5b-razorpay-validation` branch overrides (`APP_URL`, `NEXT_PUBLIC_APP_URL`, `RAZORPAY_WEBHOOK_SECRET`).
+
 ## Phase 8: Subscription Architecture
 
 The Pro Subscription system isolates recurring billing from one-time certificate payments to maintain clean service boundaries.
