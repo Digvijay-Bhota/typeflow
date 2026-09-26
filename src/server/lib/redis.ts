@@ -147,3 +147,26 @@ export async function executeRateLimitScript(
     return null;
   }
 }
+
+export type RedisHealth =
+  | { status: "connected"; latencyMs: number }
+  | { status: "unavailable"; latencyMs: number; error: unknown }
+  | { status: "not_configured" };
+
+/**
+ * PINGs the rate-limit Redis through the shared client. Bounded by the
+ * client's commandTimeout (REDIS_COMMAND_TIMEOUT_MS), including a cold
+ * connect, and never throws. Read-only: it does not touch rate-limit keys or
+ * change the limiter's fail-closed behavior.
+ */
+export async function checkRedisHealth(): Promise<RedisHealth> {
+  const start = Date.now();
+  try {
+    const client = getRedisClient();
+    if (!client) return { status: "not_configured" };
+    await client.ping();
+    return { status: "connected", latencyMs: Date.now() - start };
+  } catch (error) {
+    return { status: "unavailable", latencyMs: Date.now() - start, error };
+  }
+}

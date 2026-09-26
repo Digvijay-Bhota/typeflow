@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { getResultByShareId } from "@/server/services/result.service";
 import { rateLimit } from "@/server/middleware/rateLimit";
-import { logger } from "@/lib/logger";
+import { logRequestFailure } from "@/lib/logger";
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ shareId: string }> }
 ) {
+  const requestId = crypto.randomUUID();
   try {
     const shareId = (await params).shareId;
 
@@ -14,7 +15,7 @@ export async function GET(
       return NextResponse.json(
         {
           error: {
-            requestId: crypto.randomUUID(),
+            requestId,
             code: "VALIDATION_ERROR",
             message: "Invalid shareId.",
           },
@@ -30,7 +31,7 @@ export async function GET(
       return NextResponse.json(
         {
           error: {
-            requestId: crypto.randomUUID(),
+            requestId,
             code: "RATE_LIMITED",
             message: "Too many requests.",
           },
@@ -45,7 +46,7 @@ export async function GET(
       return NextResponse.json(
         {
           error: {
-            requestId: crypto.randomUUID(),
+            requestId,
             code: "NOT_FOUND",
             message: "Result not found.",
           },
@@ -55,13 +56,15 @@ export async function GET(
     }
 
     return NextResponse.json(result, { status: 200 });
-  } catch (error: any) {
-    // eslint-disable-line @typescript-eslint/no-explicit-any
-    logger.error("Failed to retrieve result", { error: error.message });
+  } catch (error) {
+    logRequestFailure("Failed to retrieve result", error, {
+      requestId,
+      route: "GET /api/result/[shareId]",
+    });
     return NextResponse.json(
       {
         error: {
-          requestId: crypto.randomUUID(),
+          requestId,
           code: "INTERNAL_ERROR",
           message: "Failed to retrieve result.",
         },
