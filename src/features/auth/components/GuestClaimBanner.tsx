@@ -1,20 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 
-export function GuestClaimBanner() {
-  const [claimToken, setClaimToken] = useState<string | null>(null);
+/**
+ * Offers sign-in / sign-up with this browser's claim token. Without a token
+ * (another device, or the session ended) the result cannot be claimed here, so
+ * `fallback` is rendered instead of leaving the viewer without an action.
+ */
+export function GuestClaimBanner({ fallback }: { fallback?: React.ReactNode } = {}) {
+  const [claim, setClaim] = useState<{ checked: boolean; token: string | null }>({
+    checked: false,
+    token: null,
+  });
 
   useEffect(() => {
-    const token = sessionStorage.getItem("tf_claim_token");
-    if (token) {
-      setClaimToken(token);
+    let token: string | null = null;
+    try {
+      token = sessionStorage.getItem("tf_claim_token");
+    } catch {
+      // Storage unavailable: treat as no token.
     }
+    setClaim({ checked: true, token });
   }, []);
 
-  if (!claimToken) return null;
+  if (!claim.checked) return null;
+  if (!claim.token) return <>{fallback ?? null}</>;
+  return <GuestClaimActions claimToken={claim.token} />;
+}
 
+export function GuestClaimActions({ claimToken }: { claimToken: string }) {
   return (
     <div className="bg-tf-primary-50 dark:bg-tf-primary-900/20 border-tf-primary-200 dark:border-tf-primary-800 flex w-full flex-col items-center justify-between gap-4 rounded-lg border p-4 sm:flex-row">
       <p className="text-tf-primary-900 dark:text-tf-primary-100 text-sm font-medium">

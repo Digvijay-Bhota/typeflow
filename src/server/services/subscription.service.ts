@@ -58,6 +58,7 @@ import {
   cancelRazorpaySubscription,
   verifyRazorpaySubscriptionSignature,
 } from "./razorpay.subscription.service";
+import { razorpayEventKey } from "./razorpay.service";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -404,7 +405,8 @@ export async function cancelProSubscription(userId: string): Promise<void> {
 export async function processSubscriptionWebhook(
   payload: Record<string, unknown>,
   signature: string,
-  payloadRawString: string
+  payloadRawString: string,
+  eventIdHeader?: string | null
 ): Promise<void> {
   if (!verifyRazorpaySubscriptionSignature(payloadRawString, signature)) {
     throw new Error("INVALID_SUBSCRIPTION_SIGNATURE");
@@ -425,11 +427,9 @@ export async function processSubscriptionWebhook(
   if (!entity) return;
 
   const providerSubscriptionId = entity.id as string;
-  const accountId = String(payload.account_id ?? "");
-  // Construct idempotency key from account + event type + entity ID
-  // Razorpay doesn't provide a unique event ID in all cases,
-  // so we compose one from context.
-  const providerEventId = `${accountId}_${eventType}_${providerSubscriptionId}_${entity.current_end ?? Date.now()}`;
+  // Razorpay's x-razorpay-event-id, else a hash of the signed body — never
+  // time-based, so a redelivery can't slip past the unique providerEventId.
+  const providerEventId = razorpayEventKey(eventIdHeader, payloadRawString);
 
   // 1. Atomic Claim (Idempotency Strategy)
   let subscriptionEvent;

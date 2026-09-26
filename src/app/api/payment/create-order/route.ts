@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/server/services/auth.service";
 import { createCertificateOrder } from "@/server/services/payment.service";
+import { getServerEnv } from "@/lib/env";
 
 import { rateLimit } from "@/server/middleware/rateLimit";
+import { isServiceError } from "@/server/errors";
+import { z } from "zod";
+
+const CreateOrderSchema = z.object({ certificateId: z.string().min(1).max(40) });
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,51 +28,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
-    const { certificateId } = body;
-
-    if (!certificateId) {
+    const parsed = CreateOrderSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: { code: "BAD_REQUEST", message: "Missing certificateId" } },
+        { error: { code: "BAD_REQUEST", message: "A valid certificateId is required" } },
         { status: 400 }
       );
     }
 
-    const orderData = await createCertificateOrder(certificateId, user.id);
+    const orderData = await createCertificateOrder(parsed.data.certificateId, user.id);
 
-    // Add public key id from client env (or server env but it's safe to expose for checkout)
-    const { getClientEnv } = await import("@/lib/env");
-    const clientEnv = getClientEnv();
-
+    // The key id is public (Checkout needs it). Take it from the validated
+    // server env — the same key that created the order — not NEXT_PUBLIC_*,
+    // which are not reliably present in process.env at server runtime.
     return NextResponse.json({
       orderId: orderData.orderId,
       amount: orderData.amount,
       currency: orderData.currency,
-      keyId: clientEnv.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      keyId: getServerEnv().RAZORPAY_KEY_ID,
     });
   } catch (error: unknown) {
-    const err = error as Error;
-    if (
-      err.message === "Unauthorized" ||
-      err.message.includes("Cannot create order for certificate")
-    ) {
+    if (isServiceError(error)) {
       return NextResponse.json(
-        { error: { code: "FORBIDDEN", message: err.message } },
-        { status: 403 }
+        { error: { code: error.code, message: error.message } },
+        { status: error.status }
       );
     }
 
-    if (
-      (err as { code?: string }).code === "P2025" ||
-      err.message.includes("No Certificate found")
-    ) {
-      return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: "Certificate not found" } },
-        { status: 404 }
-      );
-    }
-
-    console.error("Create order error:", err);
+    // Unexpected failure (database or Razorpay): never expose its details.
+    console.error("Create order error:", error);
     return NextResponse.json(
       { error: { code: "INTERNAL_ERROR", message: "Failed to create order" } },
       { status: 500 }

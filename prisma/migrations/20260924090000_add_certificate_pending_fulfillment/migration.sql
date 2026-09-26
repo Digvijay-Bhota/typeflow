@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "CertificateStatus" ADD VALUE 'PENDING_FULFILLMENT';

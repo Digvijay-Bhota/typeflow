@@ -4,6 +4,8 @@ import { db as prisma } from "@/server/db";
 import { ResultClient } from "@/features/analytics/components/ResultClient";
 
 import { getPublicResult } from "@/features/analytics/lib/publicResult";
+import { getAuthenticatedUser } from "@/server/services/auth.service";
+import { getOwnerCertificate } from "@/server/services/certificate.service";
 
 export default async function ResultPage({
   params,
@@ -24,6 +26,9 @@ export default async function ResultPage({
           passage: {
             select: {
               sourceAttribution: true,
+              // Server-only: needed to derive interval WPM from the trace.
+              // getPublicResult never passes it to the client.
+              content: true,
             },
           },
         },
@@ -62,12 +67,23 @@ export default async function ResultPage({
     }
   }
 
-  const publicResult = getPublicResult(result);
+  const viewer = await getAuthenticatedUser().catch(() => null);
+  const isOwner = !!viewer && result.userId === viewer.id;
+  const publicResult = getPublicResult(result, { includeId: isOwner });
+  // Authoritative purchase/certificate state, for the owner only.
+  const certificate =
+    isOwner && result.session.trustTier === "CERTIFICATE"
+      ? await getOwnerCertificate(viewer.id, result.id)
+      : null;
 
   return (
     <div className="bg-background min-h-screen">
       <div className="mx-auto max-w-7xl px-4 py-12">
-        <ResultClient result={publicResult} comparison={comparison} />
+        <ResultClient
+          result={publicResult}
+          comparison={comparison}
+          certificate={certificate}
+        />
       </div>
     </div>
   );

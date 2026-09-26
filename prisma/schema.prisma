@@ -85,6 +85,8 @@ enum IntegrityStatus {
 
 enum CertificateStatus {
   PENDING_PAYMENT
+  /// Paid (payment captured); PDF + QR not yet generated and stored.
+  PENDING_FULFILLMENT
   ACTIVE
   REVOKED
   EXPIRED
@@ -355,7 +357,7 @@ model Certificate {
   id               String            @id @default(uuid()) @db.Uuid
   /// Human-readable: TF-2026-XXXXXX
   certificateId    String            @unique @db.VarChar(20)
-  /// HMAC-SHA256 of (certificateId + userId + issuedAt + secret)
+  /// HMAC-SHA256(CERTIFICATE_SIGNING_SECRET, certificateId:userId:issuedAt)
   verificationHash String            @db.VarChar(128)
   userId           String            @db.Uuid
   resultId         String            @unique @db.Uuid

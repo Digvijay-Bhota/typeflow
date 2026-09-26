@@ -48,7 +48,12 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Process (signature verified inside service before any DB operations)
-    await processSubscriptionWebhook(payload, signature, payloadRawString);
+    await processSubscriptionWebhook(
+      payload,
+      signature,
+      payloadRawString,
+      req.headers.get("x-razorpay-event-id")
+    );
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

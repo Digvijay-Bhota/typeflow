@@ -94,7 +94,16 @@ export function TypingTest({
 
   const submitResult = useCallback(
     async (s: TypingEngineState) => {
-      if (!session || submittingRef.current) return;
+      if (submittingRef.current) return;
+      if (!session) {
+        // Never drop a finished test silently — the user would be left on
+        // "Test complete." with nothing saved and no way to tell.
+        console.error("Result submission failed: no active test session");
+        setSubmitError(
+          "We couldn't save this result because the test session is missing. Please reload the page and start a new test."
+        );
+        return;
+      }
       submittingRef.current = true;
       setSubmitting(true);
       setSubmitError(null);
@@ -248,17 +257,19 @@ export function TypingTest({
           {submitError && (
             <div className="text-destructive flex flex-col items-center gap-3">
               <span>{submitError}</span>
-              <button
-                onClick={() => {
-                  if (finalStateRef.current) {
-                    submitResult(finalStateRef.current);
-                  }
-                }}
-                className="bg-tf-neutral-800 text-tf-neutral-100 hover:bg-tf-neutral-700 rounded-md px-4 py-2 transition disabled:opacity-50"
-                disabled={submitting}
-              >
-                Retry Submission
-              </button>
+              {finalStateRef.current && (
+                <button
+                  onClick={() => {
+                    if (finalStateRef.current) {
+                      submitResult(finalStateRef.current);
+                    }
+                  }}
+                  className="bg-tf-neutral-800 text-tf-neutral-100 hover:bg-tf-neutral-700 rounded-md px-4 py-2 transition disabled:opacity-50"
+                  disabled={submitting}
+                >
+                  Retry Submission
+                </button>
+              )}
             </div>
           )}
         </div>

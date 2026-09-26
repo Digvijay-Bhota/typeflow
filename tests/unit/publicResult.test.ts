@@ -83,8 +83,11 @@ describe("publicResult helper", () => {
     ]);
     expect(publicPayload.weakKeys.length).toBe(8);
 
+    // The internal id is omitted unless the viewer owns the result
+    expect(publicPayload).not.toHaveProperty("id");
+    expect((getPublicResult(rawResult, { includeId: true }) as any).id).toBe("result-1");
+
     // Assert basic properties remain intact
-    expect(publicPayload.id).toBe("result-1");
     expect(publicPayload.wpm).toBe(120);
     expect(publicPayload.totalKeystrokes).toBe(602);
 
@@ -99,5 +102,51 @@ describe("publicResult helper", () => {
     expect(publicPayload.session).not.toHaveProperty("user");
     expect(publicPayload.session).not.toHaveProperty("internalToken");
     expect(publicPayload.session?.passage).not.toHaveProperty("privateField");
+  });
+
+  it("derives intervalWpms from the trace for SERVER_RECONSTRUCTED results, ignoring client samples", () => {
+    const passage = "abcdefghij".repeat(10);
+    // One correct char every 200 ms for 12 s → 60 chars.
+    const events = Array.from({ length: 60 }, (_, i) => [
+      (i + 1) * 200,
+      0,
+      i,
+      passage[i],
+    ]);
+    const payload = getPublicResult({
+      id: "r1",
+      shareId: "s1",
+      netWpm: 60,
+      accuracy: 1,
+      integrityStatus: "VERIFIED",
+      scoringSource: "SERVER_RECONSTRUCTED",
+      eventTrace: { events, totalEvents: 60, durationMs: 12_000 },
+      integritySignals: { intervalWpms: [999, 999, 999] },
+      session: { trustTier: "FREE", duration: 15, passage: { content: passage } },
+    }) as any;
+
+    // At 5 s: 24 correct chars → 57.6 WPM; at 10 s: 49 → 58.8 WPM.
+    expect(payload.intervalWpms).toEqual([57.6, 58.8]);
+    expect(payload.session.passage).not.toHaveProperty("content");
+  });
+
+  it("uses the shared certificate eligibility rule", () => {
+    const base = {
+      shareId: "s1",
+      netWpm: 45,
+      accuracy: 0.97,
+      integrityStatus: "VERIFIED",
+      scoringSource: "SERVER_RECONSTRUCTED",
+      userId: "u1",
+      session: { trustTier: "CERTIFICATE", duration: 300 },
+    };
+    expect((getPublicResult(base) as any).isCertificateEligible).toBe(true);
+    expect(
+      (getPublicResult({ ...base, scoringSource: "CLIENT_COUNTS" }) as any)
+        .isCertificateEligible
+    ).toBe(false);
+    expect(
+      (getPublicResult({ ...base, userId: null }) as any).isCertificateEligible
+    ).toBe(false);
   });
 });

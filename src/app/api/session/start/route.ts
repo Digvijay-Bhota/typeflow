@@ -3,6 +3,7 @@ import { StartSessionSchema } from "@/schemas/session.schema";
 import { startSession } from "@/server/services/session.service";
 import { rateLimit } from "@/server/middleware/rateLimit";
 import { logger } from "@/lib/logger";
+import { isServiceError } from "@/server/errors";
 
 export async function POST(req: Request) {
   try {
@@ -46,20 +47,16 @@ export async function POST(req: Request) {
     // eslint-disable-line @typescript-eslint/no-explicit-any
     logger.error("Failed to start session", { error: error.message });
 
-    if (
-      error.message.includes("Session not found") ||
-      error.message.includes("Session is already") ||
-      error.message.includes("expired")
-    ) {
+    if (isServiceError(error)) {
       return NextResponse.json(
         {
           error: {
             requestId: crypto.randomUUID(),
-            code: "INVALID_SESSION",
+            code: error.code,
             message: error.message,
           },
         },
-        { status: 400 }
+        { status: error.status }
       );
     }
 

@@ -1,11 +1,19 @@
 import { db } from "@/server/db";
 import { Prisma } from "@prisma/client";
 import { LeaderboardEntry, LeaderboardQuery } from "@/types/leaderboard";
+import { DEFAULT_DURATION } from "@/lib/constants";
+import { evaluateCertificateEligibility } from "@/lib/certificateEligibility";
 
 export async function getLeaderboard(
   query: LeaderboardQuery
 ): Promise<{ entries: LeaderboardEntry[] }> {
   const limit = query.limit && query.limit > 0 && query.limit <= 100 ? query.limit : 50;
+
+  // Speeds are only comparable within one timed duration, so a timed board is
+  // always scoped to a single duration class (DEFAULT_DURATION unless given).
+  // An unscoped query means the timed board.
+  const mode = query.mode ?? "timed";
+  const duration = query.duration ?? (mode === "timed" ? DEFAULT_DURATION : undefined);
 
   let gteDate = new Date(0);
   const now = new Date();
@@ -31,6 +39,7 @@ export async function getLeaderboard(
         tr."accuracy",
         tr."duration",
         tr."integrityStatus",
+        tr."scoringSource",
         tr."createdAt",
         u."id" as "userId",
         u."displayName",
@@ -49,19 +58,17 @@ export async function getLeaderboard(
       JOIN "test_sessions" ts ON tr."sessionId" = ts."id"
       LEFT JOIN "certificates" c ON tr."id" = c."resultId"
       WHERE tr."integrityStatus" = 'VERIFIED'
+        -- Every tier must be scored from the server-reconstructed trace.
+        AND tr."scoringSource" = 'SERVER_RECONSTRUCTED'::"ScoringSource"
         AND u."leaderboardOptOut" = false
         AND ts."trustTier" IN ('FREE', 'CERTIFICATE')
-        AND (
-          (ts."trustTier" = 'FREE' AND tr."scoringSource" = 'SERVER_RECONSTRUCTED'::"ScoringSource")
-          OR 
-          (ts."trustTier" = 'CERTIFICATE' AND (c."status" IS NULL OR c."status" NOT IN ('REVOKED', 'EXPIRED')))
-        )
+        AND (c."status" IS NULL OR c."status" NOT IN ('REVOKED', 'EXPIRED'))
         AND ts."status" = 'COMPLETED'
         AND tr."createdAt" >= ${gteDate}
-        ${query.mode ? Prisma.sql`AND ts."mode" = ${query.mode.toUpperCase()}::"TypingMode"` : Prisma.empty}
+        AND ts."mode" = ${mode.toUpperCase()}::"TypingMode"
         ${query.language ? Prisma.sql`AND ts."language" = ${query.language.toUpperCase()}::"Language"` : Prisma.empty}
         ${query.codeLanguage ? Prisma.sql`AND ts."codeLanguage" = ${query.codeLanguage.toUpperCase()}::"CodeLanguage"` : Prisma.empty}
-        ${query.duration ? Prisma.sql`AND tr."duration" = ${query.duration}` : Prisma.empty}
+        ${duration !== undefined ? Prisma.sql`AND tr."duration" = ${duration}` : Prisma.empty}
     )
     SELECT * FROM RankedResults
     WHERE rn = 1
@@ -82,8 +89,15 @@ export async function getLeaderboard(
     language: r.language,
     codeLanguage: r.codeLanguage || undefined,
     integrityStatus: r.integrityStatus,
-    isCertificateEligible:
-      r.trustTier === "CERTIFICATE" && r.integrityStatus === "VERIFIED",
+    isCertificateEligible: evaluateCertificateEligibility({
+      netWpm: r.netWpm,
+      accuracy: r.accuracy,
+      duration: r.duration,
+      integrityStatus: r.integrityStatus,
+      scoringSource: r.scoringSource,
+      trustTier: r.trustTier,
+      userId: r.userId,
+    }).eligible,
     trustTier: r.trustTier,
     createdAt: r.createdAt.toISOString(),
   }));

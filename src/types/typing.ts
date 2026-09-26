@@ -194,7 +194,7 @@ export interface TestSessionPayload {
 
 /** Public result data returned from server */
 export interface TestResultPublic {
-  resultId: string;
+  // No internal database id: results are addressed publicly by shareId only.
   shareId: string;
   shareUrl: string;
   wpm: number;
@@ -218,7 +218,13 @@ export interface TestResultPublic {
   > | null;
   codeMetrics?: any;
   integrityStatus: IntegrityStatus;
+  /**
+   * SERVER_RECONSTRUCTED: every metric and diagnostic was derived server-side
+   * from the event trace. CLIENT_COUNTS: values are client-reported.
+   */
+  scoringSource: "CLIENT_COUNTS" | "SERVER_RECONSTRUCTED";
   createdAt: string;
+  /** Same rule as certificate issuance (evaluateCertificateEligibility). */
   isCertificateEligible: boolean;
   displayName?: string | null;
   certificateId?: string | null;

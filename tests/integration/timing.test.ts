@@ -79,9 +79,15 @@ describe("Result Submission Timing & Metric Validation", () => {
       integritySignals: getBaseSignals(),
     });
 
-    expect(res.wpm).toBeGreaterThan(500); // 250 chars / 5 = 50 words in 5 seconds = 600 WPM
-    // We expect it to be marked INVALID because it's > 300 WPM
+    // Server time (5s) gives 250 / 5 / (5/60) = 600 WPM, over the 300 cap →
+    // INVALID. Client time (60s) would have given 50 WPM and REVIEW, so the
+    // INVALID status proves server time was used.
     expect(res.integrityStatus).toBe("INVALID");
+    // INVALID results carry no trusted metrics; counts are kept for audit.
+    const stored = (db.testResult.create as any).mock.calls[0][0].data;
+    expect(res.wpm).toBe(0);
+    expect(stored).toMatchObject({ wpm: 0, rawWpm: 0, netWpm: 0, accuracy: 0 });
+    expect(stored.correctChars).toBe(250);
   });
 
   it("Case B: clientElapsedMs = 1s, serverElapsedMs = 60s -> Uses ~60s", async () => {

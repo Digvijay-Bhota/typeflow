@@ -1,7 +1,36 @@
-export function getPublicResult(result: any) {
-  // Derive intervalWpms
-  let intervalWpms: number[] = [];
-  if (result.integritySignals && typeof result.integritySignals === "object") {
+import { evaluateCertificateEligibility } from "@/lib/certificateEligibility";
+import { deriveTraceDiagnostics } from "@/features/typing/lib/traceAnalysis";
+
+/** Interval WPM from the stored trace, when the result was reconstructed from it. */
+function traceIntervalWpms(result: any): number[] | null {
+  const passage = result.session?.passage?.content;
+  const events = result.eventTrace?.events;
+  if (
+    result.scoringSource !== "SERVER_RECONSTRUCTED" ||
+    typeof passage !== "string" ||
+    !Array.isArray(events)
+  ) {
+    return null;
+  }
+  return deriveTraceDiagnostics(passage, result.eventTrace).intervalWpms;
+}
+
+/**
+ * Public view of a result for the share page.
+ *
+ * `includeId` exposes the internal result id; pass it only when the viewer
+ * owns the result (it backs the owner-only "practice these keys" link).
+ */
+export function getPublicResult(result: any, options: { includeId?: boolean } = {}) {
+  // Derive intervalWpms: server-derived from the trace for reconstructed
+  // results, otherwise the client-reported samples.
+  let intervalWpms: number[] = traceIntervalWpms(result) ?? [];
+  if (
+    intervalWpms.length === 0 &&
+    result.scoringSource !== "SERVER_RECONSTRUCTED" &&
+    result.integritySignals &&
+    typeof result.integritySignals === "object"
+  ) {
     const rawIntervals = (result.integritySignals as any).intervalWpms;
     if (Array.isArray(rawIntervals)) {
       intervalWpms = rawIntervals.filter(
@@ -44,8 +73,18 @@ export function getPublicResult(result: any) {
       }
     : null;
 
+  const certificate = evaluateCertificateEligibility({
+    netWpm: result.netWpm,
+    accuracy: result.accuracy,
+    duration: result.session?.duration ?? null,
+    integrityStatus: result.integrityStatus,
+    scoringSource: result.scoringSource,
+    trustTier: result.session?.trustTier ?? "",
+    userId: result.userId ?? null,
+  });
+
   return {
-    id: result.id,
+    ...(options.includeId ? { id: result.id } : {}),
     shareId: result.shareId,
     wpm: result.wpm,
     rawWpm: result.rawWpm,
@@ -60,6 +99,9 @@ export function getPublicResult(result: any) {
     uncorrectedErrors: result.uncorrectedErrors,
     integrityStatus: result.integrityStatus,
     scoringSource: result.scoringSource,
+    isCertificateEligible: certificate.eligible,
+    // An unclaimed guest result that qualifies once claimed into an account.
+    certificateEligibleAfterClaim: !result.userId && certificate.eligibleOnceSignedIn,
     createdAt: result.createdAt,
     session: publicSession,
     intervalWpms,

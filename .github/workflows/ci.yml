@@ -127,6 +127,7 @@ jobs:
           RAZORPAY_WEBHOOK_SECRET: "test-only-razorpay-webhook-secret"
           APP_URL: "http://localhost:3000"
           SESSION_SECRET: "test-only-session-secret-not-for-production"
+          CERTIFICATE_SIGNING_SECRET: "test-only-certificate-signing-secret-not-for-production"
           TEST_REDIS_URL: "redis://localhost:6379"
 
       - name: Upload coverage
@@ -174,6 +175,7 @@ jobs:
           RAZORPAY_WEBHOOK_SECRET: "placeholder"
           APP_URL: "http://localhost:3000"
           SESSION_SECRET: "placeholder-session-secret-32-chars-minimum"
+          CERTIFICATE_SIGNING_SECRET: "placeholder-certificate-signing-secret-32-chars"
           REDIS_URL: "rediss://placeholder:6379"
           NODE_ENV: "production"
 

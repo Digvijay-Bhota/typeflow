@@ -95,6 +95,28 @@ export type IntegrityStatus = keyof typeof INTEGRITY_STATUS;
  */
 export const CHARS_PER_WORD = 5 as const;
 
+/**
+ * Sustained typing speed a certificate passage must last for, for the whole
+ * certificate test. A test ends when its passage runs out, and a certificate
+ * test that ends before its duration is INVALID, so the passage length caps
+ * the speed anyone can certify at. 150 WPM is far above the 30 WPM minimum
+ * and above what almost any typist sustains for five minutes.
+ */
+export const CERTIFICATE_PASSAGE_TARGET_WPM = 150;
+
+/**
+ * Minimum length of a certificate passage, in characters.
+ *
+ *   minChars = targetWpm × CHARS_PER_WORD × (CERTIFICATE_MIN_DURATION / 60)
+ *            = 150 × 5 × 5 = 3,750
+ *
+ * The caret advances one character per keystroke (correct or not) and moves
+ * back on backspace, so this bounds the raw speed at which the passage lasts
+ * the full test.
+ */
+export const CERTIFICATE_MIN_PASSAGE_CHARS =
+  CERTIFICATE_PASSAGE_TARGET_WPM * CHARS_PER_WORD * (CERTIFICATE_MIN_DURATION / 60);
+
 /** The minimum ms between keystrokes to be considered plausible (anti-cheat) */
 export const MIN_KEYSTROKE_INTERVAL_MS = 20 as const;
 
