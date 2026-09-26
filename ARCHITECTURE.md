@@ -11,6 +11,19 @@ Application data is server-only. The browser never reads or writes application t
 
 **Rule for new tables:** every migration that adds a table to `public` must enable RLS on it and add no `anon`/`authenticated` policies. `tests/integration/db-privileges-pg.test.ts` enforces this against a test database that reproduces Supabase's roles and grants (`tests/setup/supabase-roles.sql`).
 
+## Certificate PDF: Recipient Names (Phase 5C-3)
+
+`renderCertificatePdf` draws the "Recipient:" line with `src/lib/certificateRecipient.ts` (pure, deterministic):
+
+- **Latin names** Helvetica (WinAnsi) can draw render exactly as before: one `drawText`, 18 pt, no extra font embedded.
+- **Devanagari** (Hindi, Marathi, …) is drawn with Noto Sans Devanagari Regular (OFL 1.1), bundled at `src/server/assets/fonts/` and subsetted into the PDF through `@pdf-lib/fontkit`. It is read from disk (never fetched) and traced into `/api/payment/webhook` and `/api/certificate/fulfill` by `outputFileTracingIncludes` in `next.config.ts`. `regenerator-runtime` is only there because fontkit's shaper expects it as a global.
+- **Emoji**, control, bidi and invisible format characters are removed; text is NFC-normalized and whitespace collapsed.
+- **Any other script** (e.g. CJK, Greek, Cyrillic, Latin letters outside WinAnsi such as `Ł`) replaces the whole name with `(see verification page)`, never a partial name. The verification page (HTML) shows the stored name, and the QR code links to it.
+- **Long names** shrink from 18 pt to 11 pt, then are cut at a grapheme boundary with `…`, so they never overlap the WPM column or fail.
+- **Failures:** if drawing the Devanagari text fails, the certificate is rendered with the fallback text (logged), so a name never blocks fulfillment. A missing font file (a deployment fault) fails the render instead, which leaves the certificate `PENDING_FULFILLMENT` and retryable, as any other fulfillment failure does.
+
+Text extracted from the PDF (copy/paste, search) shows Devanagari in visual glyph order; the drawn text is correct. The recipient name is still read live from `User.displayName` when the PDF is rendered and on the verification page. Snapshotting it on the certificate at issuance needs a schema migration and deploy ordering, so it is left as separate work.
+
 ## Phase 8: Subscription Architecture
 
 The Pro Subscription system isolates recurring billing from one-time certificate payments to maintain clean service boundaries.

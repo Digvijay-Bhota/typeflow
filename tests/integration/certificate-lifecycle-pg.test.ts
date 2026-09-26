@@ -25,6 +25,7 @@ import {
   fulfillCertificate,
   getCertificateVerification,
   getOwnerCertificate,
+  renderCertificatePdf,
   retryCertificateFulfillment,
   revokeCertificate,
 } from "@/server/services/certificate.service";
@@ -36,6 +37,7 @@ import VerifyCertificatePage from "@/app/verify/[certificateId]/page";
 import LegacyCertificatePage from "@/app/certificate/[id]/page";
 import { CERTIFICATE_PRICE_INR } from "@/lib/constants";
 import { certificateStorage, publicUrlFor } from "../setup/fakeCertificateStorage";
+import { pdfFontNames } from "../setup/pdfFonts";
 
 vi.mock("@/lib/supabase/server", async () => {
   const { fakeSupabaseServer } = await import("../setup/fakeCertificateStorage");
@@ -95,13 +97,13 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 /** A trusted 300 s CERTIFICATE result with a real PENDING_PAYMENT certificate and order. */
-async function seedPurchase() {
+async function seedPurchase(displayName = "Pat Typist") {
   const tag = randomBytes(4).toString("hex");
   const user = await db.user.create({
     data: {
       authId: randomUUID(),
       email: `life-${tag}@example.com`,
-      displayName: "Pat Typist",
+      displayName,
     },
   });
   const passage = await db.passage.create({
@@ -497,6 +499,88 @@ describe("capture → fulfillment", () => {
     expect(s.certificate.status).toBe("PENDING_PAYMENT");
     expect(certificateStorage.uploadsFor(p.certificateId)).toBe(0);
     expect((await getOwnerCertificate(p.user.id, p.resultId)).state).toBe("PROCESSING");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recipient names the PDF's standard font cannot draw
+// ---------------------------------------------------------------------------
+
+describe("non-Latin recipient names", () => {
+  it("a Hindi name's capture activates the certificate with the name drawn in Devanagari", async () => {
+    const p = await seedPurchase("प्रिया शर्मा");
+    await deliver(captureEvent(p), `evt_cap_${p.tag}`);
+
+    const s = await state(p);
+    expect(s.payment.status).toBe("COMPLETED");
+    expect(s.certificate.status).toBe("ACTIVE");
+    expect(s.certificate.pdfUrl).toBe(publicUrlFor(p.certificateId));
+    expectSameIdentity(s.certificate, p);
+    const pdf = certificateStorage.objectFor(p.certificateId)!;
+    expect((await PDFDocument.load(pdf)).getPageCount()).toBe(1);
+    expect(await pdfFontNames(pdf)).toContain("NotoSansDevanagari-Regular");
+
+    const verification = await getCertificateVerification(p.certificateId);
+    expect(verification).toMatchObject({
+      state: "VERIFIED",
+      recipientName: "प्रिया शर्मा",
+    });
+  });
+
+  it("the same, through the real webhook route", async () => {
+    const p = await seedPurchase("Priya (प्रिया) Sharma 🚀");
+    const res = await deliverViaRoute(captureEvent(p), `evt_cap_${p.tag}`);
+    expect(res.status).toBe(200);
+    expect((await state(p)).certificate.status).toBe("ACTIVE");
+  });
+
+  it.each([
+    ["Chinese", "李明"],
+    ["emoji only", "🚀🔥"],
+    ["100 characters", "Wolfgang Amadeus Theophilus ".repeat(4).slice(0, 100)],
+  ])("a %s name never blocks activation", async (_label, displayName) => {
+    const p = await seedPurchase(displayName);
+    await deliver(captureEvent(p), `evt_cap_${p.tag}`);
+
+    const s = await state(p);
+    expect(s.certificate.status).toBe("ACTIVE");
+    expect(await pdfFontNames(certificateStorage.objectFor(p.certificateId)!)).toEqual([
+      "Helvetica",
+      "Helvetica-Bold",
+    ]);
+    // The verification page still shows the name as stored.
+    expect(await getCertificateVerification(p.certificateId)).toMatchObject({
+      state: "VERIFIED",
+      recipientName: displayName,
+    });
+  });
+
+  it("a storage failure keeps a Hindi-name certificate pending; redelivery activates it with identical bytes", async () => {
+    const p = await seedPurchase("प्रिया शर्मा");
+    const eventId = `evt_cap_${p.tag}`;
+    certificateStorage.failNext = 1;
+
+    await expect(deliver(captureEvent(p), eventId)).rejects.toMatchObject(
+      FULFILLMENT_FAILED
+    );
+    const pending = await state(p);
+    expect(pending.certificate.status).toBe("PENDING_FULFILLMENT");
+    expect(pending.certificate.pdfUrl).toBeNull();
+    expect((await getCertificateVerification(p.certificateId))?.state).toBe("PROCESSING");
+
+    await deliver(captureEvent(p), eventId);
+    expect((await state(p)).certificate.status).toBe("ACTIVE");
+    const stored = certificateStorage.objectFor(p.certificateId)!;
+
+    // Deterministic: the path is fixed per certificate and a re-render matches.
+    const cert = await db.certificate.findUniqueOrThrow({
+      where: { certificateId: p.certificateId },
+    });
+    const again = await renderCertificatePdf(
+      { ...cert, recipientName: "प्रिया शर्मा" },
+      certificateVerifyUrl(p.certificateId)
+    );
+    expect(Buffer.from(again).equals(Buffer.from(stored))).toBe(true);
   });
 });
 

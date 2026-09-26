@@ -15,9 +15,16 @@ import {
   type VerificationState,
 } from "@/lib/certificateStatus";
 import { logger } from "@/lib/logger";
+import { layoutRecipientLine, needsDevanagariFont } from "@/lib/certificateRecipient";
+import {
+  DEVANAGARI_FONT_NAME,
+  fontkit,
+  loadDevanagariFont,
+  type DevanagariFont,
+} from "@/server/lib/certificateFonts";
 import { createHmac, timingSafeEqual } from "crypto";
 import type { Certificate, Prisma } from "@prisma/client";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
 import { ServiceError, isUniqueViolation } from "@/server/errors";
 
@@ -167,10 +174,80 @@ type CertificateForPdf = Pick<
  * hashes, session, payment or internal IDs. Deterministic for a given
  * certificate (the PDF dates are pinned to issuedAt), so a retried upload
  * writes identical bytes.
+ *
+ * Names Helvetica can draw render as before; Devanagari text uses the bundled
+ * Noto Sans Devanagari font; anything else, and a name that cannot be drawn
+ * for any reason, gets the fixed fallback text (see certificateRecipient.ts),
+ * so a name never blocks fulfillment. A missing font file, a deployment
+ * fault, does fail the render (retryably) rather than issuing a certificate
+ * without the name.
  */
 export async function renderCertificatePdf(
   cert: CertificateForPdf,
   verifyUrl: string
+): Promise<Uint8Array> {
+  const devanagari = needsDevanagariFont(cert.recipientName)
+    ? await loadDevanagariFont()
+    : null;
+  try {
+    return await drawCertificatePdf(cert, verifyUrl, cert.recipientName, devanagari);
+  } catch (error) {
+    if (!devanagari) throw error;
+    logger.error(
+      "Certificate recipient name could not be drawn; using fallback text",
+      error,
+      {
+        certificateId: cert.certificateId,
+      }
+    );
+    return drawCertificatePdf(cert, verifyUrl, "", null);
+  }
+}
+
+async function drawRecipientLine(
+  pdfDoc: PDFDocument,
+  page: PDFPage,
+  helvetica: PDFFont,
+  name: string,
+  devanagari: DevanagariFont | null
+): Promise<void> {
+  const latin = new Set(helvetica.getCharacterSet());
+  const line = layoutRecipientLine(
+    name,
+    {
+      latin: (codePoint) => latin.has(codePoint),
+      devanagari: (codePoint) => devanagari?.covers(codePoint) ?? false,
+    },
+    (font, text, size) =>
+      font === "latin"
+        ? helvetica.widthOfTextAtSize(text, size)
+        : (devanagari?.widthOfTextAtSize(text, size) ?? Infinity)
+  );
+
+  // Embedded only when drawn, so Latin-only certificates stay unchanged.
+  let devanagariPdfFont: PDFFont | undefined;
+  if (devanagari && line.runs.some((run) => run.font === "devanagari")) {
+    pdfDoc.registerFontkit(fontkit);
+    devanagariPdfFont = await pdfDoc.embedFont(devanagari.bytes, {
+      subset: true,
+      customName: DEVANAGARI_FONT_NAME,
+    });
+  }
+
+  let x = 50;
+  for (const run of line.runs) {
+    const font = run.font === "latin" ? helvetica : devanagariPdfFont;
+    if (!font) throw new Error("Devanagari font not embedded");
+    page.drawText(run.text, { x, y: 380, size: line.size, font });
+    x += font.widthOfTextAtSize(run.text, line.size);
+  }
+}
+
+async function drawCertificatePdf(
+  cert: CertificateForPdf,
+  verifyUrl: string,
+  recipientName: string,
+  devanagari: DevanagariFont | null
 ): Promise<Uint8Array> {
   const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 1, width: 150 });
 
@@ -196,7 +273,7 @@ export async function renderCertificatePdf(
     font,
   });
 
-  page.drawText(`Recipient: ${cert.recipientName}`, { x: 50, y: 380, size: 18, font });
+  await drawRecipientLine(pdfDoc, page, font, recipientName, devanagari);
   page.drawText(`Assessment: ${cert.testType}`, { x: 50, y: 340, size: 16, font });
   page.drawText(`Language: ${cert.language}`, { x: 50, y: 310, size: 16, font });
   page.drawText(`Duration: ${cert.duration} seconds`, { x: 50, y: 280, size: 16, font });

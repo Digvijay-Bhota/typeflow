@@ -4,6 +4,16 @@ const nextConfig: NextConfig = {
   // Strict mode for React 19
   reactStrictMode: true,
 
+  // The certificate PDF font is read from disk at runtime (see
+  // src/server/lib/certificateFonts.ts), so ship it with the functions that
+  // render certificates.
+  outputFileTracingIncludes: {
+    "/api/payment/webhook": ["./src/server/assets/fonts/NotoSansDevanagari-Regular.ttf"],
+    "/api/certificate/fulfill": [
+      "./src/server/assets/fonts/NotoSansDevanagari-Regular.ttf",
+    ],
+  },
+
   // Security headers
   async headers() {
     return [
