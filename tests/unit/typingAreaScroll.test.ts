@@ -17,10 +17,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createElement } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { TypingArea } from "@/features/typing/components/TypingArea";
-import { TypingTest } from "@/features/typing/components/TypingTest";
 import { nextActiveLineScrollTop } from "@/features/typing/lib/activeLineScroll";
+import { renderReadyTypingTest } from "../setup/typingTestHarness";
 import type { ErrorMap } from "@/types/typing";
 
 const push = vi.hoisted(() => vi.fn());
@@ -405,20 +405,17 @@ describe("TypingTest — 300 s certificate test", () => {
   }
 
   const renderCertificateTest = () =>
-    render(
-      createElement(TypingTest, {
-        mode: "timed",
-        language: "english",
-        duration: 300,
-        trustTier: "CERTIFICATE",
-        hideConfig: true,
-      })
-    );
+    renderReadyTypingTest({
+      mode: "timed",
+      language: "english",
+      duration: 300,
+      trustTier: "CERTIFICATE",
+      hideConfig: true,
+    });
 
   it("scrolls the passage as the typist moves down it", async () => {
     stubApi();
-    renderCertificateTest();
-    const textbox = await screen.findByRole("textbox");
+    const textbox = await renderCertificateTest();
 
     const typed = 8 * CHARS_PER_LINE + 5;
     for (let i = 0; i < typed; i++) {
@@ -434,8 +431,7 @@ describe("TypingTest — 300 s certificate test", () => {
 
   it("still submits exactly once on timer expiry, then navigates", async () => {
     const fetchMock = stubApi();
-    renderCertificateTest();
-    const textbox = await screen.findByRole("textbox");
+    const textbox = await renderCertificateTest();
 
     vi.useFakeTimers({
       toFake: [
@@ -474,15 +470,12 @@ describe("TypingTest — 300 s certificate test", () => {
 
   it("completes by typing the whole passage and submits exactly once", async () => {
     const fetchMock = stubApi();
-    render(
-      createElement(TypingTest, {
-        mode: "timed",
-        language: "english",
-        duration: 60,
-        hideConfig: true,
-      })
-    );
-    const textbox = await screen.findByRole("textbox");
+    const textbox = await renderReadyTypingTest({
+      mode: "timed",
+      language: "english",
+      duration: 60,
+      hideConfig: true,
+    });
     for (const ch of CERT_PASSAGE) fireEvent.keyDown(textbox, { key: ch });
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/result/share_cert"));
