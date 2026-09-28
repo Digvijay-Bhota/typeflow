@@ -21,8 +21,6 @@ export const certificateStorage = {
   uploadCounts: new Map<string, number>(),
   /** Number of upcoming uploads that fail. */
   failNext: 0,
-  /** Number of upcoming downloads that fail. */
-  failDownloadNext: 0,
   /** When set, uploads wait on it (to interleave a concurrent event). */
   gate: null as Deferred | null,
   /** Resolved when an upload reaches the gate. */
@@ -71,15 +69,6 @@ export const fakeSupabaseServer = {
           }
           certificateStorage.objects.set(path, bytes);
           return { error: null };
-        },
-        download: async (path: string) => {
-          if (certificateStorage.failDownloadNext > 0) {
-            certificateStorage.failDownloadNext--;
-            return { data: null, error: new Error("storage unavailable (test)") };
-          }
-          const bytes = certificateStorage.objects.get(path);
-          if (!bytes) return { data: null, error: new Error("Object not found") };
-          return { data: new Blob([bytes]), error: null };
         },
         getPublicUrl: (path: string) => ({
           data: { publicUrl: `https://storage.test/${bucket}/${path}` },

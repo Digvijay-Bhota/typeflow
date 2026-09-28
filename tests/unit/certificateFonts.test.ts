@@ -41,7 +41,6 @@ describe("certificate font asset", () => {
       "/api/payment/webhook",
       "/api/certificate/fulfill",
       "/api/cron/reconcile-payments",
-      "/api/cron/repair-certificate-qr",
     ]) {
       expect(includes[route]).toContain(`./${DEVANAGARI_FONT_FILE}`);
     }
