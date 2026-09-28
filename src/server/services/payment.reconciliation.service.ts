@@ -29,10 +29,17 @@
  * state; "apply" also runs the transitions above. `dryRun` writes nothing at
  * all and only counts what it finds (as "detected", in either mode).
  *
+ * Unsettled purchases (C1/C5) are selected from one read-only scan of the
+ * Razorpay payments created in the window: only orders with a captured or an
+ * authorized payment can be anything but in sync, so only those are examined.
+ * Abandoned checkouts (PENDING forever, nothing paid) are never read, and
+ * cannot queue ahead of a missed capture. If the scan fails or is too large,
+ * the run falls back to examining unsettled purchases oldest-first.
+ *
  * Safety:
  *  - Never creates an order, captures, refunds or charges: only the read-only
- *    fetchRazorpayOrderPayments / fetchRazorpayPayment /
- *    fetchRazorpayPaymentRefunds are called.
+ *    fetchRazorpayPaymentsCreatedBetween / fetchRazorpayOrderPayments /
+ *    fetchRazorpayPayment / fetchRazorpayPaymentRefunds are called.
  *  - Transitions are the webhook's own (applyCaptureTx / applyFullRefundTx),
  *    with the same compare-and-set, amount/currency check and refund-wins
  *    rule, inside one transaction with their audit event.
@@ -40,10 +47,10 @@
  *    action, so concurrent or repeated runs (and the webhook) converge: the
  *    loser of a race does nothing. No locks.
  *  - A Razorpay read failure skips that payment; nothing is changed.
- *  - Bounded: at most `limit` payments (one or two Razorpay reads each) and
- *    `timeBudgetMs` per run, stale payments only (last change older than
- *    `minAgeMs`, created within `maxAgeMs`). Each phase is guaranteed an
- *    equal share of `limit`, so abandoned checkouts cannot starve the others.
+ *  - Bounded: at most `limit` payments (one or two Razorpay reads each), plus
+ *    the scan (at most 10 list pages), and `timeBudgetMs` per run, stale
+ *    payments only (last change older than `minAgeMs`, created within
+ *    `maxAgeMs`). Each phase is guaranteed an equal share of `limit`.
  */
 import type { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
@@ -54,6 +61,7 @@ import {
   fetchRazorpayOrderPayments,
   fetchRazorpayPayment,
   fetchRazorpayPaymentRefunds,
+  fetchRazorpayPaymentsCreatedBetween,
   type RazorpayPaymentSnapshot,
   type RazorpayRefundSnapshot,
 } from "./razorpay.service";
@@ -153,6 +161,12 @@ type Window = {
   createdAfter: Date;
   /** Payments already examined in this run (a repaired row can match a later phase). */
   seen: string[];
+  /**
+   * Orders with a captured or authorized Razorpay payment (from the scan), or
+   * null when the scan was unavailable and unsettled purchases are examined
+   * oldest-first instead.
+   */
+  paidOrders: string[] | null;
 };
 
 /** Unsettled purchases: C1 (and C3/C5 found on the way). */
@@ -164,6 +178,7 @@ function findUnsettled(w: Window, take: number) {
       id: { notIn: w.seen },
       updatedAt: { lte: w.staleBefore },
       createdAt: { gte: w.createdAfter },
+      ...(w.paidOrders ? { orderId: { in: w.paidOrders } } : {}),
     },
     orderBy: { updatedAt: "asc" },
     take,
@@ -201,6 +216,30 @@ function findIssued(w: Window, take: number) {
     take,
     select: paymentSelect,
   });
+}
+
+/**
+ * Order ids of every captured or authorized Razorpay payment created in the
+ * window. reconcileUnsettled finds nothing to do for an order with neither
+ * (nothing was paid), so those purchases need no read. Null when the scan
+ * fails or exceeds its page limit: the caller then falls back to examining
+ * unsettled purchases oldest-first.
+ */
+async function scanPaidOrders(from: Date, to: Date): Promise<string[] | null> {
+  try {
+    const payments = await fetchRazorpayPaymentsCreatedBetween(from, to);
+    const orders = new Set<string>();
+    for (const p of payments) {
+      if (p.orderId && (p.captured || p.status === "authorized")) orders.add(p.orderId);
+    }
+    return [...orders];
+  } catch (error) {
+    logger.warn(
+      "Razorpay payment scan unavailable; unsettled purchases are examined oldest-first",
+      errorSummary(error)
+    );
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -711,6 +750,7 @@ export async function reconcilePayments(
       now.getTime() - (options.maxAgeMs ?? RECONCILE_DEFAULTS.maxAgeMs)
     ),
     seen: [],
+    paidOrders: null,
   };
 
   const summary: ReconcileSummary = {
@@ -730,6 +770,9 @@ export async function reconcilePayments(
     return summary;
   }
 
+  // One read-only scan per run selects the unsettled purchases worth a read.
+  if (limit > 0) window.paidOrders = await scanPaidOrders(window.createdAfter, now);
+
   const phases: Array<{
     find: (w: Window, take: number) => Promise<Candidate[]>;
     run: (ctx: Ctx, payment: Candidate) => Promise<ReconcileOutcome>;
@@ -740,8 +783,8 @@ export async function reconcilePayments(
   ];
 
   // Two passes. First each phase examines up to its share of the limit, so a
-  // backlog in one phase (abandoned checkouts stay PENDING and are never
-  // updated, so they are always the oldest unsettled rows) cannot keep the
+  // backlog in one phase (e.g. abandoned checkouts, which stay PENDING and are
+  // never updated, when the scan fell back to oldest-first) cannot keep the
   // others from running. Then the budget a phase did not need goes to the
   // phases that still have candidates, in phase order. `seen` excludes the
   // payments already examined in this run from every later query.

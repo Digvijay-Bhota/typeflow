@@ -1,8 +1,9 @@
 /**
  * Payment reconciliation against real Postgres (Phase 5C-5).
  *
- * Razorpay is faked at the read-only wrapper (fetchRazorpayOrderPayments /
- * fetchRazorpayPayment) and the SDK constructor throws, so no request can
+ * Razorpay is faked at the read-only wrappers (fetchRazorpayPaymentsCreatedBetween
+ * / fetchRazorpayOrderPayments / fetchRazorpayPayment / fetchRazorpayPaymentRefunds)
+ * and the SDK constructor throws, so no request can
  * leave the machine and no order, capture or refund can be created.
  * Certificate storage is the in-memory fake; everything else (Prisma,
  * transactions, compare-and-set, the webhook) is real.
@@ -27,7 +28,11 @@ import Razorpay from "razorpay";
 import { db } from "@/server/db";
 import { __clearServerEnvForTesting } from "@/lib/env";
 import { CERTIFICATE_PRICE_INR } from "@/lib/constants";
-import { processRazorpayWebhook } from "@/server/services/payment.service";
+import { logger } from "@/lib/logger";
+import {
+  createCertificateOrder,
+  processRazorpayWebhook,
+} from "@/server/services/payment.service";
 import {
   RECONCILE_DEFAULTS,
   reconcilePayments,
@@ -41,6 +46,7 @@ import {
   fetchRazorpayOrderPayments,
   fetchRazorpayPayment,
   fetchRazorpayPaymentRefunds,
+  fetchRazorpayPaymentsCreatedBetween,
   type RazorpayPaymentSnapshot,
   type RazorpayRefundSnapshot,
 } from "@/server/services/razorpay.service";
@@ -68,6 +74,7 @@ vi.mock("@/server/services/razorpay.service", async (importOriginal) => ({
   createRazorpayOrder: vi.fn(async () => {
     throw new Error("Reconciliation must never create an order");
   }),
+  fetchRazorpayPaymentsCreatedBetween: vi.fn(),
   fetchRazorpayOrderPayments: vi.fn(),
   fetchRazorpayPayment: vi.fn(),
   fetchRazorpayPaymentRefunds: vi.fn(),
@@ -104,6 +111,11 @@ afterAll(() => {
 /** Razorpay's view: payments per order id. */
 const razorpay = new Map<string, RazorpayPaymentSnapshot[]>();
 let razorpayDown = false;
+/**
+ * The payment scan throws as when it exceeds its page limit, so the run falls
+ * back to examining unsettled purchases oldest-first (the pre-5C-10 path).
+ */
+let scanUnavailable = false;
 
 function rzpPayment(
   orderId: string,
@@ -151,8 +163,17 @@ beforeEach(() => {
   razorpay.clear();
   refundsByPayment.clear();
   razorpayDown = false;
+  scanUnavailable = false;
   certificateStorage.failNext = 0;
   certificateStorage.gate = null;
+  // Every payment of every faked order; the window is enforced on our rows.
+  vi.mocked(fetchRazorpayPaymentsCreatedBetween).mockImplementation(async () => {
+    if (razorpayDown) throw outage();
+    if (scanUnavailable) {
+      throw new Error("Too many payments to list for the reconciliation window");
+    }
+    return structuredClone([...razorpay.values()].flat());
+  });
   vi.mocked(fetchRazorpayOrderPayments).mockImplementation(async (orderId) => {
     if (razorpayDown) throw outage();
     return structuredClone(razorpay.get(orderId) ?? []);
@@ -541,8 +562,7 @@ describe("C1: captured on Razorpay, webhook missed", () => {
     expect(s.keys).toEqual([reconcileKeys.refunded(rp.id)]);
   });
 
-  it("nothing paid (abandoned or failed attempts, auto-refunded authorization) changes nothing", async () => {
-    const w = newWindow();
+  async function seedNothingPaid() {
     const p = await seed();
     razorpay.set(p.orderId, [
       rzpPayment(p.orderId, { status: "failed", captured: false }),
@@ -553,9 +573,28 @@ describe("C1: captured on Razorpay, webhook missed", () => {
         refundStatus: "full",
       }),
     ]);
+    return p;
+  }
+
+  it("nothing paid (abandoned or failed attempts, auto-refunded authorization) changes nothing", async () => {
+    // Oldest-first fallback: the purchase is read and found in sync.
+    scanUnavailable = true;
+    const w = newWindow();
+    const p = await seedNothingPaid();
     await age(p, w.t0);
 
     expect((await reconcilePayments(w.opts("apply"))).counts).toEqual({ in_sync: 1 });
+    expect(await state(p)).toMatchObject({ payment: "PENDING", keys: [] });
+  });
+
+  it("nothing paid: the payment scan skips the purchase without reading its order", async () => {
+    const w = newWindow();
+    const p = await seedNothingPaid();
+    await age(p, w.t0);
+
+    const s = await reconcilePayments(w.opts("apply"));
+    expect(s).toMatchObject({ examined: 0, counts: {}, truncated: false });
+    expect(fetchRazorpayOrderPayments).not.toHaveBeenCalled();
     expect(await state(p)).toMatchObject({ payment: "PENDING", keys: [] });
   });
 });
@@ -1219,11 +1258,14 @@ describe("robustness and bounds", () => {
 
     const s = await reconcilePayments(w.opts("off"));
     expect(s).toMatchObject({ mode: "off", examined: 0, counts: {} });
+    expect(fetchRazorpayPaymentsCreatedBetween).not.toHaveBeenCalled();
     expect(fetchRazorpayOrderPayments).not.toHaveBeenCalled();
     expect(await state(p)).toMatchObject({ payment: "PENDING", keys: [] });
   });
 
   it("enforces the batch limit and reports truncation", async () => {
+    // Oldest-first fallback, where unpaid purchases are candidates too.
+    scanUnavailable = true;
     const w = newWindow();
     const seeds = [await seed(), await seed(), await seed()];
     for (const p of seeds) {
@@ -1237,9 +1279,25 @@ describe("robustness and bounds", () => {
     expect(fetchRazorpayOrderPayments).toHaveBeenCalledTimes(2);
   });
 
+  it("enforces the batch limit on purchases selected by the payment scan", async () => {
+    const w = newWindow();
+    const seeds = [await seed(), await seed(), await seed()];
+    for (const p of seeds) {
+      razorpay.set(p.orderId, [rzpPayment(p.orderId)]);
+      await age(p, w.t0);
+    }
+
+    const s = await reconcilePayments(w.opts("report", { limit: 2 }));
+    expect(s).toMatchObject({ examined: 2, truncated: true });
+    expect(s.counts).toEqual({ captured_detected: 2 });
+    expect(fetchRazorpayPaymentsCreatedBetween).toHaveBeenCalledTimes(1);
+    expect(fetchRazorpayOrderPayments).toHaveBeenCalledTimes(2);
+  });
+
   it("enforces the time budget", async () => {
     const w = newWindow();
     const p = await seed();
+    razorpay.set(p.orderId, [rzpPayment(p.orderId)]);
     await age(p, w.t0);
     const s = await reconcilePayments(w.opts("apply", { timeBudgetMs: 0 }));
     expect(s).toMatchObject({ examined: 0, truncated: true });
@@ -1283,6 +1341,13 @@ async function seedAbandoned(count: number, at: Date) {
 
 // Seeding a full batch of purchases is slow under coverage instrumentation.
 describe("fairness across phases", { timeout: 30_000 }, () => {
+  // These pin the oldest-first fallback (payment scan unavailable), the one
+  // path where abandoned checkouts are still candidates. With the scan they
+  // are not examined at all (see "phase 1 selection" below).
+  beforeEach(() => {
+    scanUnavailable = true;
+  });
+
   it("abandoned checkouts filling the whole batch cannot starve the later phases", async () => {
     const w = newWindow();
     const { limit } = RECONCILE_DEFAULTS;
@@ -1394,6 +1459,138 @@ describe("fairness across phases", { timeout: 30_000 }, () => {
     const again = await run("apply");
     expect(again.counts.fulfilled ?? 0).toBe(0);
     expect((await state(stuck)).keys).toEqual(after.keys);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 1 selection from the Razorpay payment scan (5C-10)
+// ---------------------------------------------------------------------------
+
+describe("phase 1 selection: the payment scan", { timeout: 30_000 }, () => {
+  it("a missed capture behind more than a batch of abandoned checkouts is found in one run", async () => {
+    const w = newWindow();
+    const limit = 3;
+    const abandoned = await seedAbandoned(3 * limit, w.t0);
+    const missed = await seed();
+    const rp = rzpPayment(missed.orderId);
+    razorpay.set(missed.orderId, [rp]);
+    // Changed last, so it is the last unsettled row oldest-first.
+    await age(missed, new Date(w.t0.getTime() + 30_000));
+    // A captured payment of an order that is not ours changes nothing.
+    razorpay.set("order_not_ours_5c10", [rzpPayment("order_not_ours_5c10")]);
+
+    // Oldest-first (the scan unavailable): every run reads the same abandoned
+    // checkouts and never reaches it.
+    scanUnavailable = true;
+    for (let i = 0; i < 2; i++) {
+      const s = await reconcilePayments(w.opts("apply", { limit }));
+      expect(s).toMatchObject({ examined: limit, truncated: true });
+      expect(s.counts).toEqual({ in_sync: limit });
+    }
+    expect(await state(missed)).toMatchObject({ payment: "PENDING", keys: [] });
+
+    // With the scan: dry run, then REPORT, then APPLY, one scan per run, and
+    // no abandoned checkout is ever read.
+    scanUnavailable = false;
+    vi.mocked(fetchRazorpayPaymentsCreatedBetween).mockClear();
+    vi.mocked(fetchRazorpayOrderPayments).mockClear();
+
+    const dry = await reconcilePayments(w.opts("report", { limit, dryRun: true }));
+    expect(dry).toMatchObject({ examined: 1, truncated: false });
+    expect(dry.counts).toEqual({ captured_detected: 1 });
+    expect(await state(missed)).toMatchObject({ payment: "PENDING", keys: [] });
+
+    const report = await reconcilePayments(w.opts("report", { limit }));
+    expect(report.counts).toEqual({ captured_detected: 1 });
+    expect(await state(missed)).toMatchObject({
+      payment: "PENDING",
+      keys: [reconcileKeys.report("captured", rp.id)],
+    });
+
+    const applied = await reconcilePayments(w.opts("apply", { limit }));
+    expect(applied).toMatchObject({ examined: 1, truncated: false });
+    expect(applied.counts).toEqual({ captured_applied: 1 });
+    expect(await state(missed)).toMatchObject({
+      payment: "COMPLETED",
+      paymentId: rp.id,
+      certificate: "ACTIVE",
+    });
+
+    expect(fetchRazorpayPaymentsCreatedBetween).toHaveBeenCalledTimes(3);
+    const read = vi.mocked(fetchRazorpayOrderPayments).mock.calls.map(([o]) => o);
+    expect(new Set(read)).toEqual(new Set([missed.orderId]));
+    for (const p of abandoned) {
+      expect(await state(p)).toMatchObject({ payment: "PENDING", keys: [] });
+    }
+  });
+
+  it("a retried order (FAILED, reopened by checkout, then captured) is found whatever its updatedAt", async () => {
+    const w = newWindow();
+    const limit = 3;
+    await seedAbandoned(2 * limit, w.t0);
+    const retried = await seed({ payment: "FAILED", paymentId: "pay_failed_attempt" });
+    // The owner retries checkout: the same order is reopened, FAILED → PENDING.
+    await createCertificateOrder(retried.certificateId, retried.userId);
+    const failedAttempt = rzpPayment(retried.orderId, {
+      id: "pay_failed_attempt",
+      status: "failed",
+      captured: false,
+    });
+    const captured = rzpPayment(retried.orderId);
+    razorpay.set(retried.orderId, [failedAttempt, captured]);
+    // Created before the abandoned checkouts, changed after them: the newest
+    // updatedAt of every unsettled row.
+    await db.$executeRaw`UPDATE payments SET "createdAt" = ${new Date(w.t0.getTime() - 30_000)}, "updatedAt" = ${new Date(w.t0.getTime() + 45_000)} WHERE id = ${retried.paymentRowId}::uuid`;
+    expect(await state(retried)).toMatchObject({ payment: "PENDING", paymentId: null });
+
+    scanUnavailable = true;
+    const fallback = await reconcilePayments(w.opts("apply", { limit }));
+    expect(fallback.counts).toEqual({ in_sync: limit });
+    expect(await state(retried)).toMatchObject({ payment: "PENDING", keys: [] });
+
+    scanUnavailable = false;
+    const s = await reconcilePayments(w.opts("apply", { limit }));
+    expect(s).toMatchObject({ examined: 1, truncated: false });
+    expect(s.counts).toEqual({ captured_applied: 1 });
+    expect(await state(retried)).toMatchObject({
+      payment: "COMPLETED",
+      paymentId: captured.id,
+      certificate: "ACTIVE",
+    });
+  });
+
+  it("scan unavailable: logs a warning without details and falls back to oldest-first, which reaches the capture once the backlog ages out", async () => {
+    scanUnavailable = true;
+    const warn = vi.spyOn(logger, "warn");
+    const w = newWindow();
+    const limit = 3;
+    await seedAbandoned(2 * limit, w.t0);
+    const missed = await seed();
+    razorpay.set(missed.orderId, [rzpPayment(missed.orderId)]);
+    const changed = new Date(w.t0.getTime() + 2 * 60_000);
+    await age(missed, changed);
+    const run = (now: Date) =>
+      reconcilePayments({ mode: "apply", limit, now, maxAgeMs: 17 * 60_000 });
+
+    // Everything inside the window: the backlog comes first.
+    const first = await run(new Date(changed.getTime() + 15 * 60_000));
+    expect(first).toMatchObject({ examined: limit, truncated: true });
+    expect(first.counts).toEqual({ in_sync: limit });
+    expect(await state(missed)).toMatchObject({ payment: "PENDING" });
+
+    // One second later the abandoned checkouts have left the age window.
+    const second = await run(new Date(changed.getTime() + 15 * 60_000 + 1000));
+    expect(second.counts).toEqual({ captured_applied: 1 });
+    expect(await state(missed)).toMatchObject({
+      payment: "COMPLETED",
+      certificate: "ACTIVE",
+    });
+
+    expect(warn).toHaveBeenCalledWith(
+      "Razorpay payment scan unavailable; unsettled purchases are examined oldest-first",
+      { name: "Error", statusCode: undefined, code: undefined }
+    );
+    warn.mockRestore();
   });
 });
 

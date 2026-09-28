@@ -1,7 +1,8 @@
 /**
  * The read-only Razorpay wrappers used by payment reconciliation: mapping of
  * SDK-shaped entities (as the Razorpay API returns them) to the internal
- * snapshots, refund pagination, and that no write method is ever called.
+ * snapshots, payment-list and refund pagination, and that no write method is
+ * ever called.
  * The SDK is mocked; fixtures follow Razorpay's documented entity shapes.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -14,6 +15,7 @@ const sdk = vi.hoisted(() => {
   return {
     orders: { fetchPayments: vi.fn(), create: forbidden("orders.create") },
     payments: {
+      all: vi.fn(),
       fetch: vi.fn(),
       fetchMultipleRefund: vi.fn(),
       capture: forbidden("payments.capture"),
@@ -32,6 +34,7 @@ import {
   fetchRazorpayOrderPayments,
   fetchRazorpayPayment,
   fetchRazorpayPaymentRefunds,
+  fetchRazorpayPaymentsCreatedBetween,
 } from "@/server/services/razorpay.service";
 
 /** A payment entity as GET /v1/payments/:id returns it (fake values). */
@@ -242,6 +245,65 @@ describe("refund snapshot mapping and pagination", () => {
   });
 });
 
+describe("payments created in a time range (5C-10 scan)", () => {
+  const from = new Date("2026-09-21T10:00:00.400Z");
+  const to = new Date("2026-09-28T10:00:00.400Z");
+  const range = {
+    from: Math.floor(from.getTime() / 1000),
+    to: Math.ceil(to.getTime() / 1000),
+  };
+  const page = (start: number, n: number) => ({
+    entity: "collection",
+    count: n,
+    items: Array.from({ length: n }, (_, i) =>
+      sdkPayment({ id: `pay_${start + i}`, order_id: `order_${start + i}` })
+    ),
+  });
+
+  it("maps every payment in the range with whole-second bounds covering it", async () => {
+    sdk.payments.all.mockResolvedValueOnce({
+      entity: "collection",
+      count: 3,
+      items: [
+        sdkPayment({ id: "pay_A", status: "authorized", captured: false }),
+        sdkPayment({ id: "pay_B" }),
+        sdkPayment({ id: "pay_C", status: "failed", captured: false, order_id: null }),
+      ],
+    });
+    const list = await fetchRazorpayPaymentsCreatedBetween(from, to);
+    expect(list.map((p) => [p.id, p.orderId, p.status, p.captured])).toEqual([
+      ["pay_A", "order_FAKE00000001", "authorized", false],
+      ["pay_B", "order_FAKE00000001", "captured", true],
+      ["pay_C", null, "failed", false],
+    ]);
+    // No customer details are carried over.
+    expect(JSON.stringify(list)).not.toMatch(/example\.test|fakebank|\+91/);
+    expect(sdk.payments.all).toHaveBeenCalledWith({ ...range, count: 100, skip: 0 });
+    // Rounded outwards: the sub-second edges of the window stay inside.
+    expect(range).toEqual({ from: 1789984800, to: 1790589601 });
+  });
+
+  it("reads every page with the same bounds", async () => {
+    sdk.payments.all
+      .mockResolvedValueOnce(page(0, 100))
+      .mockResolvedValueOnce(page(100, 7));
+    expect(await fetchRazorpayPaymentsCreatedBetween(from, to)).toHaveLength(107);
+    expect(sdk.payments.all).toHaveBeenNthCalledWith(2, {
+      ...range,
+      count: 100,
+      skip: 100,
+    });
+  });
+
+  it("throws instead of returning a truncated list beyond 10 pages", async () => {
+    sdk.payments.all.mockResolvedValue(page(0, 100));
+    await expect(fetchRazorpayPaymentsCreatedBetween(from, to)).rejects.toThrow(
+      "Too many payments"
+    );
+    expect(sdk.payments.all).toHaveBeenCalledTimes(10);
+  });
+});
+
 describe("read-only", () => {
   it("never calls a Razorpay write method", async () => {
     sdk.payments.fetch.mockResolvedValue(sdkPayment());
@@ -255,9 +317,11 @@ describe("read-only", () => {
       count: 0,
       items: [],
     });
+    sdk.payments.all.mockResolvedValue({ entity: "collection", count: 0, items: [] });
     await fetchRazorpayPayment("pay_x");
     await fetchRazorpayOrderPayments("order_x");
     await fetchRazorpayPaymentRefunds("pay_x");
+    await fetchRazorpayPaymentsCreatedBetween(new Date(0), new Date());
     expect(sdk.orders.create).not.toHaveBeenCalled();
     expect(sdk.payments.capture).not.toHaveBeenCalled();
     expect(sdk.payments.refund).not.toHaveBeenCalled();
