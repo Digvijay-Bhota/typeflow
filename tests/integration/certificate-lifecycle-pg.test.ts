@@ -362,6 +362,48 @@ describe("capture → fulfillment", () => {
     expect((await getOwnerCertificate(p.user.id, p.resultId)).state).toBe("PROCESSING");
   });
 
+  it("in production, never embeds an APP_URL other than the production domain; fixed, a retry activates it", async () => {
+    // Fake hosts. TF-2026-C9XGPR was fulfilled with a Preview branch URL.
+    const saved = ["VERCEL_ENV", "VERCEL_PROJECT_PRODUCTION_URL", "APP_URL"].map(
+      (key) => [key, process.env[key]] as const
+    );
+    const setAppUrl = (value: string) => {
+      vi.stubEnv("APP_URL", value);
+      __clearServerEnvForTesting();
+    };
+    try {
+      vi.stubEnv("VERCEL_ENV", "production");
+      vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "typeflow.example.test");
+      setAppUrl("https://typeflow-git-some-branch.example-preview.test");
+      const p = await seedPurchase();
+
+      await expect(deliver(captureEvent(p), `evt_cap_${p.tag}`)).rejects.toMatchObject(
+        FULFILLMENT_FAILED
+      );
+      const pending = await state(p);
+      expect(pending.payment.status).toBe("COMPLETED");
+      expect(pending.certificate.status).toBe("PENDING_FULFILLMENT");
+      expect(pending.certificate.qrData).toBeNull();
+      expect(pending.certificate.pdfUrl).toBeNull();
+      expect(certificateStorage.uploadsFor(p.certificateId)).toBe(0);
+      expectSameIdentity(pending.certificate, p);
+
+      setAppUrl("https://typeflow.example.test");
+      expect(await retryCertificateFulfillment(p.user.id, p.certificateId)).toEqual({
+        status: "ACTIVE",
+        activated: true,
+      });
+      const active = await state(p);
+      expect(active.certificate.qrData).toBe(
+        `https://typeflow.example.test/verify/${p.certificateId}`
+      );
+      expectSameIdentity(active.certificate, p);
+    } finally {
+      for (const [key, value] of saved) vi.stubEnv(key, value);
+      __clearServerEnvForTesting();
+    }
+  });
+
   it("a retry activates the same certificate with no new charge, order or certificate", async () => {
     const p = await seedPendingFulfillment();
     const certificatesBefore = await db.certificate.count({

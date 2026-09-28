@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   canStartCheckout,
+  certificateAccuracyPercent,
   certificateOwnerState,
   certificateVerifyPath,
   CERTIFICATE_ID_PATTERN,
@@ -16,6 +17,18 @@ import {
 const now = new Date("2026-09-24T00:00:00Z");
 const past = new Date("2026-09-01T00:00:00Z");
 const future = new Date("2027-09-01T00:00:00Z");
+
+describe("certificateAccuracyPercent (PDF, verification page and dashboard)", () => {
+  it.each([
+    [0.976, "97.6"],
+    [0.97, "97.0"],
+    [1, "100.0"],
+    [0.9, "90.0"],
+    [0.9549, "95.5"],
+  ])("%s → %s", (accuracy, expected) => {
+    expect(certificateAccuracyPercent(accuracy)).toBe(expected);
+  });
+});
 
 describe("verificationState", () => {
   it("verifies only an ACTIVE, unexpired certificate with valid verification data", () => {

@@ -25,6 +25,15 @@ export function certificateVerifyPath(certificateId: string): string {
   return `/verify/${encodeURIComponent(certificateId)}`;
 }
 
+/**
+ * A certificate's accuracy as a percentage with one decimal, without the "%"
+ * (0.976 → "97.6"). The PDF, the verification page and the owner's dashboard
+ * all use it, so a certificate shows the same figure everywhere.
+ */
+export function certificateAccuracyPercent(accuracy: number): string {
+  return (accuracy * 100).toFixed(1);
+}
+
 /** Shape of every generated certificate ID (TF-YYYY-XXXXXX). */
 export const CERTIFICATE_ID_PATTERN = /^[A-Z]{2}-\d{4}-[A-Z0-9]{6}$/;
 

@@ -54,6 +54,14 @@ Errors name the variables only, never their values, and start with `Configuratio
 
 Text extracted from the PDF (copy/paste, search) shows Devanagari in visual glyph order; the drawn text is correct. The recipient name is still read live from `User.displayName` when the PDF is rendered and on the verification page. Snapshotting it on the certificate at issuance needs a schema migration and deploy ordering, so it is left as separate work.
 
+## Certificate Integrity (Phase 6)
+
+- **Verification URL.** The PDF and its QR code embed `<APP_URL>/verify/<certificateId>` for good, and `qrData` stores it. In a production deployment, `fulfillCertificate` refuses to embed any host other than the production domain (`VERCEL_PROJECT_PRODUCTION_URL`: `productionAppUrlMismatch` in `environmentGuard.ts`). A mismatch, including an unset `APP_URL`, is a fulfilment failure: the certificate stays `PENDING_FULFILLMENT` and is retried (webhook redelivery, reconciliation, owner retry) once `APP_URL` is fixed and redeployed. Preview, development and test are not checked. **Production `APP_URL` must equal the production domain**; if a custom domain is added, update `APP_URL` in the same change. `TF-2026-C9XGPR` was fulfilled with a Preview branch URL before this guard; its repair is a separate, approval-gated operation.
+- **Certificate IDs** (`TF-YYYY-XXXXXX`) come from `crypto.randomInt`, so they cannot be predicted.
+- **One accuracy figure.** The PDF, the verification page and the owner's dashboard all show `certificateAccuracyPercent` (one decimal, e.g. `97.6%`).
+- **Recipient name.** The PDF and the verification page read `User.displayName` live. That is safe only while a display name cannot change after sign-up (today it is set once, from the auth provider, and shown read-only in settings). **Before any feature lets a user change their name (e.g. profile editing), the recipient name must be snapshotted on the certificate at fulfilment** (a schema change and a backfill of existing certificates); otherwise an issued certificate's verification page would show the new name next to results earned under the old one.
+- **Known, reviewed in Phase 7:** the `certificates` storage bucket is public, so a certificate's PDF stays downloadable by its URL after revocation (its QR code leads to the verification page, which shows it as revoked); a single signing secret with no key version (see Legacy Certificate Re-sign: rotating it would invalidate every certificate).
+
 ## Legacy Certificate Re-sign (Phase 5C-9) — completed and removed
 
 Until **2026-09-26T00:21:25Z** (deployment `e0a6383`), Production signed `verificationHash` with `SESSION_SECRET`; verification has used `CERTIFICATE_SIGNING_SECRET` since, and the old `SESSION_SECRET` value was later replaced. The six certificates issued before that cutover (`TF-2026-C9XGPR`, `TF-2026-64BP7J`, `TF-2026-LR88NY`, `TF-2026-AREJKD`, `TF-2026-TVY3N3`, `TF-2026-PT8BB9`) could never verify.

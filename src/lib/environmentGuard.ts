@@ -107,6 +107,23 @@ function productionHost(env: Env): string | null {
   );
 }
 
+/**
+ * True when a production deployment's APP_URL is not its production domain
+ * (a different host, or unset). Certificate PDFs and QR codes embed the
+ * verification URL built from APP_URL for good, so a production certificate
+ * must never be fulfilled with another host: TF-2026-C9XGPR was, with a
+ * Preview branch URL, while a branch override was set. False outside
+ * production, and when Vercel does not report the production domain
+ * (VERCEL_PROJECT_PRODUCTION_URL).
+ */
+export function productionAppUrlMismatch(env: Env): boolean {
+  if (deploymentEnvironment(env) !== "production") return false;
+  const expected = productionHost(env);
+  if (!expected) return false;
+  const appUrl = env.APP_URL?.trim();
+  return !appUrl || parseUrl(appUrl)?.hostname.toLowerCase() !== expected;
+}
+
 /** The isolation problems of a configuration; empty in production and test. */
 export function environmentIsolationViolations(env: Env): IsolationViolation[] {
   const environment = deploymentEnvironment(env);
