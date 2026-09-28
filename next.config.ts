@@ -16,6 +16,10 @@ const nextConfig: NextConfig = {
     "/api/cron/reconcile-payments": [
       "./src/server/assets/fonts/NotoSansDevanagari-Regular.ttf",
     ],
+    // One-off TF-2026-C9XGPR QR repair (Phase 6, F1) re-renders its PDF.
+    "/api/cron/repair-certificate-qr": [
+      "./src/server/assets/fonts/NotoSansDevanagari-Regular.ttf",
+    ],
   },
 
   // Security headers
