@@ -42,7 +42,8 @@
  *  - A Razorpay read failure skips that payment; nothing is changed.
  *  - Bounded: at most `limit` payments (one or two Razorpay reads each) and
  *    `timeBudgetMs` per run, stale payments only (last change older than
- *    `minAgeMs`, created within `maxAgeMs`).
+ *    `minAgeMs`, created within `maxAgeMs`). Each phase is guaranteed an
+ *    equal share of `limit`, so abandoned checkouts cannot starve the others.
  */
 import type { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
@@ -687,6 +688,13 @@ function errorSummary(error: unknown) {
 // Run
 // ---------------------------------------------------------------------------
 
+/** The limit split evenly across the phases; the remainder goes to the first ones. */
+function phaseShares(limit: number, phases: number): number[] {
+  const base = Math.floor(limit / phases);
+  const extra = limit % phases;
+  return Array.from({ length: phases }, (_, i) => base + (i < extra ? 1 : 0));
+}
+
 export async function reconcilePayments(
   options: ReconcileOptions
 ): Promise<ReconcileSummary> {
@@ -731,36 +739,50 @@ export async function reconcilePayments(
     { find: findIssued, run: reconcilePaid },
   ];
 
-  outer: for (const phase of phases) {
-    const remaining = limit - summary.examined;
-    if (remaining <= 0) {
-      summary.truncated = true;
-      break;
-    }
-    const candidates = await phase.find(window, remaining + 1);
-    if (candidates.length > remaining) summary.truncated = true;
+  // Two passes. First each phase examines up to its share of the limit, so a
+  // backlog in one phase (abandoned checkouts stay PENDING and are never
+  // updated, so they are always the oldest unsettled rows) cannot keep the
+  // others from running. Then the budget a phase did not need goes to the
+  // phases that still have candidates, in phase order. `seen` excludes the
+  // payments already examined in this run from every later query.
+  const shares = phaseShares(limit, phases.length);
+  /** Every candidate of the phase has been examined. */
+  const drained = phases.map(() => false);
+  let outOfTime = false;
 
-    for (const payment of candidates.slice(0, remaining)) {
-      if (Date.now() - started >= budget) {
-        summary.truncated = true;
-        break outer;
+  outer: for (const pass of ["share", "rest"] as const) {
+    for (const [i, phase] of phases.entries()) {
+      const remaining = limit - summary.examined;
+      if (remaining <= 0) break outer;
+      if (drained[i]) continue;
+      const quota = pass === "share" ? Math.min(shares[i] ?? 0, remaining) : remaining;
+      if (quota <= 0) continue;
+
+      const candidates = await phase.find(window, quota + 1);
+      for (const payment of candidates.slice(0, quota)) {
+        if (Date.now() - started >= budget) {
+          outOfTime = true;
+          break outer;
+        }
+        summary.examined++;
+        window.seen.push(payment.id);
+        try {
+          count(await phase.run(ctx, payment));
+        } catch (error) {
+          const razorpay =
+            typeof (error as { statusCode?: unknown })?.statusCode === "number";
+          count(razorpay ? "razorpay_error" : "error");
+          logger.error(
+            "Payment reconciliation failed for a payment; left unchanged",
+            error instanceof Error ? error : undefined,
+            { paymentId: payment.id, orderId: payment.orderId, ...errorSummary(error) }
+          );
+        }
       }
-      summary.examined++;
-      window.seen.push(payment.id);
-      try {
-        count(await phase.run(ctx, payment));
-      } catch (error) {
-        const razorpay =
-          typeof (error as { statusCode?: unknown })?.statusCode === "number";
-        count(razorpay ? "razorpay_error" : "error");
-        logger.error(
-          "Payment reconciliation failed for a payment; left unchanged",
-          error instanceof Error ? error : undefined,
-          { paymentId: payment.id, orderId: payment.orderId, ...errorSummary(error) }
-        );
-      }
+      drained[i] = candidates.length <= quota;
     }
   }
+  summary.truncated = outOfTime || drained.some((done) => !done);
 
   summary.durationMs = Date.now() - started;
   logger.info("Payment reconciliation run", { ...summary });

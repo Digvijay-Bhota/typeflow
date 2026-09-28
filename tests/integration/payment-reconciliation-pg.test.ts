@@ -29,6 +29,7 @@ import { __clearServerEnvForTesting } from "@/lib/env";
 import { CERTIFICATE_PRICE_INR } from "@/lib/constants";
 import { processRazorpayWebhook } from "@/server/services/payment.service";
 import {
+  RECONCILE_DEFAULTS,
   reconcilePayments,
   reconcileKeys,
   type ReconcileMode,
@@ -1256,6 +1257,143 @@ describe("robustness and bounds", () => {
     expect(s).toMatchObject({ examined: 0 });
     expect(await state(fresh)).toMatchObject({ payment: "PENDING" });
     expect(await state(old)).toMatchObject({ payment: "PENDING" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fairness across phases (5C-6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Abandoned checkouts: PENDING, nothing paid on Razorpay. They are never
+ * updated again, so they stay the oldest unsettled candidates for 7 days.
+ */
+async function seedAbandoned(count: number, at: Date) {
+  // Sequential: concurrent seeding would hold many connections of the pool
+  // that the other test files share.
+  const rows: Purchase[] = [];
+  for (let i = 0; i < count; i++) {
+    const p = await seed();
+    razorpay.set(p.orderId, []);
+    await age(p, at);
+    rows.push(p);
+  }
+  return rows;
+}
+
+// Seeding a full batch of purchases is slow under coverage instrumentation.
+describe("fairness across phases", { timeout: 30_000 }, () => {
+  it("abandoned checkouts filling the whole batch cannot starve the later phases", async () => {
+    const w = newWindow();
+    const { limit } = RECONCILE_DEFAULTS;
+    const abandoned = await seedAbandoned(limit + 1, w.t0);
+    const { p: stuck } = await seedPaidPendingFulfillment();
+    const { p: refunded } = await seedIssued(FULL_REFUND, PROCESSED_FULL);
+    await age(stuck, w.t0);
+    await age(refunded, w.t0);
+
+    const s = await reconcilePayments(w.opts("apply"));
+
+    expect(s).toMatchObject({ examined: limit, truncated: true });
+    expect(s.counts).toEqual({ fulfilled: 1, refund_applied: 1, in_sync: limit - 2 });
+    expect(await state(stuck)).toMatchObject({ certificate: "ACTIVE" });
+    expect(await state(refunded)).toMatchObject({
+      payment: "REFUNDED",
+      certificate: "REVOKED",
+    });
+    // The abandoned rows used only part of the run, and nothing changed them.
+    expect(fetchRazorpayOrderPayments).toHaveBeenCalledTimes(limit - 2);
+    for (const p of abandoned) {
+      expect(await state(p)).toMatchObject({
+        payment: "PENDING",
+        certificate: "PENDING_PAYMENT",
+        keys: [],
+      });
+    }
+  });
+
+  it("a phase's unused share goes to the others, and no payment is examined twice", async () => {
+    const w = newWindow();
+    const abandoned = await seedAbandoned(12, w.t0);
+    const { p: stuck } = await seedPaidPendingFulfillment();
+    await age(stuck, w.t0);
+
+    const s = await reconcilePayments(w.opts("apply", { limit: 10 }));
+
+    expect(s).toMatchObject({ examined: 10, truncated: true });
+    expect(s.counts).toEqual({ fulfilled: 1, in_sync: 9 });
+    const orders = vi.mocked(fetchRazorpayOrderPayments).mock.calls.map(([o]) => o);
+    expect(orders).toHaveLength(9);
+    expect(new Set(orders).size).toBe(9);
+    const abandonedOrders = new Set(abandoned.map((p) => p.orderId));
+    expect(orders.every((o) => abandonedOrders.has(o))).toBe(true);
+  });
+
+  it("every phase gets a share even when the limit is smaller than each backlog", async () => {
+    const w = newWindow();
+    await seedAbandoned(4, w.t0);
+    for (let i = 0; i < 2; i++) {
+      const { p } = await seedPaidPendingFulfillment();
+      await age(p, w.t0);
+      const { p: r } = await seedIssued(FULL_REFUND, PROCESSED_FULL);
+      await age(r, w.t0);
+    }
+
+    const s = await reconcilePayments(w.opts("apply", { limit: 3 }));
+
+    expect(s).toMatchObject({ examined: 3, truncated: true });
+    expect(s.counts).toEqual({ in_sync: 1, fulfilled: 1, refund_applied: 1 });
+  });
+
+  it("with fewer candidates than the limit, each is examined once and nothing is truncated", async () => {
+    const w = newWindow();
+    const abandoned = await seedAbandoned(3, w.t0);
+    const { p: stuck } = await seedPaidPendingFulfillment();
+    const { p: refunded } = await seedIssued(FULL_REFUND, PROCESSED_FULL);
+    await age(stuck, w.t0);
+    await age(refunded, w.t0);
+
+    const s = await reconcilePayments(w.opts("apply"));
+
+    expect(s).toMatchObject({ examined: 5, truncated: false });
+    expect(s.counts).toEqual({ in_sync: 3, fulfilled: 1, refund_applied: 1 });
+    expect(fetchRazorpayOrderPayments).toHaveBeenCalledTimes(abandoned.length);
+  });
+
+  it("dryRun and REPORT reach a starved phase too, and repeated runs stay idempotent", async () => {
+    const w = newWindow();
+    const limit = 10;
+    await seedAbandoned(limit + 1, w.t0);
+    const { p: stuck, rpId } = await seedPaidPendingFulfillment();
+    await age(stuck, w.t0);
+    const reportKey = reconcileKeys.report("fulfillment", rpId);
+    const run = (mode: ReconcileMode, dryRun = false) =>
+      reconcilePayments(w.opts(mode, { limit, dryRun }));
+
+    const dry = await run("report", true);
+    expect(dry.counts.fulfillment_pending).toBe(1);
+    expect(await state(stuck)).toMatchObject({
+      certificate: "PENDING_FULFILLMENT",
+      keys: [],
+    });
+
+    for (let i = 0; i < 2; i++) {
+      const report = await run("report");
+      expect(report.counts.fulfillment_pending).toBe(1);
+      expect(await state(stuck)).toMatchObject({
+        certificate: "PENDING_FULFILLMENT",
+        keys: [reportKey],
+      });
+    }
+
+    const applied = await run("apply");
+    expect(applied.counts.fulfilled).toBe(1);
+    const after = await state(stuck);
+    expect(after.certificate).toBe("ACTIVE");
+
+    const again = await run("apply");
+    expect(again.counts.fulfilled ?? 0).toBe(0);
+    expect((await state(stuck)).keys).toEqual(after.keys);
   });
 });
 
