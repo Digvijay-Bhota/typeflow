@@ -54,6 +54,20 @@ Errors name the variables only, never their values, and start with `Configuratio
 
 Text extracted from the PDF (copy/paste, search) shows Devanagari in visual glyph order; the drawn text is correct. The recipient name is still read live from `User.displayName` when the PDF is rendered and on the verification page. Snapshotting it on the certificate at issuance needs a schema migration and deploy ordering, so it is left as separate work.
 
+## Legacy Certificate Re-sign (Phase 5C-9) — ONE-OFF, REMOVE AFTER USE
+
+Until **2026-09-26T00:21:25Z** (deployment `e0a6383`), Production signed `verificationHash` with `SESSION_SECRET`; verification has used `CERTIFICATE_SIGNING_SECRET` since. The six certificates issued before that cutover (`TF-2026-C9XGPR`, `TF-2026-64BP7J`, `TF-2026-LR88NY`, `TF-2026-AREJKD`, `TF-2026-TVY3N3`, `TF-2026-PT8BB9`) can never verify, and the old `SESSION_SECRET` value has since been replaced. `POST /api/cron/resign-legacy-certificates` (`certificateResign.service.ts`) recomputes their hash with `generateVerificationHash` from the row's own `certificateId`, `userId` and `issuedAt`. The hash is not part of the PDF or the QR code (which encode the verify URL), so nothing else is regenerated and every certificate keeps its number, owner, result, issue date, status, PDF, QR code and public URL.
+
+- **Auth:** `Bearer <CRON_SECRET>`, exactly as the reconciliation route (503 if unset/short, 401 if wrong). POST only.
+- **Body:** `{}` or `{ "mode": "dry-run" | "apply" | "rollback" }`; **dry-run is the default and writes nothing**. The certificate ids and the cutover are hard-coded; any other field is rejected (400).
+- **Eligibility** (re-checked under a `SELECT … FOR UPDATE` row lock): on the list, issued before the cutover, not REVOKED, owner = result owner = payment owner, result created before issuance, score snapshot equal to the result, and the current hash does not already verify (`already_valid` otherwise).
+- **Apply:** per certificate, one transaction: a raw `UPDATE` of `verificationHash` only (not `updatedAt`), compare-and-set against the hash read, plus an `audit_logs` row (`action=CERTIFICATE_RESIGNED`, `resource=Certificate`, `resourceId`, metadata `runId`, `oldHash`, `resignedHash`, `cutover`, `reason`). Repeated or concurrent runs converge (`already_valid`).
+- **Rollback** (`mode: "rollback"`): restores the latest audited `oldHash` only if the certificate still carries exactly that record's `resignedHash`; audited as `CERTIFICATE_RESIGN_ROLLED_BACK`. Idempotent (`not_resigned` afterwards).
+- **Safety:** each run compares, before and after, every other certificate's identity and hash (a change without `updatedAt` moving — this operation's signature — fails the check), the listed certificates' other fields, and their payments; the response reports `safety.*` booleans. Responses and logs carry counts, ids, statuses and outcomes only, never a hash.
+- **Operation:** dry-run (expect `would_resign: 6`), then `apply` (expect `resigned: 6`, all `safety` true), then check `/verify/TF-2026-C9XGPR` shows VERIFIED. The five PENDING certificates stay `PENDING_PAYMENT`; re-signing only makes them verifiable once paid.
+
+**Remove the route, the service, `src/schemas/certificateResign.schema.ts` and `tests/integration/certificate-resign-pg.test.ts` once the Production run is done and verified.** Keep the `audit_logs` rows.
+
 ## Phase 8: Subscription Architecture
 
 The Pro Subscription system isolates recurring billing from one-time certificate payments to maintain clean service boundaries.
