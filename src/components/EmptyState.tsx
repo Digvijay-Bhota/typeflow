@@ -1,6 +1,5 @@
-import React from "react";
-import Link from "next/link";
-import { Keyboard, ArrowRight } from "lucide-react";
+import { ArrowRight, Keyboard } from "lucide-react";
+import { ButtonLink, Card } from "@/components/ui";
 
 interface EmptyStateProps {
   title: string;
@@ -18,21 +17,24 @@ export function EmptyState({
   icon,
 }: EmptyStateProps) {
   return (
-    <div className="bg-surface border-border flex w-full flex-col items-center justify-center rounded-2xl border p-12 text-center shadow-sm">
-      <div className="bg-accent/10 text-accent mb-6 flex h-16 w-16 items-center justify-center rounded-2xl">
-        {icon || <Keyboard className="h-8 w-8" />}
+    <Card className="flex w-full flex-col items-center px-6 py-12 text-center sm:px-12">
+      <div
+        aria-hidden="true"
+        className="rounded-card bg-accent-soft text-accent mb-6 flex size-14 items-center justify-center [&_svg]:size-7"
+      >
+        {icon || <Keyboard />}
       </div>
-      <h2 className="text-foreground mb-2 text-2xl font-bold">{title}</h2>
-      <p className="text-muted mb-8 max-w-md text-base leading-relaxed">{description}</p>
+      <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+      <p className="text-secondary mt-2 max-w-md leading-relaxed">{description}</p>
       {actionHref && (
-        <Link
-          href={actionHref}
-          className="bg-accent text-accent-foreground hover:bg-accent/90 group flex items-center gap-2 rounded-xl px-6 py-3 font-medium transition-all"
-        >
+        <ButtonLink href={actionHref} size="lg" className="group mt-8">
           {actionText}
-          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-        </Link>
+          <ArrowRight
+            aria-hidden="true"
+            className="transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
+          />
+        </ButtonLink>
       )}
-    </div>
+    </Card>
   );
 }
