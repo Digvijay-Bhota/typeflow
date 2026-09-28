@@ -21,15 +21,10 @@
   --color-border: var(--border);
   /* Boundaries a user must see to operate a control (inputs, outline buttons): ≥ 3:1. */
   --color-border-strong: var(--border-strong);
-  --color-ring: var(--ring);
 
   --color-primary: var(--text-primary);
   --color-secondary: var(--text-secondary);
   --color-muted: var(--text-muted);
-
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent-soft: var(--accent-soft);
 
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -48,9 +43,6 @@
   --color-tf-text-600: var(--text-secondary);
   --color-tf-text-800: var(--border);
   --color-tf-text-900: var(--text-primary);
-  --color-tf-primary-400: var(--accent);
-  --color-tf-primary-500: var(--accent);
-  --color-tf-primary-600: var(--accent);
 
   /* Fonts: next/font defines --font-inter / --font-jetbrains-mono on <html>. */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -80,6 +72,23 @@
 
   /* Motion. */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
+ * Accent-derived colours are inlined: their utilities read var(--accent) (and
+ * var(--ring)) on the element itself, so an area theme (.theme-code,
+ * .theme-certificate, .theme-pro) that overrides --accent recolours every
+ * accent utility inside it. In the plain @theme block above, --color-accent
+ * would be resolved once on :root and inherited as the default accent.
+ */
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-ring: var(--ring);
+  --color-tf-primary-400: var(--accent);
+  --color-tf-primary-500: var(--accent);
+  --color-tf-primary-600: var(--accent);
 }
 
 @layer base {
@@ -143,6 +152,7 @@
   .theme-code {
     --accent: oklch(50% 0.17 260); /* Blue */
     --accent-soft: oklch(95% 0.035 260);
+    --ring: var(--accent); /* re-resolved here: :root's copy is the default accent */
   }
   .dark .theme-code {
     --accent: oklch(76% 0.14 260);
@@ -153,6 +163,7 @@
   .theme-certificate {
     --accent: oklch(48% 0.12 160); /* Emerald */
     --accent-soft: oklch(95% 0.035 160);
+    --ring: var(--accent);
   }
   .dark .theme-certificate {
     --accent: oklch(74% 0.14 160);
@@ -162,6 +173,7 @@
   .theme-pro {
     --accent: oklch(52% 0.18 300); /* Violet */
     --accent-soft: oklch(95% 0.035 300);
+    --ring: var(--accent);
   }
   .dark .theme-pro {
     --accent: oklch(77% 0.15 300);
