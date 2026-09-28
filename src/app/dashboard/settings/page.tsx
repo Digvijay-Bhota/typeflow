@@ -54,7 +54,7 @@ export default async function SettingsPage() {
                 type="text"
                 readOnly
                 value={user.displayName || ""}
-                className="bg-background border-border text-foreground w-full cursor-not-allowed rounded-xl border px-4 py-3 font-medium outline-none"
+                className="bg-background border-border text-foreground w-full cursor-not-allowed rounded-xl border px-4 py-3 font-medium"
                 placeholder="No display name set"
               />
               <p className="text-muted mt-2 text-xs font-medium">
