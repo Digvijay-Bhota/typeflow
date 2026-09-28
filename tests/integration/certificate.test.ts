@@ -274,6 +274,24 @@ describe("Certificate Service", () => {
       expect(cert.verificationHash).toBeTruthy();
     });
 
+    it("generates ids from a cryptographically secure source, never Math.random", async () => {
+      const random = vi.spyOn(Math, "random");
+      const ids = new Set<string>();
+      for (let i = 0; i < 20; i++) {
+        // setupResult always uses the same result id; start from an empty
+        // store so each call issues a new certificate instead of returning it.
+        mockCertificates = [];
+        const { result } = setupResult();
+        ids.add((await createCertificate(user1.id, result.id)).certificateId);
+      }
+      expect(random).not.toHaveBeenCalled();
+      random.mockRestore();
+      for (const id of ids) {
+        expect(id).toMatch(/^TF-\d{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/);
+      }
+      expect(ids.size).toBe(20);
+    });
+
     it("should be idempotent and return existing certificate", async () => {
       const { result } = setupResult();
       const cert1 = await createCertificate(user1.id, result.id);

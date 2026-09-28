@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { Award, ShieldCheck, Download, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import {
+  certificateAccuracyPercent,
   certificateOwnerState,
   certificateVerifyPath,
   type CertificateOwnerState,
@@ -75,7 +76,7 @@ export default async function CertificatesDashboard() {
                       Accuracy
                     </p>
                     <p className="text-2xl font-black">
-                      {Math.round(cert.accuracy * 100)}
+                      {certificateAccuracyPercent(cert.accuracy)}
                       <span className="text-muted text-lg">%</span>
                     </p>
                   </div>

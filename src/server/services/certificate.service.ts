@@ -6,6 +6,7 @@ import {
   type CertificateEligibility,
 } from "@/lib/certificateEligibility";
 import {
+  certificateAccuracyPercent,
   certificateOwnerState,
   certificateVerifyPath,
   CERTIFICATE_ID_PATTERN,
@@ -22,7 +23,8 @@ import {
   loadDevanagariFont,
   type DevanagariFont,
 } from "@/server/lib/certificateFonts";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, randomInt, timingSafeEqual } from "crypto";
+import { productionAppUrlMismatch } from "@/lib/environmentGuard";
 import type { Certificate, Prisma } from "@prisma/client";
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
@@ -61,12 +63,13 @@ export function generateVerificationHash(
   return createHmac("sha256", CERTIFICATE_SIGNING_SECRET).update(payload).digest("hex");
 }
 
+/** TF-YYYY-XXXXXX from a cryptographically secure source, so ids cannot be predicted. */
 function generateCertificateId(): string {
   const year = new Date().getFullYear();
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let random = "";
   for (let i = 0; i < 6; i++) {
-    random += chars.charAt(Math.floor(Math.random() * chars.length));
+    random += chars.charAt(randomInt(chars.length));
   }
   return `${CERTIFICATE_ID_PREFIX}-${year}-${random}`;
 }
@@ -284,7 +287,7 @@ async function drawCertificatePdf(
     size: 30,
     font: fontBold,
   });
-  page.drawText(`Accuracy: ${(cert.accuracy * 100).toFixed(1)}%`, {
+  page.drawText(`Accuracy: ${certificateAccuracyPercent(cert.accuracy)}%`, {
     x: 400,
     y: 340,
     size: 24,
@@ -379,6 +382,14 @@ export async function fulfillCertificate(
   const verifyUrl = certificateVerifyUrl(cert.certificateId);
   let pdfUrl: string;
   try {
+    // The PDF and QR keep this URL for good: in production it must be the
+    // production domain, never a Preview or branch URL (then it stays
+    // PENDING_FULFILLMENT, retryable once APP_URL is fixed).
+    if (productionAppUrlMismatch(process.env)) {
+      throw new Error(
+        "APP_URL is not the production domain (VERCEL_PROJECT_PRODUCTION_URL); refusing to embed it in a certificate"
+      );
+    }
     const pdfBytes = await renderCertificatePdf(
       { ...cert, recipientName: certificateRecipientName(cert.user.displayName) },
       verifyUrl

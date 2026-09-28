@@ -11,6 +11,7 @@ import {
   deploymentEnvironment,
   environmentIsolationViolations,
   EnvironmentIsolationError,
+  productionAppUrlMismatch,
 } from "@/lib/environmentGuard";
 import { __clearServerEnvForTesting, getServerEnv } from "@/lib/env";
 
@@ -87,6 +88,56 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   __clearServerEnvForTesting();
+});
+
+describe("productionAppUrlMismatch (certificate verification URLs)", () => {
+  const prod = {
+    VERCEL_ENV: "production",
+    VERCEL_PROJECT_PRODUCTION_URL: "typeflow.example.test",
+  };
+  it.each([
+    [
+      "the production domain",
+      { ...prod, APP_URL: "https://typeflow.example.test" },
+      false,
+    ],
+    [
+      "the production domain, any case and trailing path",
+      { ...prod, APP_URL: "https://TypeFlow.Example.Test/" },
+      false,
+    ],
+    [
+      "a production URL given with its scheme",
+      {
+        ...prod,
+        VERCEL_PROJECT_PRODUCTION_URL: "https://typeflow.example.test",
+        APP_URL: "https://typeflow.example.test",
+      },
+      false,
+    ],
+    [
+      "a Preview branch URL",
+      { ...prod, APP_URL: "https://typeflow-git-some-branch.example-preview.test" },
+      true,
+    ],
+    ["another domain", { ...prod, APP_URL: "https://typeflow.other.test" }, true],
+    ["localhost", { ...prod, APP_URL: "http://localhost:3000" }, true],
+    ["APP_URL unset", { ...prod }, true],
+    ["APP_URL unparseable", { ...prod, APP_URL: "not a url" }, true],
+    [
+      "a preview deployment (not checked)",
+      { ...prod, VERCEL_ENV: "preview", APP_URL: "https://preview.test" },
+      false,
+    ],
+    ["the test environment (not checked)", { NODE_ENV: "test", APP_URL: "x" }, false],
+    [
+      "production without VERCEL_PROJECT_PRODUCTION_URL (not checked)",
+      { VERCEL_ENV: "production", APP_URL: "https://anything.test" },
+      false,
+    ],
+  ] as const)("%s → %s", (_label, env, expected) => {
+    expect(productionAppUrlMismatch(env as Record<string, string>)).toBe(expected);
+  });
 });
 
 describe("deploymentEnvironment", () => {

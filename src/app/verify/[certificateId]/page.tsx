@@ -12,7 +12,10 @@ import {
   Download,
 } from "lucide-react";
 import { getCertificateVerification } from "@/server/services/certificate.service";
-import { certificateVerifyPath } from "@/lib/certificateStatus";
+import {
+  certificateAccuracyPercent,
+  certificateVerifyPath,
+} from "@/lib/certificateStatus";
 
 // Status changes (activation, refund, revocation) must show immediately.
 export const dynamic = "force-dynamic";
@@ -121,7 +124,7 @@ export default async function VerifyCertificatePage({
             <div className="bg-surface border-border flex flex-col items-center rounded-2xl border p-6">
               <Target className="mb-3 h-6 w-6 text-emerald-500" />
               <span className="text-4xl font-black">
-                {Math.round(verification.accuracy * 100)}
+                {certificateAccuracyPercent(verification.accuracy)}
                 <span className="text-muted text-lg">%</span>
               </span>
               <span className="text-muted mt-1 text-[10px] font-bold tracking-widest uppercase">
