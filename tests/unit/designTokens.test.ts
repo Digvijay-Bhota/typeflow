@@ -184,6 +184,24 @@ describe("token definitions", () => {
     }
   });
 
+  // These checks assume var() resolves where a colour is used. A plain @theme
+  // mapping (or a :root-only --ring) is resolved once on :root instead, and
+  // every area would silently keep the default accent.
+  it("accent colours follow the area theme (inline mapping, per-area ring)", () => {
+    const blocks = (inline: boolean) =>
+      [...css.matchAll(/@theme(\s+inline)?\s*\{([^}]*)\}/g)]
+        .filter((m) => Boolean(m[1]) === inline)
+        .map((m) => m[2]!)
+        .join("\n");
+    const accentNames = /--color-(accent|ring|tf-primary)[\w-]*\s*:/;
+    expect(blocks(true)).toMatch(/--color-accent:\s*var\(--accent\)/);
+    expect(blocks(true)).toMatch(/--color-ring:\s*var\(--ring\)/);
+    expect(blocks(false)).not.toMatch(accentNames);
+    for (const area of areas) {
+      expect(block(`.theme-${area}`)["--ring"]).toBe("var(--accent)");
+    }
+  });
+
   it("contrast maths matches known WCAG values", () => {
     const white: Rgb = [1, 1, 1];
     const black: Rgb = [0, 0, 0];

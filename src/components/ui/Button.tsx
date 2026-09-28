@@ -19,7 +19,7 @@ const base =
 // Hover darkens the fill slightly, which keeps (or raises) text contrast in both themes.
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent text-accent-foreground hover:bg-[color-mix(in_oklab,var(--color-accent)_90%,black)]",
+    "bg-accent text-accent-foreground hover:bg-[color-mix(in_oklab,var(--accent)_90%,black)]",
   secondary:
     "border border-border-strong bg-surface text-foreground hover:bg-surface-muted",
   ghost: "text-foreground hover:bg-surface-muted",
