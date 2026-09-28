@@ -32,7 +32,7 @@ export default async function HomePage() {
   const _user = await getAuthenticatedUser();
 
   return (
-    <main className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col">
       {/* Header */}
 
       {/* Hero — Typing Test */}
@@ -139,7 +139,7 @@ export default async function HomePage() {
           </div>
         </div>
       </footer>
-    </main>
+    </div>
   );
 }
 

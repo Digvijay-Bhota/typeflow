@@ -38,7 +38,9 @@ export const viewport: Viewport = {
 
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { ExperienceProvider } from "@/components/providers/ExperienceProvider";
-import { Navbar } from "@/components/Navbar";
+import { SiteHeader } from "@/components/shell/SiteHeader";
+import { SiteFooter } from "@/components/shell/SiteFooter";
+import { SkipLink } from "@/components/shell/SkipLink";
 import { getAuthenticatedUser } from "@/server/services/auth.service";
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -58,8 +60,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           disableTransitionOnChange
         >
           <ExperienceProvider>
-            <Navbar user={user} />
-            <main className="flex flex-1 flex-col">{children}</main>
+            <SkipLink />
+            <SiteHeader signedIn={Boolean(user)} />
+            {/* The skip link's target. tabIndex -1 lets it take focus; a
+                non-interactive landmark, so it draws no focus ring. */}
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="flex flex-1 flex-col outline-none"
+            >
+              {children}
+            </main>
+            <SiteFooter />
           </ExperienceProvider>
         </ThemeProvider>
       </body>
