@@ -14,7 +14,10 @@ import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { createHmac, randomBytes, randomUUID } from "crypto";
 import { db } from "@/server/db";
 import { __clearServerEnvForTesting } from "@/lib/env";
-import { processRazorpayWebhook } from "@/server/services/payment.service";
+import {
+  processRazorpayWebhook,
+  webhookAnomalyKey,
+} from "@/server/services/payment.service";
 import { POST as webhookRoute } from "@/app/api/payment/webhook/route";
 import { CERTIFICATE_PRICE_INR } from "@/lib/constants";
 
@@ -137,7 +140,7 @@ async function seedPurchase(
 function delivery(
   orderId: string,
   event: string,
-  entity: { id: string; status: string; amount?: number }
+  entity: { id: string; status: string; amount?: number; currency?: string }
 ) {
   const payload = {
     entity: "event",
@@ -151,7 +154,7 @@ function delivery(
           entity: "payment",
           order_id: orderId,
           amount: entity.amount ?? CERTIFICATE_PRICE_INR,
-          currency: "INR",
+          currency: entity.currency ?? "INR",
           status: entity.status,
         },
       },
@@ -248,22 +251,24 @@ describe("payment webhook — capture-only activation", () => {
     expect(s.certificate).toBe("PENDING_PAYMENT");
   });
 
-  it("rejects a captured amount that does not match the order", async () => {
+  it("records a captured amount that does not match the order as an anomaly, never applied", async () => {
     const p = await seedPurchase();
-    await expect(
-      deliver(
-        delivery(p.orderId, "payment.captured", {
-          id: "pay_m",
-          status: "captured",
-          amount: 1,
-        }),
-        `evt_m_${p.tag}`
-      )
-    ).rejects.toThrow("PAYMENT_AMOUNT_MISMATCH");
+    await deliver(
+      delivery(p.orderId, "payment.captured", {
+        id: `pay_m_${p.tag}`,
+        status: "captured",
+        amount: 1,
+      }),
+      `evt_m_${p.tag}`
+    );
 
     const s = await state(p);
     expect(s.payment).toBe("PENDING");
-    expect(s.events).toHaveLength(0); // the whole transaction rolled back
+    expect(s.certificate).toBe("PENDING_PAYMENT");
+    expect(s.events.map((e) => e.providerEventId).sort()).toEqual([
+      `evt:evt_m_${p.tag}`,
+      webhookAnomalyKey("amount_mismatch", `pay_m_${p.tag}`),
+    ]);
   });
 });
 
@@ -379,5 +384,226 @@ describe("payment webhook — idempotency", () => {
     expect(res.status).toBe(200);
     const s = await state(p);
     expect(s.events.map((e) => e.providerEventId)).toEqual([`evt:evt_rt_${p.tag}`]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Route: signature checks and response policy (Phase 5C-7)
+// ---------------------------------------------------------------------------
+
+describe("payment webhook route — signature and response policy", () => {
+  const post = (body: string, headers: Record<string, string> = {}) =>
+    webhookRoute(
+      new Request("http://localhost/api/payment/webhook", {
+        method: "POST",
+        headers,
+        body,
+      }) as never
+    );
+  const viaRoute = (d: ReturnType<typeof delivery>, eventId: string) =>
+    post(d.raw, { "x-razorpay-signature": d.signature, "x-razorpay-event-id": eventId });
+  const code = async (res: Response) =>
+    ((await res.json()) as { error?: { code?: string } }).error?.code;
+
+  /** Everything the logger writes while `fn` runs. */
+  async function captureLogs<T>(fn: () => Promise<T>): Promise<[T, string]> {
+    const lines: string[] = [];
+    const keep = (chunk: unknown) => {
+      lines.push(String(chunk));
+      return true;
+    };
+    const spies = [
+      vi.spyOn(process.stdout, "write").mockImplementation(keep),
+      vi.spyOn(process.stderr, "write").mockImplementation(keep),
+      ...(["log", "info", "warn", "error", "debug"] as const).map((level) =>
+        vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+          lines.push(args.map(String).join(" "));
+        })
+      ),
+    ];
+    try {
+      return [await fn(), lines.join("\n")];
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  }
+
+  const capture = (p: { orderId: string; tag: string }) =>
+    delivery(p.orderId, "payment.captured", { id: `pay_r_${p.tag}`, status: "captured" });
+
+  it.each([
+    ["no signature header", undefined],
+    ["an empty signature header", ""],
+  ])("401 with %s, before anything is written", async (_name, signature) => {
+    const p = await seedPurchase();
+    const d = capture(p);
+    const headers: Record<string, string> = { "x-razorpay-event-id": `evt_ns_${p.tag}` };
+    if (signature !== undefined) headers["x-razorpay-signature"] = signature;
+
+    const res = await post(d.raw, headers);
+
+    expect(res.status).toBe(401);
+    expect(await code(res)).toBe("UNAUTHORIZED");
+    expect(await state(p)).toMatchObject({ payment: "PENDING", events: [] });
+  });
+
+  it("401 for malformed signatures, without throwing or writing anything", async () => {
+    const p = await seedPurchase();
+    const d = capture(p);
+    for (const signature of [
+      "abc",
+      "z".repeat(64),
+      d.signature.toUpperCase(),
+      `${d.signature}00`,
+      d.signature.slice(0, 63),
+      ` ${d.signature.slice(1)}`,
+    ]) {
+      const res = await post(d.raw, {
+        "x-razorpay-signature": signature,
+        "x-razorpay-event-id": `evt_mf_${p.tag}`,
+      });
+      expect(res.status).toBe(401);
+      expect(await code(res)).toBe("INVALID_PAYMENT_SIGNATURE");
+    }
+    expect(await state(p)).toMatchObject({ payment: "PENDING", events: [] });
+  });
+
+  it("401 for a wrong signature, logged with a reason but never the body, signature or secret", async () => {
+    const p = await seedPurchase();
+    const d = capture(p);
+    const forged = createHmac("sha256", "not-the-webhook-secret")
+      .update(d.raw)
+      .digest("hex");
+
+    const [res, logs] = await captureLogs(() =>
+      post(d.raw, {
+        "x-razorpay-signature": forged,
+        "x-razorpay-event-id": `evt_f_${p.tag}`,
+      })
+    );
+
+    expect(res.status).toBe(401);
+    expect(await code(res)).toBe("INVALID_PAYMENT_SIGNATURE");
+    expect(await state(p)).toMatchObject({ payment: "PENDING", events: [] });
+    expect(logs).toContain("invalid_signature");
+    expect(logs).toContain(`evt_f_${p.tag}`);
+    for (const secretValue of [forged, d.signature, d.raw, p.orderId, secret()]) {
+      expect(logs).not.toContain(secretValue);
+    }
+  });
+
+  it("checks the signature before parsing: unsigned bad JSON is 401, signed bad JSON is 400", async () => {
+    const raw = "{not json";
+    const unsigned = await post(raw, { "x-razorpay-signature": "0".repeat(64) });
+    expect(unsigned.status).toBe(401);
+
+    const signed = await post(raw, {
+      "x-razorpay-signature": createHmac("sha256", secret()).update(raw).digest("hex"),
+    });
+    expect(signed.status).toBe(400);
+    expect(await code(signed)).toBe("BAD_REQUEST");
+  });
+
+  it("200 for a valid capture, which completes the payment and activates the certificate", async () => {
+    const p = await seedPurchase();
+    const res = await viaRoute(capture(p), `evt_ok_${p.tag}`);
+
+    expect(res.status).toBe(200);
+    expect(await state(p)).toMatchObject({ payment: "COMPLETED", certificate: "ACTIVE" });
+  });
+
+  it("a duplicate delivery, sequential or concurrent, is acknowledged and recorded once", async () => {
+    const p = await seedPurchase();
+    const d = capture(p);
+    const eventId = `evt_dup_${p.tag}`;
+
+    const statuses = [
+      (await viaRoute(d, eventId)).status,
+      (await viaRoute(d, eventId)).status,
+      ...(await Promise.all([viaRoute(d, eventId), viaRoute(d, eventId)])).map(
+        (r) => r.status
+      ),
+    ];
+
+    expect(statuses).toEqual([200, 200, 200, 200]);
+    const s = await state(p);
+    expect(s).toMatchObject({ payment: "COMPLETED", certificate: "ACTIVE" });
+    expect(s.events.map((e) => e.providerEventId)).toEqual([`evt:${eventId}`]);
+  });
+
+  it("200 for an order that is not ours, with nothing recorded", async () => {
+    const tag = randomBytes(4).toString("hex");
+    const d = delivery(`order_elsewhere_${tag}`, "payment.captured", {
+      id: `pay_x_${tag}`,
+      status: "captured",
+    });
+
+    const [res, logs] = await captureLogs(() => viaRoute(d, `evt_x_${tag}`));
+
+    expect(res.status).toBe(200);
+    expect(
+      await db.paymentEvent.count({ where: { providerEventId: `evt:evt_x_${tag}` } })
+    ).toBe(0);
+    expect(logs).toContain("unknown order");
+  });
+
+  it.each([
+    ["an amount", "amount", { amount: 1 }],
+    ["a currency", "currency", { currency: "USD" }],
+  ] as const)(
+    "%s mismatch is acknowledged (200) and recorded once as an anomaly; nothing is applied",
+    async (_name, kind, over) => {
+      const p = await seedPurchase();
+      const rpId = `pay_mm_${p.tag}`;
+      const d = delivery(p.orderId, "payment.captured", {
+        id: rpId,
+        status: "captured",
+        ...over,
+      });
+      const anomalyKey = webhookAnomalyKey(`${kind}_mismatch`, rpId);
+
+      const first = await viaRoute(d, `evt_mm1_${p.tag}`);
+      const redelivered = await viaRoute(d, `evt_mm1_${p.tag}`);
+      const replayed = await viaRoute(d, `evt_mm2_${p.tag}`);
+
+      expect([first.status, redelivered.status, replayed.status]).toEqual([
+        200, 200, 200,
+      ]);
+      const s = await state(p);
+      expect(s).toMatchObject({ payment: "PENDING", certificate: "PENDING_PAYMENT" });
+      expect(s.events.map((e) => e.providerEventId).sort()).toEqual(
+        [`evt:evt_mm1_${p.tag}`, `evt:evt_mm2_${p.tag}`, anomalyKey].sort()
+      );
+
+      const anomaly = s.events.find((e) => e.providerEventId === anomalyKey);
+      expect(anomaly?.eventType).toBe("webhook.anomaly");
+      expect(anomaly?.payload).toEqual({
+        source: "webhook",
+        kind: `${kind}_mismatch`,
+        eventType: "payment.captured",
+        orderId: p.orderId,
+        razorpayPaymentId: rpId,
+        expectedAmount: CERTIFICATE_PRICE_INR,
+        expectedCurrency: "INR",
+        receivedAmount: "amount" in over ? over.amount : CERTIFICATE_PRICE_INR,
+        receivedCurrency: "currency" in over ? over.currency : "INR",
+      });
+    }
+  );
+
+  it("a mismatch on an already-completed payment is neither applied nor recorded as an anomaly", async () => {
+    const p = await seedPurchase();
+    expect((await viaRoute(capture(p), `evt_ok2_${p.tag}`)).status).toBe(200);
+
+    const late = delivery(p.orderId, "payment.captured", {
+      id: `pay_late_${p.tag}`,
+      status: "captured",
+      amount: 1,
+    });
+    expect((await viaRoute(late, `evt_late_${p.tag}`)).status).toBe(200);
+
+    const s = await state(p);
+    expect(s).toMatchObject({ payment: "COMPLETED", certificate: "ACTIVE" });
+    expect(s.events.some((e) => e.eventType === "webhook.anomaly")).toBe(false);
   });
 });

@@ -8,7 +8,7 @@
  */
 import Razorpay from "razorpay";
 import { getServerEnv } from "@/lib/env";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import {
   PRO_MONTHLY_PRICE_PAISE,
   PRO_YEARLY_PRICE_PAISE,
@@ -176,15 +176,19 @@ export async function fetchRazorpaySubscription(
  * Uses the SAME webhook secret as one-time payments (Razorpay uses one
  * webhook endpoint per account by default). This function is duplicated
  * here to maintain clean service boundaries and allow future divergence.
+ *
+ * Compared in constant time. Accepts exactly the lowercase hex digest;
+ * anything malformed is rejected without comparing (timingSafeEqual needs
+ * equal lengths).
  */
 export function verifyRazorpaySubscriptionSignature(
   payloadStr: string,
   signature: string
 ): boolean {
+  if (!/^[0-9a-f]{64}$/.test(signature)) return false;
   const env = getServerEnv();
   const secret = env.RAZORPAY_WEBHOOK_SECRET;
 
-  const expectedSignature = createHmac("sha256", secret).update(payloadStr).digest("hex");
-
-  return expectedSignature === signature;
+  const expected = createHmac("sha256", secret).update(payloadStr).digest();
+  return timingSafeEqual(expected, Buffer.from(signature, "hex"));
 }

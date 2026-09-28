@@ -1,6 +1,6 @@
 import Razorpay from "razorpay";
 import { getServerEnv } from "@/lib/env";
-import { createHash, createHmac } from "crypto";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
 
 let razorpayClient: Razorpay | undefined;
 
@@ -146,16 +146,37 @@ export function razorpayEventKey(
 ): string {
   // The header is not covered by the HMAC, so only accept a well-formed id.
   // State transitions stay guarded by payment/subscription status regardless.
-  const eventId = eventIdHeader?.trim();
-  if (eventId && /^[A-Za-z0-9_-]{1,100}$/.test(eventId)) return `evt:${eventId}`;
+  const eventId = wellFormedRazorpayEventId(eventIdHeader);
+  if (eventId) return `evt:${eventId}`;
   return `body:${createHash("sha256").update(payloadRawString).digest("hex")}`;
 }
 
+/** The `x-razorpay-event-id` header if it is a well-formed id, else undefined. */
+export function wellFormedRazorpayEventId(
+  eventIdHeader: string | null | undefined
+): string | undefined {
+  const eventId = eventIdHeader?.trim();
+  return eventId && /^[A-Za-z0-9_-]{1,100}$/.test(eventId) ? eventId : undefined;
+}
+
+/** An HMAC-SHA256 hex digest, as Razorpay sends it (and `digest("hex")` produces). */
+const SIGNATURE_PATTERN = /^[0-9a-f]{64}$/;
+
+/** Whether `signature` has the shape of a Razorpay webhook signature at all. */
+export function isWellFormedRazorpaySignature(signature: string): boolean {
+  return SIGNATURE_PATTERN.test(signature);
+}
+
+/**
+ * HMAC-SHA256 of the raw body with RAZORPAY_WEBHOOK_SECRET, compared in
+ * constant time. Accepts exactly the lowercase hex digest; anything malformed
+ * is rejected without comparing (timingSafeEqual needs equal lengths).
+ */
 export function verifyRazorpaySignature(payloadStr: string, signature: string): boolean {
+  if (!isWellFormedRazorpaySignature(signature)) return false;
   const env = getServerEnv();
   const secret = env.RAZORPAY_WEBHOOK_SECRET;
 
-  const expectedSignature = createHmac("sha256", secret).update(payloadStr).digest("hex");
-
-  return expectedSignature === signature;
+  const expected = createHmac("sha256", secret).update(payloadStr).digest();
+  return timingSafeEqual(expected, Buffer.from(signature, "hex"));
 }
