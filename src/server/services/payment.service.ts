@@ -126,7 +126,9 @@ async function currentPendingOrder(certificateInternalId: string): Promise<Order
  *
  * Capture → fulfillment:
  *   1. verify signature  2. idempotency (one PaymentEvent per provider event)
- *   3. amount/currency check  4. in one transaction: payment COMPLETED and
+ *   3. amount/currency check: a mismatch is recorded once as a
+ *   `webhook:anomaly:*` PaymentEvent and acknowledged, never applied (it is
+ *   signed and identical on every redelivery)  4. in one transaction: payment COMPLETED and
  *   certificate PENDING_PAYMENT → PENDING_FULFILLMENT  5. commit
  *   6. outside the transaction: generate + store PDF/QR, then ACTIVE
  *   (fulfillCertificate). A fulfillment failure leaves the payment committed
@@ -155,15 +157,25 @@ export async function processRazorpayWebhook(
   const eventId = razorpayEventKey(eventIdHeader, payloadRawString);
 
   try {
-    await applyPaymentEvent(
+    const anomaly = await applyPaymentEvent(
       eventId,
       eventType,
       entityOf("payment"),
       entityOf("refund"),
       payload
     );
+    if (anomaly) {
+      // Signed by Razorpay and identical on every redelivery: retrying cannot
+      // fix it, so it is recorded for a human and acknowledged.
+      logger.error(
+        "Razorpay capture does not match its order; recorded as an anomaly, not applied",
+        undefined,
+        anomaly
+      );
+    }
   } catch (error) {
-    // A concurrent delivery of the same event committed first; it is handled.
+    // A concurrent delivery of the same event (or of the same anomaly)
+    // committed first; it is handled.
     if (!isUniqueViolation(error, "providerEventId")) throw error;
   }
 
@@ -208,14 +220,85 @@ function isFullRefund(
   return refunded >= amount;
 }
 
+/** PaymentEvent key of a webhook anomaly: one per Razorpay payment and kind. */
+export const webhookAnomalyKey = (kind: WebhookAnomalyKind, razorpayPaymentId: string) =>
+  `webhook:anomaly:${kind}:${razorpayPaymentId}`;
+
+type WebhookAnomalyKind = "amount_mismatch" | "currency_mismatch";
+
+/** Safe, bounded anomaly metadata: no customer details, no raw provider payload. */
+type WebhookAnomaly = {
+  kind: WebhookAnomalyKind;
+  paymentId: string;
+  orderId: string;
+  razorpayPaymentId: string;
+};
+
+/**
+ * The capture's amount/currency differs from its order, for a capture that
+ * applyCaptureTx would otherwise apply (unsettled payment, captured entity).
+ */
+function captureMismatch(
+  payment: Payment,
+  entity: Record<string, unknown> | undefined
+): WebhookAnomalyKind | null {
+  if (payment.status !== "PENDING" && payment.status !== "FAILED") return null;
+  if (!entity || entity.status !== "captured") return null;
+  const differs = orderAmountMismatch(entity, payment);
+  return differs ? `${differs}_mismatch` : null;
+}
+
+const numberOrNull = (v: unknown) => (typeof v === "number" ? v : null);
+const stringOrNull = (v: unknown) => (typeof v === "string" ? v.slice(0, 20) : null);
+
+/** Records the anomaly once (inside the webhook's transaction); null if already recorded. */
+async function recordWebhookAnomaly(
+  tx: Prisma.TransactionClient,
+  payment: Payment,
+  kind: WebhookAnomalyKind,
+  entity: Record<string, unknown>,
+  eventType: string
+): Promise<WebhookAnomaly | null> {
+  const razorpayPaymentId = typeof entity.id === "string" ? entity.id : payment.orderId;
+  const key = webhookAnomalyKey(kind, razorpayPaymentId);
+  const existing = await tx.paymentEvent.findUnique({
+    where: { providerEventId: key },
+    select: { id: true },
+  });
+  if (existing) return null;
+
+  await tx.paymentEvent.create({
+    data: {
+      paymentId: payment.id,
+      provider: "RAZORPAY",
+      providerEventId: key,
+      eventType: "webhook.anomaly",
+      payload: {
+        source: "webhook",
+        kind,
+        eventType,
+        orderId: payment.orderId,
+        razorpayPaymentId,
+        expectedAmount: payment.amount,
+        expectedCurrency: payment.currency,
+        receivedAmount: numberOrNull(entity.amount),
+        receivedCurrency: stringOrNull(entity.currency),
+      },
+      processedAt: new Date(),
+    },
+  });
+  return { kind, paymentId: payment.id, orderId: payment.orderId, razorpayPaymentId };
+}
+
+/** Applies one signed event; returns the anomaly it newly recorded, if any. */
 async function applyPaymentEvent(
   eventId: string,
   eventType: string,
   entity: Record<string, unknown> | undefined,
   refundEntity: Record<string, unknown> | undefined,
   payload: Record<string, unknown>
-) {
-  await db.$transaction(async (tx) => {
+): Promise<WebhookAnomaly | null> {
+  return db.$transaction(async (tx) => {
     // 1. Idempotency Check
     const existingEvent = await tx.paymentEvent.findUnique({
       where: { providerEventId: eventId },
@@ -223,7 +306,7 @@ async function applyPaymentEvent(
 
     if (existingEvent) {
       // Safely ignore duplicate events
-      return;
+      return null;
     }
 
     // Refund payloads carry the payment entity too; fall back to the refund's
@@ -238,8 +321,12 @@ async function applyPaymentEvent(
           : null;
 
     if (!payment) {
-      // Order not found, might not be ours
-      return;
+      // Not ours: e.g. another environment sharing the Razorpay account.
+      logger.info("Razorpay payment webhook for an unknown order; ignored", {
+        eventType,
+        orderId: typeof orderId === "string" ? orderId : undefined,
+      });
+      return null;
     }
 
     const paymentId = entity?.id as string | undefined;
@@ -258,6 +345,11 @@ async function applyPaymentEvent(
 
     // 3. Process Event Type
     if (eventType === "payment.captured") {
+      const mismatch = captureMismatch(payment, entity);
+      if (mismatch && entity) {
+        // Recorded, never applied: payment and certificate stay unsettled.
+        return recordWebhookAnomaly(tx, payment, mismatch, entity, eventType);
+      }
       await applyCaptureTx(tx, payment, entity);
     } else if (eventType === "payment.failed") {
       await tx.payment.updateMany({
@@ -267,6 +359,7 @@ async function applyPaymentEvent(
     } else if (eventType === "refund.processed") {
       await applyFullRefundTx(tx, payment, entity, refundEntity);
     }
+    return null;
   });
 }
 

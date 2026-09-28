@@ -185,11 +185,18 @@ describe("Payment Service", () => {
       expect(db.certificate.updateMany).not.toHaveBeenCalled();
     });
 
-    it("should throw if amount mismatches", async () => {
+    it("records an amount mismatch as an anomaly and never completes the payment", async () => {
       payload.payload.payment.entity.amount = 100; // mismatch
-      await expect(processRazorpayWebhook(payload, "sig", "raw")).rejects.toThrow(
-        "PAYMENT_AMOUNT_MISMATCH"
-      );
+      await processRazorpayWebhook(payload, "sig", "raw");
+
+      expect(db.payment.updateMany).not.toHaveBeenCalled();
+      expect(db.certificate.updateMany).not.toHaveBeenCalled();
+      expect(db.paymentEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          providerEventId: "webhook:anomaly:amount_mismatch:pay_123",
+          eventType: "webhook.anomaly",
+        }),
+      });
     });
 
     it("should update payment to FAILED on payment.failed", async () => {
