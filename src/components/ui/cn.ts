@@ -10,7 +10,7 @@ const twMerge = extendTailwindMerge({
       text: ["display", "title"],
       radius: ["control", "card"],
       shadow: ["card", "overlay"],
-      container: ["page", "narrow"],
+      container: ["wide", "page", "narrow"],
     },
   },
 });
