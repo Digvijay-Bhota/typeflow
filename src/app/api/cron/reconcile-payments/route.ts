@@ -8,7 +8,12 @@
  * - Authorization: `Bearer <CRON_SECRET>` (what Vercel Cron sends), compared
  *   in constant time. CRON_SECRET unset or shorter than 32 characters → 503;
  *   missing or wrong token → 401.
- * - `?dryRun=1` counts what a run would find and writes nothing.
+ * - Query, checked after authorization and before any work: none, or exactly
+ *   one `dryRun=1` (count what a run would find, write nothing) or `dryRun=0`.
+ *   Anything else — another value, a repeated `dryRun`, any other key — is 400,
+ *   so a mistyped dry run can never become a real run.
+ * - GET only (Vercel Cron sends GET). HEAD is explicitly 405: Next.js would
+ *   otherwise answer HEAD with the GET handler and run a reconciliation.
  * - Not behind the user rate limiter: it is authenticated, and bounded by the
  *   service's batch limit and time budget.
  * - Responds with counts only: no provider payloads, no customer data.
@@ -38,6 +43,29 @@ function isAuthorized(header: string | null, secret: string): boolean {
 const json = (body: unknown, status: number) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
+/**
+ * The only accepted queries: none, `dryRun=1` or `dryRun=0` (compared after
+ * URL decoding). Returns the dryRun flag, or null for anything else.
+ */
+function parseDryRun(searchParams: URLSearchParams): boolean | null {
+  const entries = [...searchParams];
+  if (entries.length === 0) return false;
+  if (entries.length !== 1) return null;
+  const [key, value] = entries[0]!;
+  if (key !== "dryRun") return null;
+  if (value === "1") return true;
+  if (value === "0") return false;
+  return null;
+}
+
+/** HEAD must never run a reconciliation (Next.js would map it to GET). */
+export function HEAD() {
+  return new Response(null, {
+    status: 405,
+    headers: { Allow: "GET", "Cache-Control": "no-store" },
+  });
+}
+
 export async function GET(req: Request) {
   try {
     const secret = getServerEnv().CRON_SECRET;
@@ -57,7 +85,17 @@ export async function GET(req: Request) {
       return json({ error: { code: "UNAUTHORIZED", message: "Unauthorized." } }, 401);
     }
 
-    const dryRun = new URL(req.url).searchParams.get("dryRun") === "1";
+    const dryRun = parseDryRun(new URL(req.url).searchParams);
+    if (dryRun === null) {
+      logger.warn("Cron request refused: invalid query", {
+        route: "/api/cron/reconcile-payments",
+      });
+      return json(
+        { error: { code: "INVALID_QUERY", message: "Invalid query parameters." } },
+        400
+      );
+    }
+
     const summary = await reconcilePayments({ mode: reconcileModeFromEnv(), dryRun });
     return json(summary, 200);
   } catch (error) {

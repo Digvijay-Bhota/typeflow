@@ -4,8 +4,13 @@
  * (see payment-reconciliation-pg.test.ts for its behavior).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { autoImplementMethods } from "next/dist/server/route-modules/app-route/helpers/auto-implement-methods";
+import type { AppRouteHandlers } from "next/dist/server/route-modules/app-route/module";
+import { HTTP_METHODS } from "next/dist/server/web/http";
+import * as route from "@/app/api/cron/reconcile-payments/route";
 import { GET } from "@/app/api/cron/reconcile-payments/route";
 import { __clearServerEnvForTesting } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import { reconcilePayments } from "@/server/services/payment.reconciliation.service";
 import { rateLimit } from "@/server/middleware/rateLimit";
 
@@ -126,6 +131,11 @@ describe("authorization", () => {
     expect(reconcilePayments).toHaveBeenCalledWith({ mode: "report", dryRun: true });
   });
 
+  it("passes ?dryRun=0 through", async () => {
+    await call(`Bearer ${SECRET}`, "?dryRun=0");
+    expect(reconcilePayments).toHaveBeenCalledWith({ mode: "report", dryRun: false });
+  });
+
   it("is not subject to the user rate limiter", async () => {
     for (let i = 0; i < 20; i++)
       expect((await call(`Bearer ${SECRET}`)).status).toBe(200);
@@ -157,5 +167,147 @@ describe("PAYMENT_RECONCILE_MODE", () => {
     setEnv({ CRON_SECRET: SECRET, PAYMENT_RECONCILE_MODE: value });
     await call(`Bearer ${SECRET}`);
     expect(reconcilePayments).toHaveBeenCalledWith({ mode, dryRun: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HTTP methods (5C-10). Handlers are resolved with Next.js's own
+// autoImplementMethods, exactly as the framework serves the route, so a HEAD
+// that fell through to GET would show up here.
+// ---------------------------------------------------------------------------
+
+type Handler = (req: Request) => Response | Promise<Response>;
+const served = autoImplementMethods(
+  route as unknown as AppRouteHandlers
+) as unknown as Record<(typeof HTTP_METHODS)[number], Handler>;
+const request = (method: string) =>
+  new Request("http://localhost/api/cron/reconcile-payments", {
+    method,
+    headers: { authorization: `Bearer ${SECRET}` },
+  });
+
+describe("HTTP methods", () => {
+  beforeEach(() => setEnv({ CRON_SECRET: SECRET, PAYMENT_RECONCILE_MODE: "apply" }));
+
+  it("exports GET and HEAD only", () => {
+    const methods = Object.keys(route).filter((k) =>
+      (HTTP_METHODS as readonly string[]).includes(k)
+    );
+    expect(methods.sort()).toEqual(["GET", "HEAD"]);
+  });
+
+  it("an authenticated GET runs a reconciliation", async () => {
+    const res = await served.GET(request("GET"));
+    expect(res.status).toBe(200);
+    expect(reconcilePayments).toHaveBeenCalledWith({ mode: "apply", dryRun: false });
+  });
+
+  it("HEAD is 405, even with the correct secret, and runs nothing", async () => {
+    expect(served.HEAD).toBe(route.HEAD);
+    const res = await served.HEAD(request("HEAD"));
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("GET");
+    expect(await res.text()).toBe("");
+    expect(reconcilePayments).not.toHaveBeenCalled();
+  });
+
+  it.each(["POST", "PUT", "PATCH", "DELETE"])(
+    "%s is 405 and runs nothing",
+    async (method) => {
+      const res = await served[method as (typeof HTTP_METHODS)[number]](request(method));
+      expect(res.status).toBe(405);
+      expect(reconcilePayments).not.toHaveBeenCalled();
+    }
+  );
+
+  it("OPTIONS keeps Next.js's automatic answer and runs nothing", async () => {
+    const res = await served.OPTIONS(request("OPTIONS"));
+    expect(res.status).toBe(204);
+    expect(res.headers.get("allow")).toBe("GET, HEAD, OPTIONS");
+    expect(reconcilePayments).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Query validation (5C-10): only none, dryRun=1 or dryRun=0; anything else is
+// 400 before any work. The mode is APPLY here, so a query that slipped
+// through would run real repairs.
+// ---------------------------------------------------------------------------
+
+describe("query validation", () => {
+  beforeEach(() => setEnv({ CRON_SECRET: SECRET, PAYMENT_RECONCILE_MODE: "apply" }));
+
+  it.each([
+    ["", false],
+    ["?dryRun=1", true],
+    ["?dryRun=0", false],
+    ["?dryRun=%31", true], // compared after URL decoding: this is dryRun=1
+  ] as const)("accepts %j (dryRun %s)", async (query, dryRun) => {
+    const res = await call(`Bearer ${SECRET}`, query);
+    expect(res.status).toBe(200);
+    expect(reconcilePayments).toHaveBeenCalledWith({ mode: "apply", dryRun });
+  });
+
+  it.each([
+    "?dryRun=1&dryRun=1",
+    "?dryRun=0&dryRun=0",
+    "?dryRun=1&dryRun=0",
+    "?dryRun=0&dryRun=1",
+    "?dryRun=true",
+    "?dryRun=false",
+    "?dryRun=yes",
+    "?dryRun=no",
+    "?dryRun=01",
+    "?dryRun=1.0",
+    "?dryRun=-1",
+    "?dryRun=",
+    "?dryRun",
+    "?dryRun=%201",
+    "?dryRun=+1",
+    "?dryRun=1%20",
+    "?dryRun=%091",
+    "?dryRun=1%0A",
+    "?dryrun=1",
+    "?DryRun=1",
+    "?DRYRUN=1",
+    "?dry_run=1",
+    "?dry-run=1",
+    "?dryRn=1",
+    "?%20dryRun=1",
+    "?foo=bar",
+    "?dryRun=1&foo=bar",
+    "?mode=apply",
+    "?=1",
+  ])("rejects %j with 400 before any work", async (query) => {
+    const warn = vi.spyOn(logger, "warn");
+    const res = await call(`Bearer ${SECRET}`, query);
+    expect(res.status).toBe(400);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toEqual({
+      error: { code: "INVALID_QUERY", message: "Invalid query parameters." },
+    });
+    expect(reconcilePayments).not.toHaveBeenCalled();
+    // Logged with a reason only, never the query.
+    expect(warn).toHaveBeenCalledWith("Cron request refused: invalid query", {
+      route: "/api/cron/reconcile-payments",
+    });
+  });
+
+  it("503 (secret not configured) comes before query validation", async () => {
+    setEnv({ PAYMENT_RECONCILE_MODE: "apply" });
+    const res = await call(`Bearer ${SECRET}`, "?dryRun=true");
+    expect(res.status).toBe(503);
+    expect(reconcilePayments).not.toHaveBeenCalled();
+  });
+
+  it("401 (wrong or missing token) comes before query validation", async () => {
+    for (const authorization of [
+      undefined,
+      "Bearer test-only-wrong-secret-0123456789ab",
+    ]) {
+      const res = await call(authorization, "?dryRun=true");
+      expect(res.status).toBe(401);
+    }
+    expect(reconcilePayments).not.toHaveBeenCalled();
   });
 });

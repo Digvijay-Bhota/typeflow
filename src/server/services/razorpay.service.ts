@@ -87,6 +87,38 @@ export async function fetchRazorpayPayment(
   return toSnapshot(payment as unknown as Record<string, unknown>);
 }
 
+const PAYMENT_PAGE_SIZE = 100; // Razorpay's maximum
+const PAYMENT_MAX_PAGES = 10;
+
+/**
+ * GET /v1/payments?from&to — every payment attempt created in [from, to], on
+ * any order, all pages. Throws rather than return a partial list, including
+ * when there are more than PAYMENT_MAX_PAGES pages.
+ */
+export async function fetchRazorpayPaymentsCreatedBetween(
+  from: Date,
+  to: Date
+): Promise<RazorpayPaymentSnapshot[]> {
+  // Fixed bounds (Unix seconds), so pages do not shift while they are read.
+  const range = {
+    from: Math.floor(from.getTime() / 1000),
+    to: Math.ceil(to.getTime() / 1000),
+  };
+  const payments: RazorpayPaymentSnapshot[] = [];
+  for (let page = 0; page < PAYMENT_MAX_PAGES; page++) {
+    const { items } = await getRazorpayClient().payments.all({
+      ...range,
+      count: PAYMENT_PAGE_SIZE,
+      skip: page * PAYMENT_PAGE_SIZE,
+    });
+    payments.push(
+      ...items.map((item) => toSnapshot(item as unknown as Record<string, unknown>))
+    );
+    if (items.length < PAYMENT_PAGE_SIZE) return payments;
+  }
+  throw new Error("Too many payments to list for the reconciliation window");
+}
+
 /** The fields of a Razorpay refund that reconciliation reads. */
 export type RazorpayRefundSnapshot = {
   id: string;
