@@ -53,6 +53,8 @@ const SUMMARY = {
   counts: { in_sync: 2, captured_detected: 1 },
   truncated: false,
   durationMs: 12,
+  scan: { status: "ok", payments: 3 },
+  attention: ["findings"],
 };
 
 const call = (authorization?: string, query = "") =>

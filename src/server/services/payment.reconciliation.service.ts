@@ -115,7 +115,68 @@ export type ReconcileSummary = {
   /** Stopped at the batch limit or time budget; the rest is left for the next run. */
   truncated: boolean;
   durationMs: number;
+  /**
+   * The Razorpay payment scan: "ok" with the number of payments it listed (on
+   * the whole account, every environment), "fallback" when it failed or hit
+   * its page limit (unsettled purchases examined oldest-first), "skipped" when
+   * nothing ran.
+   */
+  scan: { status: "ok" | "fallback" | "skipped"; payments: number | null };
+  /** Why an operator should look at this run (see reconcileAttention); empty when clean. */
+  attention: ReconcileAttention[];
 };
+
+export type ReconcileAttention =
+  | "errors"
+  | "anomalies"
+  | "findings"
+  | "repairs"
+  | "fulfillment_failed"
+  | "truncated"
+  | "scan_fallback"
+  | "scan_volume";
+
+/**
+ * Scan size worth a look: half of the scan's page limit (10 pages of 100).
+ * Above the limit every run falls back to oldest-first.
+ */
+export const SCAN_VOLUME_ATTENTION = 500;
+
+const FINDINGS: ReconcileOutcome[] = [
+  "captured_detected",
+  "refund_detected",
+  "fulfillment_pending",
+  "partial_refund",
+];
+const REPAIRS: ReconcileOutcome[] = ["captured_applied", "refund_applied", "fulfilled"];
+
+/**
+ * The conditions an operator must look at, in a fixed order: per-payment
+ * failures, anomalies, report-mode findings (a capture or refund the webhook
+ * did not apply, a stuck fulfilment, a partial refund), apply-mode repairs, a
+ * failed fulfilment, truncation, and the scan falling back or growing large.
+ * A clean run (in sync, nothing examined, or only already-reconciled rows)
+ * has none.
+ */
+export function reconcileAttention(
+  s: Pick<ReconcileSummary, "counts" | "truncated" | "scan">
+): ReconcileAttention[] {
+  const n = (o: ReconcileOutcome) => s.counts[o] ?? 0;
+  const any = (list: ReconcileOutcome[]) => list.some((o) => n(o) > 0);
+  const outcomes = Object.keys(s.counts) as ReconcileOutcome[];
+  const attention: ReconcileAttention[] = [];
+  if (n("error") > 0 || n("razorpay_error") > 0) attention.push("errors");
+  if (outcomes.some((o) => o.startsWith("anomaly_") && n(o) > 0)) {
+    attention.push("anomalies");
+  }
+  if (any(FINDINGS)) attention.push("findings");
+  if (any(REPAIRS)) attention.push("repairs");
+  if (n("fulfillment_failed") > 0) attention.push("fulfillment_failed");
+  if (s.truncated) attention.push("truncated");
+  if (s.scan.status === "fallback") attention.push("scan_fallback");
+  if ((s.scan.payments ?? 0) >= SCAN_VOLUME_ATTENTION) attention.push("scan_volume");
+  return attention;
+}
 
 export type ReconcileOptions = {
   mode: ReconcileMode;
@@ -221,18 +282,22 @@ function findIssued(w: Window, take: number) {
 /**
  * Order ids of every captured or authorized Razorpay payment created in the
  * window. reconcileUnsettled finds nothing to do for an order with neither
- * (nothing was paid), so those purchases need no read. Null when the scan
- * fails or exceeds its page limit: the caller then falls back to examining
- * unsettled purchases oldest-first.
+ * (nothing was paid), so those purchases need no read. Also returns how many
+ * payments the scan listed. Null when the scan fails or exceeds its page
+ * limit: the caller then falls back to examining unsettled purchases
+ * oldest-first.
  */
-async function scanPaidOrders(from: Date, to: Date): Promise<string[] | null> {
+async function scanPaidOrders(
+  from: Date,
+  to: Date
+): Promise<{ orders: string[]; payments: number } | null> {
   try {
     const payments = await fetchRazorpayPaymentsCreatedBetween(from, to);
     const orders = new Set<string>();
     for (const p of payments) {
       if (p.orderId && (p.captured || p.status === "authorized")) orders.add(p.orderId);
     }
-    return [...orders];
+    return { orders: [...orders], payments: payments.length };
   } catch (error) {
     logger.warn(
       "Razorpay payment scan unavailable; unsettled purchases are examined oldest-first",
@@ -760,6 +825,8 @@ export async function reconcilePayments(
     counts: {},
     truncated: false,
     durationMs: 0,
+    scan: { status: "skipped", payments: null },
+    attention: [],
   };
   const count = (outcome: ReconcileOutcome) => {
     summary.counts[outcome] = (summary.counts[outcome] ?? 0) + 1;
@@ -771,7 +838,13 @@ export async function reconcilePayments(
   }
 
   // One read-only scan per run selects the unsettled purchases worth a read.
-  if (limit > 0) window.paidOrders = await scanPaidOrders(window.createdAfter, now);
+  if (limit > 0) {
+    const scan = await scanPaidOrders(window.createdAfter, now);
+    window.paidOrders = scan?.orders ?? null;
+    summary.scan = scan
+      ? { status: "ok", payments: scan.payments }
+      : { status: "fallback", payments: null };
+  }
 
   const phases: Array<{
     find: (w: Window, take: number) => Promise<Candidate[]>;
@@ -826,8 +899,15 @@ export async function reconcilePayments(
     }
   }
   summary.truncated = outOfTime || drained.some((done) => !done);
+  summary.attention = reconcileAttention(summary);
 
   summary.durationMs = Date.now() - started;
-  logger.info("Payment reconciliation run", { ...summary });
+  // Same message either way; a run that needs a look is a warning, so it can
+  // be filtered by level (short log retention on the Hobby plan).
+  if (summary.attention.length > 0) {
+    logger.warn("Payment reconciliation run", { ...summary });
+  } else {
+    logger.info("Payment reconciliation run", { ...summary });
+  }
   return summary;
 }

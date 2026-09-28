@@ -35,6 +35,8 @@ import {
 } from "@/server/services/payment.service";
 import {
   RECONCILE_DEFAULTS,
+  SCAN_VOLUME_ATTENTION,
+  reconcileAttention,
   reconcilePayments,
   reconcileKeys,
   type ReconcileMode,
@@ -1591,6 +1593,161 @@ describe("phase 1 selection: the payment scan", { timeout: 30_000 }, () => {
       { name: "Error", statusCode: undefined, code: undefined }
     );
     warn.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Run summary: scan status and attention (5C-11)
+// ---------------------------------------------------------------------------
+
+describe("run summary: attention reasons", () => {
+  const clean = { counts: {}, truncated: false, scan: { status: "ok", payments: 10 } };
+  it.each([
+    ["nothing examined", {}, []],
+    ["in sync only", { in_sync: 3 }, []],
+    ["already reconciled only", { already_reconciled: 2 }, []],
+    ["a per-payment error", { error: 1 }, ["errors"]],
+    ["a Razorpay read error", { razorpay_error: 2 }, ["errors"]],
+    ["an anomaly", { anomaly_amount_mismatch: 1 }, ["anomalies"]],
+    ["a held-for-review anomaly", { anomaly_held_for_review: 1 }, ["anomalies"]],
+    ["a missed capture (report)", { captured_detected: 1 }, ["findings"]],
+    ["a missed refund (report)", { refund_detected: 1 }, ["findings"]],
+    ["a stuck fulfilment (report)", { fulfillment_pending: 1 }, ["findings"]],
+    ["a partial refund", { partial_refund: 1 }, ["findings"]],
+    ["an applied capture", { captured_applied: 1 }, ["repairs"]],
+    ["an applied refund", { refund_applied: 1 }, ["repairs"]],
+    ["a fulfilled certificate", { fulfilled: 1 }, ["repairs"]],
+    ["a failed fulfilment", { fulfillment_failed: 1 }, ["fulfillment_failed"]],
+  ] as const)("%s → %j", (_label, counts, expected) => {
+    expect(reconcileAttention({ ...clean, counts } as never)).toEqual(expected);
+  });
+
+  it("truncation, scan fallback and scan volume", () => {
+    expect(reconcileAttention({ ...clean, truncated: true } as never)).toEqual([
+      "truncated",
+    ]);
+    expect(
+      reconcileAttention({
+        ...clean,
+        scan: { status: "fallback", payments: null },
+      } as never)
+    ).toEqual(["scan_fallback"]);
+    const volume = (payments: number) =>
+      reconcileAttention({ ...clean, scan: { status: "ok", payments } } as never);
+    expect(volume(SCAN_VOLUME_ATTENTION - 1)).toEqual([]);
+    expect(volume(SCAN_VOLUME_ATTENTION)).toEqual(["scan_volume"]);
+    expect(
+      reconcileAttention({
+        ...clean,
+        scan: { status: "skipped", payments: null },
+      } as never)
+    ).toEqual([]);
+  });
+
+  it("lists every reason in a fixed order", () => {
+    expect(
+      reconcileAttention({
+        counts: {
+          fulfilled: 1,
+          captured_detected: 1,
+          anomaly_multiple_captures: 1,
+          razorpay_error: 1,
+          fulfillment_failed: 1,
+        },
+        truncated: true,
+        scan: { status: "fallback", payments: null },
+      })
+    ).toEqual([
+      "errors",
+      "anomalies",
+      "findings",
+      "repairs",
+      "fulfillment_failed",
+      "truncated",
+      "scan_fallback",
+    ]);
+  });
+});
+
+describe("run summary: scan status and log level", () => {
+  const runLog = (spy: ReturnType<typeof vi.spyOn>) =>
+    spy.mock.calls.filter(([message]) => message === "Payment reconciliation run");
+
+  it("a clean run reports the scan size, no attention, and logs at info", async () => {
+    const info = vi.spyOn(logger, "info");
+    const warn = vi.spyOn(logger, "warn");
+    const w = newWindow();
+    const { p } = await seedIssued({});
+    await age(p, w.t0);
+
+    const s = await reconcilePayments(w.opts("report"));
+    expect(s).toMatchObject({
+      counts: { in_sync: 1 },
+      scan: { status: "ok", payments: 1 },
+      attention: [],
+    });
+    expect(runLog(info)).toHaveLength(1);
+    expect(runLog(info)[0]![1]).toMatchObject({ mode: "report", attention: [] });
+    expect(runLog(warn)).toHaveLength(0);
+    info.mockRestore();
+    warn.mockRestore();
+  });
+
+  it("a report finding makes the run a warning with its reason", async () => {
+    const warn = vi.spyOn(logger, "warn");
+    const w = newWindow();
+    const p = await seed();
+    razorpay.set(p.orderId, [rzpPayment(p.orderId)]);
+    await age(p, w.t0);
+
+    const s = await reconcilePayments(w.opts("report"));
+    expect(s).toMatchObject({
+      counts: { captured_detected: 1 },
+      attention: ["findings"],
+    });
+    expect(runLog(warn)).toHaveLength(1);
+    expect(runLog(warn)[0]![1]).toMatchObject({
+      mode: "report",
+      counts: { captured_detected: 1 },
+      scan: { status: "ok", payments: 1 },
+      attention: ["findings"],
+    });
+    warn.mockRestore();
+  });
+
+  it("a Razorpay outage reports the fallback and the errors", async () => {
+    const w = newWindow();
+    const p = await seed();
+    razorpay.set(p.orderId, [rzpPayment(p.orderId)]);
+    await age(p, w.t0);
+    razorpayDown = true;
+
+    const s = await reconcilePayments(w.opts("report"));
+    expect(s).toMatchObject({
+      counts: { razorpay_error: 1 },
+      scan: { status: "fallback", payments: null },
+      attention: ["errors", "scan_fallback"],
+    });
+    expect(await state(p)).toMatchObject({ payment: "PENDING", keys: [] });
+  });
+
+  it("off skips the scan and reports no attention", async () => {
+    const s = await reconcilePayments(newWindow().opts("off"));
+    expect(s).toMatchObject({
+      scan: { status: "skipped", payments: null },
+      attention: [],
+    });
+  });
+
+  it("a dry run reports the same attention and writes nothing", async () => {
+    const w = newWindow();
+    const p = await seed();
+    razorpay.set(p.orderId, [rzpPayment(p.orderId)]);
+    await age(p, w.t0);
+
+    const s = await reconcilePayments(w.opts("apply", { dryRun: true }));
+    expect(s).toMatchObject({ dryRun: true, attention: ["findings"] });
+    expect(await state(p)).toMatchObject({ payment: "PENDING", keys: [] });
   });
 });
 
