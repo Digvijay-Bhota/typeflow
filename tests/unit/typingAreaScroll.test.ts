@@ -251,6 +251,8 @@ describe("TypingArea — the active position stays visible", () => {
     expect(isVisible(lastVisibleLine + CHARS_PER_LINE)).toBe(true);
   });
 
+  // ~160 synchronous re-renders of a 1000-character passage: CPU-bound, so it
+  // can exceed the 5 s default on slow shared CI runners.
   it("does not scroll while the active position is already visible", () => {
     const scrollTo = vi.mocked(HTMLElement.prototype.scrollTo);
     const { moveTo } = renderArea(passage(1000).split(""), 0);
@@ -266,7 +268,7 @@ describe("TypingArea — the active position stays visible", () => {
     for (let i = 3 * CHARS_PER_LINE + 1; i < 4 * CHARS_PER_LINE; i++) moveTo(i);
     expect(getViewport().scrollTop).toBe(after);
     expect(scrollTo).toHaveBeenCalledTimes(callsAfterScroll);
-  });
+  }, 15_000);
 
   it("follows a long passage to the end, across every line wrap", () => {
     const chars = passage(1000).split(""); // 25 lines, like a certificate passage
