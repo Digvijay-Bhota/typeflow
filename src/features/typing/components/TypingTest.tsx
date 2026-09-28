@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { RotateCcw } from "lucide-react";
 import { useTypingEngine } from "../hooks/useTypingEngine";
 import { TypingArea } from "./TypingArea";
 import { TypingStats } from "./TypingStats";
 import { TestConfig } from "./TestConfig";
 import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui";
 import type { TypingEngineState, SessionInitResponse } from "@/types/typing";
 import type { TypingMode, TestDuration, WordCount, Language } from "@/lib/constants";
 import { DEFAULT_DURATION, DEFAULT_WORD_COUNT } from "@/lib/constants";
@@ -49,15 +51,21 @@ export function TypingTest({
   // ── Backend Session state ────────────────────────────────────────────────
   const [session, setSession] = useState<SessionInitResponse | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
+  const [sessionUnavailable, setSessionUnavailable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
   const sessionStarted = useRef(false);
   const finalStateRef = useRef<TypingEngineState | null>(null);
+  // The config stays interactive while a passage loads, so only the latest
+  // request may apply its response (a slower, older one is dropped).
+  const latestRequest = useRef(0);
 
   // ── Create Session ───────────────────────────────────────────────────────
   const fetchSession = useCallback(async () => {
+    const request = ++latestRequest.current;
     setLoadingSession(true);
+    setSessionUnavailable(false);
     setSubmitError(null);
     try {
       const res = await fetch("/api/session/create", {
@@ -75,16 +83,18 @@ export function TypingTest({
       });
       if (!res.ok) throw new Error("Failed to create session");
       const data = await res.json();
+      if (request !== latestRequest.current) return;
       setSession(data);
       sessionStarted.current = false;
       submittingRef.current = false;
       finalStateRef.current = null;
       setSubmitting(false);
     } catch (e) {
+      if (request !== latestRequest.current) return;
       console.error(e);
-      // fallback handling could go here
+      setSessionUnavailable(true);
     } finally {
-      setLoadingSession(false);
+      if (request === latestRequest.current) setLoadingSession(false);
     }
   }, [mode, language, codeLanguage, duration, wordCount, trustTier, sourceResultId]);
 
@@ -188,9 +198,15 @@ export function TypingTest({
   const isActive = state.status === "active";
   const isCompleted = state.status === "completed";
 
-  if (loadingSession) {
-    return <div className="text-muted py-12 text-center">Loading passage...</div>;
-  }
+  // Code tests always sit on a dark editor surface (TypingArea forces it), in
+  // light and dark themes alike, so text around the passage follows suit.
+  const isCode = initialLanguage === "code" || initialLanguage === "CODE";
+  // Stands in for the typing area (same height and surface) while a passage
+  // loads or cannot be loaded, so the card never jumps.
+  const placeholderClass = cn(
+    "flex h-[220px] flex-col items-center justify-center gap-3 rounded-2xl p-6 text-center text-sm",
+    isCode ? "bg-[#0A0A0A] text-gray-400" : "bg-surface-elevated/30 text-secondary"
+  );
 
   return (
     <div className={cn("w-full space-y-6", className)}>
@@ -218,7 +234,7 @@ export function TypingTest({
             mode={mode}
             currentWord={state.currentWordIndex}
             totalWords={mode === "words" ? wordCount : undefined}
-            className="justify-center"
+            className={cn("justify-center", isCode && "text-gray-200")}
           />
         </div>
       )}
@@ -237,7 +253,27 @@ export function TypingTest({
           </div>
         )}
 
-      {!isCompleted && session && (
+      {!isCompleted && loadingSession && (
+        <div role="status" className={placeholderClass}>
+          Loading passage…
+        </div>
+      )}
+
+      {!isCompleted && !loadingSession && sessionUnavailable && (
+        <div role="alert" className={placeholderClass}>
+          <p>We couldn&apos;t load a passage. Check your connection and try again.</p>
+          <button
+            type="button"
+            onClick={fetchSession}
+            className={buttonVariants({ variant: "secondary", size: "sm" })}
+          >
+            <RotateCcw aria-hidden="true" />
+            Try again
+          </button>
+        </div>
+      )}
+
+      {!isCompleted && !loadingSession && !sessionUnavailable && session && (
         <TypingArea
           language={initialLanguage ?? ""}
           chars={chars}
@@ -255,7 +291,7 @@ export function TypingTest({
             {submitting ? "Saving result..." : "Test complete."}
           </div>
           {submitError && (
-            <div className="text-destructive flex flex-col items-center gap-3">
+            <div className="text-danger flex flex-col items-center gap-3">
               <span>{submitError}</span>
               {finalStateRef.current && (
                 <button
@@ -264,7 +300,7 @@ export function TypingTest({
                       submitResult(finalStateRef.current);
                     }
                   }}
-                  className="bg-tf-neutral-800 text-tf-neutral-100 hover:bg-tf-neutral-700 rounded-md px-4 py-2 transition disabled:opacity-50"
+                  className={buttonVariants({ variant: "secondary", size: "sm" })}
                   disabled={submitting}
                 >
                   Retry Submission
@@ -275,13 +311,24 @@ export function TypingTest({
         </div>
       )}
 
-      {(state.status === "idle" || state.status === "paused") && (
-        <div className="flex justify-center">
+      {!isCompleted && !sessionUnavailable && (
+        // Kept in the layout while typing (invisible, so not focusable) so
+        // the card does not shrink the moment a test starts.
+        <div className={cn("flex justify-center", isActive && "invisible")}>
           <button
+            type="button"
             onClick={fetchSession}
-            className="text-muted hover:text-tf-neutral-300 text-sm transition-colors"
+            disabled={loadingSession || isActive}
+            className={buttonVariants({
+              variant: "ghost",
+              size: "sm",
+              className: isCode
+                ? "text-gray-400 hover:bg-white/10 hover:text-gray-100"
+                : "text-secondary hover:text-foreground",
+            })}
           >
-            ↻ new passage
+            <RotateCcw aria-hidden="true" />
+            New passage
           </button>
         </div>
       )}

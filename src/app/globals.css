@@ -231,6 +231,33 @@
   }
 }
 
+/*
+ * Section entrance (.reveal): fades content up as it scrolls into view.
+ * CSS scroll-driven, so it never hides anything: without view timelines, or
+ * with reduced motion, the rule does not apply and content is simply shown.
+ * It plays once per pass, tied to scroll position, with no timers or JS.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
 @keyframes blink {
   0%,
   100% {
