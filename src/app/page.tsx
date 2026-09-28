@@ -19,9 +19,10 @@ import type { Metadata } from "next";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import Link from "next/link";
 import {
+  Activity,
   ArrowRight,
   Award,
-  Check,
+  BadgeCheck,
   ChartLine,
   Code2,
   Crosshair,
@@ -108,10 +109,17 @@ const METRICS: { term: string; definition: string }[] = [
   },
 ];
 
-const CERTIFICATE_REQUIREMENTS = [
-  `A ${CERTIFICATE_MINUTES}-minute verified test`,
-  `At least ${CERTIFICATE_MIN_WPM} net WPM`,
-  `At least ${CERTIFICATE_MIN_ACCURACY}% accuracy`,
+/** The qualifying bar, as big figures; each reads as a phrase ("30 net WPM minimum"). */
+const CERTIFICATE_REQUIREMENTS: { value: string; label: string }[] = [
+  { value: `${CERTIFICATE_MINUTES} min`, label: "verified test" },
+  { value: `${CERTIFICATE_MIN_WPM}`, label: "net WPM minimum" },
+  { value: `${CERTIFICATE_MIN_ACCURACY}%`, label: "accuracy minimum" },
+];
+
+const HERO_METRICS: { label: string; icon: Icon }[] = [
+  { label: "WPM", icon: Gauge },
+  { label: "Accuracy", icon: Target },
+  { label: "Consistency", icon: Activity },
 ];
 
 const CERTIFICATE_CONTENTS: { label: string; icon: Icon }[] = [
@@ -154,9 +162,13 @@ export default async function HomePage() {
   return (
     <div className="flex flex-col">
       {/* 1. Hero — the typing test is the page's primary action */}
-      <section aria-labelledby="hero-heading" className="border-border border-b">
-        <Container className="flex flex-col items-center gap-8 pt-10 pb-14 sm:gap-10 sm:pt-16 sm:pb-20">
-          <div className="flex max-w-2xl flex-col items-center gap-4 text-center">
+      <section
+        aria-labelledby="hero-heading"
+        className="border-border relative isolate overflow-hidden border-b"
+      >
+        <HeroBackdrop />
+        <Container className="flex flex-col items-center gap-8 pt-10 pb-12 sm:gap-10 sm:pt-16 sm:pb-16">
+          <div className="flex max-w-2xl flex-col items-center gap-4 text-center sm:gap-5">
             <Badge tone="accent">Free · No account needed</Badge>
             <h1
               id="hero-heading"
@@ -168,22 +180,52 @@ export default async function HomePage() {
               Start typing below. Your browser records the keystrokes; the server
               calculates the score.
             </p>
+            <ul
+              aria-label="Measured on every test"
+              className="text-secondary flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm"
+            >
+              {HERO_METRICS.map(({ label, icon: MetricIcon }) => (
+                <li key={label} className="inline-flex items-center gap-1.5">
+                  <MetricIcon aria-hidden="true" className="text-accent size-4" />
+                  {label}
+                </li>
+              ))}
+            </ul>
           </div>
 
-          <Card className="w-full max-w-4xl p-4 sm:p-8">
+          <Card className="shadow-overlay relative w-full max-w-4xl p-4 sm:p-8">
+            {/* A hairline of accent: marks the card as the page's live element. */}
+            <span
+              aria-hidden="true"
+              className="via-accent/60 absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent to-transparent"
+            />
             <TypingTest />
           </Card>
 
-          <div className="text-secondary flex flex-col items-center gap-x-6 gap-y-2 text-sm sm:flex-row">
-            <InlineLink href="/code/javascript">Try a code typing test</InlineLink>
-            <InlineLink href="/typing-test-with-certificate">
-              Take the certified test
-            </InlineLink>
+          <div className="flex flex-wrap justify-center gap-2">
+            <ButtonLink
+              href="/code/javascript"
+              variant="ghost"
+              size="sm"
+              className="text-secondary hover:text-foreground"
+            >
+              <Code2 aria-hidden="true" />
+              Code typing test
+            </ButtonLink>
+            <ButtonLink
+              href="/typing-test-with-certificate"
+              variant="ghost"
+              size="sm"
+              className="text-secondary hover:text-foreground"
+            >
+              <Award aria-hidden="true" />
+              Certified test
+            </ButtonLink>
           </div>
         </Container>
       </section>
 
-      {/* 2. Why TypeFlow — the product loop */}
+      {/* 2. Why TypeFlow — the product loop, as one connected strip */}
       <Section labelledBy="loop-heading">
         <SectionIntro
           id="loop-heading"
@@ -192,29 +234,27 @@ export default async function HomePage() {
         >
           One place for the whole loop, from your first test to a result you can share.
         </SectionIntro>
-        <ol className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <ol className="reveal rounded-card border-border bg-border shadow-card mt-10 grid gap-px overflow-hidden border sm:grid-cols-2 lg:grid-cols-4">
           {LOOP.map(({ step, title, body, icon: StepIcon }) => (
-            <li key={step}>
-              <Card className="flex h-full flex-col gap-3 p-6">
-                <div className="flex items-center justify-between">
-                  <IconTile icon={StepIcon} />
-                  <span
-                    aria-hidden="true"
-                    className="text-foreground-muted font-mono text-xs"
-                  >
-                    {step}
-                  </span>
-                </div>
-                <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
-                <p className="text-secondary text-sm leading-relaxed">{body}</p>
-              </Card>
+            <li key={step} className="bg-surface flex flex-col gap-3 p-6">
+              <div className="flex items-center justify-between">
+                <IconTile icon={StepIcon} />
+                <span aria-hidden="true" className="text-accent font-mono text-xs">
+                  {step}
+                </span>
+              </div>
+              <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
+              <p className="text-secondary text-sm leading-relaxed">{body}</p>
             </li>
           ))}
         </ol>
       </Section>
 
-      {/* 3. Performance — metric definitions */}
-      <Section labelledBy="metrics-heading" className="bg-surface-muted/50">
+      {/* 3. Performance — metric definitions, on a muted band */}
+      <Section
+        labelledBy="metrics-heading"
+        className="bg-surface-muted/60 border-border border-y"
+      >
         <div className="grid gap-10 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-16">
           <div className="flex flex-col gap-6">
             <SectionIntro
@@ -230,21 +270,25 @@ export default async function HomePage() {
               <InlineLink href="/how-wpm-is-calculated">How WPM is calculated</InlineLink>
             </div>
           </div>
-          <dl className="grid gap-4 sm:grid-cols-2">
+          <dl className="reveal rounded-card border-border bg-border shadow-card grid gap-px self-start overflow-hidden border sm:grid-cols-2">
             {METRICS.map(({ term, definition }) => (
-              <Card key={term} className="flex flex-col gap-2 p-6">
-                <dt className="font-mono text-sm font-semibold">{term}</dt>
+              <div key={term} className="bg-surface flex flex-col gap-2 p-6">
+                <dt className="text-accent font-mono text-sm font-semibold">{term}</dt>
                 <dd className="text-secondary text-sm leading-relaxed">{definition}</dd>
-              </Card>
+              </div>
             ))}
           </dl>
         </div>
       </Section>
 
-      {/* 4. Certificate — in the certificate area accent */}
+      {/* 4. Certificate — proof of ability, in the certificate area accent */}
       <Section labelledBy="certificate-heading" className="theme-certificate">
-        <Card className="grid gap-10 p-6 sm:p-10 lg:grid-cols-2 lg:gap-16">
-          <div className="flex flex-col gap-6">
+        <Card className="reveal relative grid gap-10 overflow-hidden p-6 sm:p-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-14">
+          <span
+            aria-hidden="true"
+            className="via-accent absolute inset-x-0 top-0 h-0.5 bg-linear-to-r from-transparent to-transparent"
+          />
+          <div className="flex flex-col gap-8">
             <SectionIntro
               id="certificate-heading"
               eyebrow="Certificate"
@@ -255,20 +299,28 @@ export default async function HomePage() {
             </SectionIntro>
             <div>
               <h3 className="text-sm font-semibold">To qualify</h3>
-              <ul className="mt-3 flex flex-col gap-2">
-                {CERTIFICATE_REQUIREMENTS.map((requirement) => (
-                  <li key={requirement} className="flex items-start gap-2 text-sm">
-                    <Check
-                      aria-hidden="true"
-                      className="text-accent mt-0.5 size-4 shrink-0"
-                    />
-                    {requirement}
+              <ul className="mt-3 grid grid-cols-3 gap-3">
+                {CERTIFICATE_REQUIREMENTS.map(({ value, label }) => (
+                  <li
+                    key={label}
+                    className="border-border rounded-control flex flex-col gap-1 border p-3 sm:p-4"
+                  >
+                    <span className="text-accent font-mono text-xl font-semibold tabular-nums sm:text-2xl">
+                      {value}
+                    </span>
+                    <span className="text-secondary text-xs leading-snug sm:text-sm">
+                      {label}
+                    </span>
                   </li>
                 ))}
               </ul>
             </div>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <ButtonLink href="/typing-test-with-certificate" size="lg">
+              <ButtonLink
+                href="/typing-test-with-certificate"
+                size="lg"
+                className={PRESS_FEEDBACK}
+              >
                 Take the certified test
                 <ArrowRight aria-hidden="true" />
               </ButtonLink>
@@ -277,8 +329,18 @@ export default async function HomePage() {
               </p>
             </div>
           </div>
-          <div className="border-border flex flex-col gap-4 border-t pt-10 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-16">
-            <h3 className="text-sm font-semibold">Every certificate includes</h3>
+
+          {/* What the proof looks like: every element of a verifiable certificate. */}
+          <div className="bg-accent-soft/40 border-border rounded-card flex flex-col gap-5 border p-5 sm:p-6">
+            <div className="flex items-center gap-3">
+              <span
+                aria-hidden="true"
+                className="bg-accent text-accent-foreground inline-flex size-10 shrink-0 items-center justify-center rounded-full"
+              >
+                <BadgeCheck className="size-5" />
+              </span>
+              <h3 className="text-base font-semibold">Every certificate includes</h3>
+            </div>
             <ul className="flex flex-col gap-4">
               {CERTIFICATE_CONTENTS.map(({ label, icon }) => (
                 <li key={label} className="flex items-center gap-3 text-sm">
@@ -291,8 +353,11 @@ export default async function HomePage() {
         </Card>
       </Section>
 
-      {/* 5. Practice — ways to train */}
-      <Section labelledBy="practice-heading">
+      {/* 5. Practice — ways to train, on the muted band */}
+      <Section
+        labelledBy="practice-heading"
+        className="bg-surface-muted/60 border-border border-y"
+      >
         <SectionIntro
           id="practice-heading"
           eyebrow="Practice"
@@ -302,8 +367,8 @@ export default async function HomePage() {
         </SectionIntro>
         <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {PRACTICE.map(({ title, body, href, icon }) => (
-            <li key={href}>
-              <Card className="group hover:border-border-strong has-[a:focus-visible]:outline-ring relative flex h-full flex-col gap-3 p-6 transition-colors has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2">
+            <li key={href} className="reveal">
+              <Card className="group hover:border-accent/40 has-[a:focus-visible]:outline-ring ease-standard hover:shadow-overlay relative flex h-full flex-col gap-3 p-6 transition-[border-color,box-shadow,translate] duration-(--duration-base) has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 motion-safe:hover:-translate-y-0.5">
                 <IconTile icon={icon} />
                 <h3 className="text-lg font-semibold tracking-tight">
                   {/* The link's ::after covers the card, so the whole card is clickable
@@ -318,7 +383,7 @@ export default async function HomePage() {
                 <p className="text-secondary text-sm leading-relaxed">{body}</p>
                 <ArrowRight
                   aria-hidden="true"
-                  className="text-foreground-muted group-hover:text-accent mt-auto size-4 transition-colors"
+                  className="text-foreground-muted group-hover:text-accent mt-auto size-4 transition-[color,translate] duration-(--duration-base) motion-safe:group-hover:translate-x-1"
                 />
               </Card>
             </li>
@@ -326,36 +391,63 @@ export default async function HomePage() {
         </ul>
       </Section>
 
-      {/* 6. Final CTA */}
-      <Section labelledBy="cta-heading" className="border-border border-t">
-        <div className="flex flex-col items-center gap-6 text-center">
-          <h2
-            id="cta-heading"
-            className="sm:text-title text-2xl font-semibold tracking-tight text-balance"
-          >
-            Your next test takes a minute.
-          </h2>
-          <p className="text-secondary max-w-md text-pretty">
-            {user
-              ? "Pick up where you left off, or start a fresh test."
-              : "Start without an account. Sign up when you want to keep your results."}
-          </p>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <ButtonLink href="/typing-test" size="lg">
-              Start a typing test
-            </ButtonLink>
-            {user ? (
-              <ButtonLink href="/dashboard" variant="secondary" size="lg">
-                Open dashboard
+      {/* 6. Final CTA — bookends the hero */}
+      <section
+        aria-labelledby="cta-heading"
+        className="relative isolate overflow-hidden py-20 sm:py-28"
+      >
+        <span
+          aria-hidden="true"
+          className="from-accent-soft/70 absolute inset-0 -z-10 bg-linear-to-t to-transparent"
+        />
+        <Container>
+          <div className="reveal flex flex-col items-center gap-6 text-center">
+            <p className="text-accent font-mono text-xs font-medium tracking-wider uppercase">
+              Ready when you are
+            </p>
+            <h2
+              id="cta-heading"
+              className="sm:text-display text-3xl font-semibold tracking-tight text-balance"
+            >
+              Start your next typing test.
+            </h2>
+            <p className="text-secondary max-w-md text-pretty sm:text-lg">
+              {user
+                ? "Pick up where you left off, or start a fresh test."
+                : "It takes a minute and no account. Sign up when you want to keep your results."}
+            </p>
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+              <ButtonLink href="/typing-test" size="lg" className={PRESS_FEEDBACK}>
+                Start a typing test
+                <ArrowRight aria-hidden="true" />
               </ButtonLink>
-            ) : (
-              <ButtonLink href="/signup" variant="secondary" size="lg">
-                Create a free account
-              </ButtonLink>
-            )}
+              {user ? (
+                <ButtonLink href="/dashboard" variant="secondary" size="lg">
+                  Open dashboard
+                </ButtonLink>
+              ) : (
+                <ButtonLink href="/signup" variant="secondary" size="lg">
+                  Create a free account
+                </ButtonLink>
+              )}
+            </div>
           </div>
-        </div>
-      </Section>
+        </Container>
+      </section>
+    </div>
+  );
+}
+
+/** A small press response on primary CTAs; motion-safe only. */
+const PRESS_FEEDBACK =
+  "transition-[background-color,scale] motion-safe:active:scale-[0.98]";
+
+/** Faint grid fading out from the top, over the accent's soft tint. Decorative. */
+function HeroBackdrop() {
+  return (
+    <div aria-hidden="true" className="absolute inset-0 -z-10">
+      <div className="from-accent-soft/40 absolute inset-0 bg-linear-to-b to-transparent" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black,transparent)] [background-size:40px_40px] opacity-70" />
     </div>
   );
 }
@@ -388,7 +480,7 @@ function SectionIntro({
   children: ReactNode;
 }) {
   return (
-    <div className="flex max-w-2xl flex-col gap-3">
+    <div className="reveal flex max-w-2xl flex-col gap-3">
       <p className="text-accent font-mono text-xs font-medium tracking-wider uppercase">
         {eyebrow}
       </p>
