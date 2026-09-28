@@ -1,7 +1,8 @@
 # Local-only test database infrastructure.
 #
-# This is NOT used for local development (which connects to the remote
-# Supabase database via .env) and is NOT used in CI (which uses its own
+# This is NOT the local development database (local development uses its
+# own local Postgres, never a remote or production one — see ARCHITECTURE.md,
+# "Environment Isolation") and is NOT used in CI (which uses its own
 # postgres:15 service container — see .github/workflows/*.yml).
 #
 # It exists solely so `npm test` can run against an isolated, disposable

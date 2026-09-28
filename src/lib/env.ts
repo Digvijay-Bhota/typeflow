@@ -7,6 +7,7 @@
  * - If any required var is missing, the app fails fast with a clear message.
  */
 import { z } from "zod";
+import { assertEnvironmentIsolation } from "./environmentGuard";
 
 // ─── Server-side environment schema ──────────────────────────────────────────
 const serverSchema = z
@@ -57,6 +58,11 @@ const serverSchema = z
     CRON_SECRET: z.string().optional(),
     /// off (default) | report | apply
     PAYMENT_RECONCILE_MODE: z.string().optional(),
+
+    /// Non-production only: the production Supabase project ref (public, not a
+    /// secret), so a remote non-production database or Supabase URL can be shown
+    /// not to be production. Checked by src/lib/environmentGuard.ts.
+    PRODUCTION_SUPABASE_PROJECT_REF: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.CERTIFICATE_SIGNING_SECRET === data.SESSION_SECRET) {
@@ -121,7 +127,7 @@ export function getServerEnv(): z.infer<typeof serverSchema> {
     );
   }
   if (!_serverEnv) {
-    _serverEnv = parseEnv(
+    const parsed = parseEnv(
       serverSchema,
       {
         SUPABASE_URL: process.env.SUPABASE_URL,
@@ -142,9 +148,14 @@ export function getServerEnv(): z.infer<typeof serverSchema> {
         TEST_REDIS_URL: process.env.TEST_REDIS_URL,
         CRON_SECRET: process.env.CRON_SECRET,
         PAYMENT_RECONCILE_MODE: process.env.PAYMENT_RECONCILE_MODE,
+        PRODUCTION_SUPABASE_PROJECT_REF: process.env.PRODUCTION_SUPABASE_PROJECT_REF,
       },
       "server"
     );
+    // Fails closed before anything uses these credentials: a non-production
+    // runtime must not run against production infrastructure.
+    assertEnvironmentIsolation(process.env);
+    _serverEnv = parsed;
   }
   return _serverEnv;
 }
