@@ -1,79 +1,177 @@
-"use client";
-
 import React from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/components/ui";
+import { pluralize } from "@/features/dashboard/lib/display";
 
-interface ActivityHeatmapProps {
-  data: Record<string, number>; // "YYYY-MM-DD" -> count
+const DAY_MS = 86_400_000;
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/** Cell shades, lightest to darkest: the accent at rising strength. */
+const LEVELS = [
+  // A foreground tint (as Skeleton uses) stays visible on the card in both themes.
+  "bg-foreground/10",
+  "bg-accent/30",
+  "bg-accent/55",
+  "bg-accent/80",
+  "bg-accent",
+] as const;
+
+type Level = 0 | 1 | 2 | 3 | 4;
+
+function levelFor(count: number): Level {
+  if (count === 0) return 0;
+  if (count <= 2) return 1;
+  if (count <= 5) return 2;
+  if (count <= 10) return 3;
+  return 4;
 }
 
-export function ActivityHeatmap({ data }: ActivityHeatmapProps) {
-  // Generate last 365 days
-  const today = new Date();
-  const days = [];
-  for (let i = 364; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    days.push(d);
-  }
+export type ActivityDay = { date: string; count: number; level: Level };
 
-  // Create columns of 7 days (weeks)
-  const weeks = [];
-  let currentWeek = [];
-  for (let i = 0; i < days.length; i++) {
-    currentWeek.push(days[i]);
-    const day = days[i];
-    if (day && (day.getDay() === 0 || i === days.length - 1)) {
-      // Sunday or last day
-      weeks.push(currentWeek);
-      currentWeek = [];
+export type ActivityCalendar = {
+  /** Week columns, Sunday first; null pads days outside the year. */
+  weeks: (ActivityDay | null)[][];
+  /** Month label for the columns where a new month starts. */
+  monthLabels: (string | null)[];
+  totalTests: number;
+  activeDays: number;
+};
+
+/**
+ * The last 365 days as week columns. Days are UTC calendar days, matching the
+ * keys getActivityHeatmap() returns.
+ */
+export function buildActivityCalendar(
+  data: Record<string, number>,
+  today: Date = new Date()
+): ActivityCalendar {
+  const end = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const start = end - 364 * DAY_MS;
+  // Pad back to the Sunday before, so every row is one weekday.
+  const gridStart = start - new Date(start).getUTCDay() * DAY_MS;
+
+  const weeks: (ActivityDay | null)[][] = [];
+  let totalTests = 0;
+  let activeDays = 0;
+
+  for (let weekStart = gridStart; weekStart <= end; weekStart += 7 * DAY_MS) {
+    const week: (ActivityDay | null)[] = [];
+    for (let i = 0; i < 7; i++) {
+      const time = weekStart + i * DAY_MS;
+      if (time < start || time > end) {
+        week.push(null);
+        continue;
+      }
+      const date = new Date(time).toISOString().slice(0, 10);
+      const count = data[date] ?? 0;
+      totalTests += count;
+      if (count > 0) activeDays++;
+      week.push({ date, count, level: levelFor(count) });
     }
+    weeks.push(week);
   }
 
-  const getIntensityClass = (count: number) => {
-    if (count === 0) return "bg-surface-elevated/30 border-border/50";
-    if (count <= 2) return "bg-accent/30 border-accent/20";
-    if (count <= 5) return "bg-accent/60 border-accent/40";
-    if (count <= 10) return "bg-accent border-accent shadow-glow shadow-accent/20";
-    return "bg-cyan-400 border-cyan-400 shadow-glow shadow-cyan-400/40";
+  // Label a column when its first day starts a new month, but not so close to
+  // the next label that the two would overlap.
+  const monthOf = (week: (ActivityDay | null)[]) => {
+    const day = week.find((d) => d !== null);
+    return day ? Number(day.date.slice(5, 7)) - 1 : -1;
   };
+  const monthLabels = weeks.map((week, i) => {
+    const month = monthOf(week);
+    const previous = i === 0 ? -1 : monthOf(weeks[i - 1] ?? []);
+    if (month === previous) return null;
+    if (i === 0 && weeks.slice(1, 3).some((w) => monthOf(w) !== month)) return null;
+    return MONTHS[month] ?? null;
+  });
+
+  return { weeks, monthLabels, totalTests, activeDays };
+}
+
+/** Tests per day over the past year. The summary sentence carries the data for screen readers. */
+export function ActivityHeatmap({
+  data,
+  today,
+}: {
+  data: Record<string, number>;
+  today?: Date;
+}) {
+  const { weeks, monthLabels, totalTests, activeDays } = buildActivityCalendar(
+    data,
+    today
+  );
+  const summary =
+    totalTests === 0
+      ? "No tests in the last 12 months."
+      : `${pluralize(totalTests, "test")} on ${pluralize(activeDays, "day")} in the last 12 months.`;
 
   return (
-    <div className="custom-scrollbar w-full overflow-x-auto pb-4">
-      <div className="inline-flex gap-1">
-        {weeks.map((week, wIdx) => (
-          <div key={wIdx} className="flex flex-col gap-1">
-            {week.map((day, dIdx) => {
-              if (!day) return null;
-              const dateStr = day.toISOString().split("T")[0] as string;
-              const count = data[dateStr] || 0;
-              return (
-                <div
-                  key={dIdx}
-                  title={`${dateStr}: ${count} tests`}
-                  className={cn(
-                    "hover:border-foreground h-3 w-3 cursor-crosshair rounded-sm border transition-colors",
-                    getIntensityClass(count)
-                  )}
-                />
-              );
-            })}
+    <div className="flex flex-col gap-4">
+      <p className="text-secondary text-sm">{summary}</p>
+
+      {/* rtl scroll container: opens scrolled to the most recent weeks on narrow screens;
+          w-fit keeps it left-aligned when it does not need to scroll. */}
+      <div
+        role="region"
+        aria-label="Activity calendar"
+        tabIndex={0}
+        className="w-fit max-w-full overflow-x-auto pb-2 [direction:rtl]"
+      >
+        <div
+          role="img"
+          aria-label={summary}
+          className="inline-flex flex-col gap-1 [direction:ltr]"
+        >
+          <div aria-hidden="true" className="text-muted flex h-4 gap-[3px] text-xs">
+            {monthLabels.map((label, i) => (
+              <span key={i} className="relative w-[11px] shrink-0">
+                {label && (
+                  <span className="absolute left-0 whitespace-nowrap">{label}</span>
+                )}
+              </span>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="text-muted mt-4 flex items-center justify-between text-xs font-semibold tracking-wider uppercase">
-        <span>1 Year Ago</span>
-        <div className="flex items-center gap-2">
-          Less
-          <div className="flex gap-1">
-            <div className="bg-surface-elevated/30 border-border/50 h-3 w-3 rounded-sm border" />
-            <div className="bg-accent/30 border-accent/20 h-3 w-3 rounded-sm border" />
-            <div className="bg-accent/60 border-accent/40 h-3 w-3 rounded-sm border" />
-            <div className="bg-accent border-accent h-3 w-3 rounded-sm border" />
-            <div className="h-3 w-3 rounded-sm border border-cyan-400 bg-cyan-400" />
+          <div aria-hidden="true" className="flex gap-[3px]">
+            {weeks.map((week, w) => (
+              <div key={w} className="flex flex-col gap-[3px]">
+                {week.map((day, d) =>
+                  day ? (
+                    <span
+                      key={d}
+                      title={`${day.date}: ${pluralize(day.count, "test")}`}
+                      className={cn("size-[11px] rounded-[2px]", LEVELS[day.level])}
+                    />
+                  ) : (
+                    <span key={d} className="size-[11px]" />
+                  )
+                )}
+              </div>
+            ))}
           </div>
-          More
         </div>
+      </div>
+
+      <div
+        aria-hidden="true"
+        className="text-muted flex items-center justify-end gap-2 text-xs"
+      >
+        Fewer
+        {LEVELS.map((cls) => (
+          <span key={cls} className={cn("size-[11px] rounded-[2px]", cls)} />
+        ))}
+        More
       </div>
     </div>
   );

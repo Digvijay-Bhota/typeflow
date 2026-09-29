@@ -3,6 +3,13 @@ import { getAuthenticatedUser } from "@/server/services/auth.service";
 import { db } from "@/server/db";
 import { Award, ShieldCheck, Download, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { EmptyState } from "@/components/EmptyState";
+import { ButtonLink, PageHeader } from "@/components/ui";
+import {
+  CERTIFICATE_MIN_ACCURACY,
+  CERTIFICATE_MIN_DURATION,
+  CERTIFICATE_MIN_WPM,
+} from "@/lib/constants";
 import {
   certificateAccuracyPercent,
   certificateOwnerState,
@@ -29,14 +36,31 @@ export default async function CertificatesDashboard() {
     orderBy: { issuedAt: "desc" },
   });
 
-  return (
-    <div className="animate-fade-in mx-auto flex w-full max-w-5xl flex-col gap-10 pb-12">
-      <div>
-        <h1 className="mb-2 text-4xl font-black tracking-tight">Your Certificates</h1>
-        <p className="text-muted">
-          Manage, verify, and track your progress toward official TypeFlow credentials.
-        </p>
+  const header = (
+    <PageHeader
+      title="Certificates"
+      description="Your TypeFlow certificates: open one to see its public verification page, or download the PDF."
+    />
+  );
+
+  if (certificates.length === 0) {
+    return (
+      <div className="animate-fade-in flex flex-col gap-8 pb-12">
+        {header}
+        <EmptyState
+          title="No certificates yet"
+          description={`A certificate comes from a ${CERTIFICATE_MIN_DURATION / 60}-minute certified test passed at ${CERTIFICATE_MIN_WPM}+ net WPM and ${CERTIFICATE_MIN_ACCURACY}%+ accuracy. Once you have one, it appears here with its verification link.`}
+          actionText="Take the certified test"
+          actionHref="/typing-test-with-certificate"
+          icon={<Award />}
+        />
       </div>
+    );
+  }
+
+  return (
+    <div className="animate-fade-in flex flex-col gap-8 pb-12">
+      {header}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         {certificates.map((cert) => {
@@ -58,7 +82,7 @@ export default async function CertificatesDashboard() {
               </div>
 
               <div className="relative z-10 mb-8 space-y-4">
-                <h3 className="text-xl font-bold tracking-tight">Official Typist</h3>
+                <h2 className="text-xl font-bold tracking-tight">Official Typist</h2>
                 <div className="flex gap-4">
                   <div>
                     <p className="text-muted mb-1 text-[10px] font-bold tracking-widest uppercase">
@@ -117,51 +141,25 @@ export default async function CertificatesDashboard() {
           );
         })}
 
-        {/* LOCKED CERTIFICATE STATE */}
-        <div className="from-surface to-surface-elevated border-border relative overflow-hidden rounded-3xl border bg-gradient-to-br p-6 opacity-60 shadow-sm grayscale transition-all duration-500 hover:opacity-100 hover:grayscale-0">
-          <div className="relative z-10 mb-6 flex items-start justify-between">
-            <div className="border-muted bg-background rounded-xl border p-3">
-              <Award className="text-muted h-6 w-6" />
-            </div>
-            <span className="bg-background border-border text-muted rounded-full border px-3 py-1.5 text-xs font-bold tracking-wider uppercase">
-              Locked
-            </span>
-          </div>
-
-          <div className="relative z-10 mb-8 space-y-4">
-            <h3 className="text-muted text-xl font-bold tracking-tight">Pro Typist</h3>
-            <div className="flex gap-4">
-              <div>
-                <p className="text-muted mb-1 text-[10px] font-bold tracking-widest uppercase">
-                  Req. Speed
-                </p>
-                <p className="text-muted text-2xl font-black">
-                  80{" "}
-                  <span className="text-xs font-bold tracking-widest uppercase">WPM</span>
-                </p>
-              </div>
-              <div>
-                <p className="text-muted mb-1 text-[10px] font-bold tracking-widest uppercase">
-                  Req. Accuracy
-                </p>
-                <p className="text-muted text-2xl font-black">
-                  98 <span className="text-lg">%</span>
-                </p>
-              </div>
-            </div>
-            <p className="text-muted mt-4 text-xs font-medium">
-              Complete a verified session hitting these metrics to unlock this tier.
+        {/* Another attempt: the real eligibility bar, from constants. */}
+        <div className="border-border flex flex-col justify-between gap-6 rounded-3xl border border-dashed p-6">
+          <div className="flex flex-col gap-2">
+            <Award aria-hidden="true" className="text-accent size-6" />
+            <h2 className="text-lg font-semibold tracking-tight">
+              Earn another certificate
+            </h2>
+            <p className="text-secondary text-sm">
+              Pass a {CERTIFICATE_MIN_DURATION / 60}-minute certified test at{" "}
+              {CERTIFICATE_MIN_WPM}+ net WPM and {CERTIFICATE_MIN_ACCURACY}%+ accuracy.
             </p>
           </div>
-
-          <div className="border-border relative z-10 flex items-center gap-2 border-t pt-4">
-            <Link
-              href="/typing-test"
-              className="bg-accent hover:bg-accent/80 text-accent-foreground flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-center text-xs font-bold tracking-wider uppercase transition-colors"
-            >
-              Attempt Now
-            </Link>
-          </div>
+          <ButtonLink
+            href="/typing-test-with-certificate"
+            variant="secondary"
+            className="w-fit"
+          >
+            Take the certified test
+          </ButtonLink>
         </div>
       </div>
     </div>
