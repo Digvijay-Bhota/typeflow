@@ -258,7 +258,7 @@ export async function getAnalyticsData(
     WHERE r."userId" = ${user.id}::uuid
       AND r."createdAt" >= ${startDate}
       ${modeCondition}
-    GROUP BY date_trunc(${Prisma.raw(`'${truncPeriod}'`)}, r."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${safeTimezone})
+    GROUP BY 1
     ORDER BY "date" ASC
   `;
 
