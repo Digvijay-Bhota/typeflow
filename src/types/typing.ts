@@ -36,7 +36,7 @@ export interface TypingEngineState {
   // ── Character counts ──
   correctCharacters: number;
   incorrectCharacters: number;
-  totalCharacters: number; // total typed (correct + incorrect)
+  totalCharacters: number; // keystrokes that typed a character, incl. ones later deleted
   correctedErrors: number; // errors fixed with backspace
   uncorrectedErrors: number; // errors left at submission
 
