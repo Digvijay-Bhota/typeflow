@@ -10,8 +10,8 @@
  * Data flow:
  *   Keyboard event
  *   → handleKey() / handleBackspace()
- *   → update mutable ref state
- *   → requestAnimationFrame tick updates displayed state
+ *   → update mutable ref state, mark it unpublished
+ *   → requestAnimationFrame tick publishes it to React state
  *   → on test complete: single setState flush → single POST to /api/result
  *
  * This design ensures typing latency is limited only by the browser event
@@ -20,12 +20,32 @@
  * ─── Rerender policy ──────────────────────────────────────────────────────────
  *
  * React state is updated:
- * - Every word completion (for progress display)
- * - Every second (for timer display via rAF)
- * - On status changes (idle → active → completed)
- * - NOT on every individual keystroke
+ * - On the first animation frame after one or more keystrokes (so the caret
+ *   and character colours follow typing, with keystrokes in the same frame
+ *   batched into one render)
+ * - When the elapsed whole second changes (the timer display's resolution)
+ * - On status changes (idle → active → paused → completed)
+ * - NOT on frames where nothing visible changed
  *
  * Mutable refs hold the hot-path state that is read back on completion.
+ *
+ * ─── Live counters ────────────────────────────────────────────────────────────
+ *
+ * The counters mirror the server's trace reconstruction
+ * (reconstructFinalBuffer), so live and submitted metrics agree with the
+ * authoritative result:
+ * - correct / incorrect / uncorrected: characters in the typed buffer now
+ *   (a backspace removes the character it deletes from its count)
+ * - total: every keystroke that typed a character, including ones later
+ *   deleted (so fixing a typo still costs accuracy)
+ * - corrected: backspaces that deleted an incorrect character
+ *
+ * ─── Timed completion ─────────────────────────────────────────────────────────
+ *
+ * A timed test ends at its deadline even when animation frames stop (a
+ * background tab pauses requestAnimationFrame): a timeout armed for the
+ * deadline finishes it too. Whichever of the two runs first completes the
+ * test; the other finds it already completed.
  */
 "use client";
 
@@ -58,6 +78,9 @@ import type {
 
 /** Track WPM every N milliseconds for consistency calculation */
 const INTERVAL_MS = 5_000;
+
+/** Resolution of the live timer display: publish at least once per second. */
+const TIMER_RESOLUTION_MS = 1_000;
 
 // ─── Initial state factory ────────────────────────────────────────────────────
 
@@ -147,6 +170,12 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
   const lastIntervalAtRef = useRef<number>(0);
   const totalKeystrokes = useRef(0);
   const eventTraceRef = useRef<EventTrace["events"]>([]);
+  /** A keystroke changed state that has not been published to React yet. */
+  const unpublishedRef = useRef(false);
+  /** Elapsed whole second at the last publish (timer display resolution). */
+  const publishedSecondRef = useRef(-1);
+  /** Timeout that ends a timed test at its deadline without animation frames. */
+  const deadlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Latest onComplete, read when the test finishes. The rAF `tick` loop is
   // memoized per (mode, duration), so anything it closes over can be from the
@@ -188,6 +217,12 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
     const remainingMs =
       mode === "timed" && durationMs > 0 ? Math.max(0, durationMs - elapsedMs) : null;
 
+    unpublishedRef.current = false;
+    publishedSecondRef.current = Math.floor(elapsedMs / TIMER_RESOLUTION_MS);
+
+    // The maps and signals are passed as-is, not copied: every write replaces
+    // the ref's object (never mutates it), so a published snapshot is stable
+    // and a new identity always means new content.
     setState((prev) => ({
       ...prev,
       status: statusRef.current,
@@ -206,9 +241,9 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
       netWpm,
       accuracy,
       consistency,
-      keyErrors: { ...keyErrorsRef.current },
-      errorMap: { ...errorMapRef.current },
-      integritySignals: { ...signalsRef.current },
+      keyErrors: keyErrorsRef.current,
+      errorMap: errorMapRef.current,
+      integritySignals: signalsRef.current,
     }));
 
     onProgress?.({
@@ -262,13 +297,27 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
       return;
     }
 
-    flushState();
+    // Publish only when something visible changed: a keystroke since the last
+    // publish, or the timer's displayed second. Other frames render nothing.
+    if (
+      unpublishedRef.current ||
+      Math.floor(elapsed / TIMER_RESOLUTION_MS) !== publishedSecondRef.current
+    ) {
+      flushState();
+    }
     rafRef.current = requestAnimationFrame(tick);
     // finishInternal is stable (it reads onComplete through onCompleteRef), so
     // omitting it here cannot capture a stale completion handler.
   }, [mode, durationMs, flushState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Internal finish ────────────────────────────────────────────────────────
+
+  const clearDeadline = useCallback(() => {
+    if (deadlineTimerRef.current !== null) {
+      clearTimeout(deadlineTimerRef.current);
+      deadlineTimerRef.current = null;
+    }
+  }, []);
 
   const finishInternal = useCallback(() => {
     if (statusRef.current === "completed") return;
@@ -278,6 +327,7 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    clearDeadline();
 
     const startedAt = startedAtRef.current ?? Date.now();
     const elapsedMs = Date.now() - startedAt - totalPausedMsRef.current;
@@ -323,12 +373,43 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
 
     setState(finalState);
     onCompleteRef.current?.(finalState);
-  }, []);
+  }, [clearDeadline]);
+
+  // ─── Deadline ───────────────────────────────────────────────────────────────
+
+  /**
+   * Arms a timeout for a timed test's deadline, from the time still remaining.
+   * Timers keep running (throttled to about once a second) in a background
+   * tab where animation frames stop, so the test still ends — and submits —
+   * on time instead of whenever the tab is next shown.
+   */
+  const armDeadline = useCallback(() => {
+    clearDeadline();
+    if (mode !== "timed" || durationMs <= 0) return;
+
+    const remaining = () =>
+      durationMs -
+      (Date.now() - (startedAtRef.current ?? Date.now()) - totalPausedMsRef.current);
+
+    const onDeadline = () => {
+      deadlineTimerRef.current = null;
+      if (statusRef.current !== "active") return;
+      const left = remaining();
+      // The wall clock can lag the timer (e.g. it was set back): wait again.
+      if (left > 0) {
+        deadlineTimerRef.current = setTimeout(onDeadline, left);
+        return;
+      }
+      finishInternal();
+    };
+
+    deadlineTimerRef.current = setTimeout(onDeadline, Math.max(0, remaining()));
+  }, [mode, durationMs, clearDeadline, finishInternal]);
 
   // ─── Public API ─────────────────────────────────────────────────────────────
 
-  const start = useCallback(() => {
-    if (statusRef.current !== "idle") return;
+  /** idle → active: starts the clock, the frame loop and the deadline. */
+  const activate = useCallback(() => {
     statusRef.current = "active";
     startedAtRef.current = Date.now();
     lastIntervalAtRef.current = 0;
@@ -338,7 +419,13 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
       startedAt: startedAtRef.current,
     }));
     rafRef.current = requestAnimationFrame(tick);
-  }, [tick]);
+    armDeadline();
+  }, [tick, armDeadline]);
+
+  const start = useCallback(() => {
+    if (statusRef.current !== "idle") return;
+    activate();
+  }, [activate]);
 
   const pause = useCallback(() => {
     if (statusRef.current !== "active") return;
@@ -349,9 +436,10 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    clearDeadline();
 
     setState((prev) => ({ ...prev, status: "paused", paused: true }));
-  }, []);
+  }, [clearDeadline]);
 
   const resume = useCallback(() => {
     if (statusRef.current !== "paused") return;
@@ -364,13 +452,15 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
 
     setState((prev) => ({ ...prev, status: "active", paused: false }));
     rafRef.current = requestAnimationFrame(tick);
-  }, [tick]);
+    armDeadline();
+  }, [tick, armDeadline]);
 
   const reset = useCallback(() => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    clearDeadline();
 
     // Reset all refs
     statusRef.current = "idle";
@@ -391,9 +481,11 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
     lastIntervalAtRef.current = 0;
     totalKeystrokes.current = 0;
     eventTraceRef.current = [];
+    unpublishedRef.current = false;
+    publishedSecondRef.current = -1;
 
     setState(createInitialEngineState());
-  }, []);
+  }, [clearDeadline]);
 
   const finish = useCallback(() => {
     finishInternal();
@@ -404,17 +496,7 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
   const handleKey = useCallback(
     (char: string) => {
       // Auto-start on first key
-      if (statusRef.current === "idle") {
-        statusRef.current = "active";
-        startedAtRef.current = Date.now();
-        lastIntervalAtRef.current = 0;
-        setState((prev) => ({
-          ...prev,
-          status: "active",
-          startedAt: startedAtRef.current,
-        }));
-        rafRef.current = requestAnimationFrame(tick);
-      }
+      if (statusRef.current === "idle") activate();
 
       if (statusRef.current !== "active") return;
 
@@ -428,6 +510,7 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
       const expectedChar = chars[idx];
       totalCharsRef.current += 1;
       totalKeystrokes.current += 1;
+      unpublishedRef.current = true;
 
       if (char === expectedChar) {
         correctCharsRef.current += 1;
@@ -493,7 +576,7 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
         finishInternal();
       }
     },
-    [chars, mode, wordCount, tick, finishInternal]
+    [chars, mode, wordCount, activate, finishInternal]
   );
 
   // ─── handleBackspace ────────────────────────────────────────────────────────
@@ -503,11 +586,17 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
     if (currentIndexRef.current <= 0) return;
 
     totalKeystrokes.current += 1;
+    unpublishedRef.current = true;
 
     const prevIdx = currentIndexRef.current - 1;
     const prevError = errorMapRef.current[prevIdx];
 
-    if (prevError && !prevError.corrected) {
+    // The character being deleted was typed wrong exactly when its position
+    // holds an uncorrected error: a correct keystroke clears the position,
+    // and a corrected entry only survives on positions not yet retyped.
+    if (!prevError || prevError.corrected) {
+      correctCharsRef.current = Math.max(0, correctCharsRef.current - 1);
+    } else {
       // Correcting an error
       incorrectCharsRef.current = Math.max(0, incorrectCharsRef.current - 1);
       uncorrectedErrorsRef.current = Math.max(0, uncorrectedErrorsRef.current - 1);
@@ -540,9 +629,8 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
       eventTraceRef.current.push([Math.max(0, elapsed), 1, prevIdx]);
     }
 
-    // Move back
+    // Move back. totalChars keeps the deleted keystroke (see Live counters).
     currentIndexRef.current -= 1;
-    totalCharsRef.current = Math.max(0, totalCharsRef.current - 1);
 
     // Adjust word index if we crossed a space
     const charAtPrev = chars[currentIndexRef.current];
@@ -624,8 +712,9 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
       }
+      clearDeadline();
     };
-  }, []);
+  }, [clearDeadline]);
 
   // ─── Recalculate consistency on passage change (reset) ─────────────────────
 
