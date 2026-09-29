@@ -149,4 +149,31 @@ describe("publicResult helper", () => {
       (getPublicResult({ ...base, userId: null }) as any).isCertificateEligible
     ).toBe(false);
   });
+
+  it("exposes errorMap and codeMetrics only when includeDetailedAnalytics is true", () => {
+    const rawResult: any = {
+      id: "result-1",
+      shareId: "share-123",
+      wpm: 120,
+      netWpm: 120,
+      accuracy: 98.5,
+      integrityStatus: "VERIFIED",
+      scoringSource: "CLIENT_SUBMITTED",
+      errorMap: { a: { count: 1 } },
+      codeMetrics: { complexity: 1 },
+      session: { trustTier: "FREE", duration: 60 },
+    };
+
+    const withoutDetails = getPublicResult(rawResult) as any;
+    expect(withoutDetails).not.toHaveProperty("errorMap");
+    expect(withoutDetails).not.toHaveProperty("codeMetrics");
+
+    const withDetails = getPublicResult(rawResult, {
+      includeDetailedAnalytics: true,
+    }) as any;
+    expect(withDetails).toHaveProperty("errorMap");
+    expect(withDetails).toHaveProperty("codeMetrics");
+    expect(withDetails.errorMap).toEqual(rawResult.errorMap);
+    expect(withDetails.codeMetrics).toEqual(rawResult.codeMetrics);
+  });
 });

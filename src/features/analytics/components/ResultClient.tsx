@@ -375,8 +375,14 @@ export function ResultClient({
             {weakKeys.length > 0 ? (
               <>
                 <div className="space-y-4">
-                  <KeyboardHeatmap errorMap={result.errorMap} />
-                  <WeakKeys errorMap={result.errorMap} />
+                  {result.errorMap ? (
+                    <>
+                      <KeyboardHeatmap errorMap={result.errorMap} />
+                      <WeakKeys errorMap={result.errorMap} />
+                    </>
+                  ) : (
+                    <KeyboardHeatmap errorMap={result.errorMap} />
+                  )}
                 </div>
                 {/* Only the owner receives result.id; practice is owner-only anyway. */}
                 {result.id && (

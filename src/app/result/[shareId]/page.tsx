@@ -40,9 +40,12 @@ export default async function ResultPage({
     notFound();
   }
 
+  const viewer = await getAuthenticatedUser().catch(() => null);
+  const isOwner = !!viewer && result.userId === viewer.id;
+
   let comparison: any = null;
 
-  if (result.userId) {
+  if (isOwner) {
     const recent = await prisma.testResult.findMany({
       where: {
         userId: result.userId,
@@ -75,9 +78,10 @@ export default async function ResultPage({
     }
   }
 
-  const viewer = await getAuthenticatedUser().catch(() => null);
-  const isOwner = !!viewer && result.userId === viewer.id;
-  const publicResult = getPublicResult(result, { includeId: isOwner });
+  const publicResult = getPublicResult(result, {
+    includeId: isOwner,
+    includeDetailedAnalytics: isOwner,
+  });
   // Authoritative purchase/certificate state, for the owner only.
   const certificate =
     isOwner && result.session.trustTier === "CERTIFICATE"

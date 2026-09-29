@@ -21,7 +21,10 @@ function traceIntervalWpms(result: any): number[] | null {
  * `includeId` exposes the internal result id; pass it only when the viewer
  * owns the result (it backs the owner-only "practice these keys" link).
  */
-export function getPublicResult(result: any, options: { includeId?: boolean } = {}) {
+export function getPublicResult(
+  result: any,
+  options: { includeId?: boolean; includeDetailedAnalytics?: boolean } = {}
+) {
   // Derive intervalWpms: server-derived from the trace for reconstructed
   // results, otherwise the client-reported samples.
   let intervalWpms: number[] = traceIntervalWpms(result) ?? [];
@@ -106,5 +109,8 @@ export function getPublicResult(result: any, options: { includeId?: boolean } = 
     session: publicSession,
     intervalWpms,
     weakKeys,
+    ...(options.includeDetailedAnalytics
+      ? { errorMap: result.errorMap, codeMetrics: result.codeMetrics }
+      : {}),
   };
 }
