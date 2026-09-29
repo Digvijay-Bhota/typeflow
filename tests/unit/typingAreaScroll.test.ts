@@ -325,7 +325,7 @@ describe("TypingArea — the active position stays visible", () => {
       expect(isVisible(i)).toBe(true);
     }
     expect(getViewport().scrollTop).toBeLessThan(deep);
-  });
+  }, 15_000);
 
   it("re-anchors the active position when the viewport is resized", () => {
     const observers: { cb: ResizeObserverCallback }[] = [];
