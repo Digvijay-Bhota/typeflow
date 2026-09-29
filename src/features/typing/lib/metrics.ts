@@ -150,6 +150,28 @@ export function calculateKspm(totalKeystrokes: number, elapsedMs: number): numbe
   return Math.round(totalKeystrokes / minutes);
 }
 
+// ─── Live Metrics ─────────────────────────────────────────────────────────────
+
+/** Shortest time the live (in-test) speed is measured over. */
+export const LIVE_SPEED_MIN_ELAPSED_MS = 1_000;
+
+/**
+ * Live Speed Time Base — the elapsed time live speeds are measured over
+ *
+ * Formula: max(elapsedMs, LIVE_SPEED_MIN_ELAPSED_MS)
+ *
+ * Only for the speeds shown while a test runs. The first frame after the
+ * first keystroke is ~16 ms in, where one character reads as ~750 WPM; a
+ * one-second floor makes live speed ramp up from 0 instead of spiking.
+ * Final (submitted) metrics use the real elapsed time.
+ *
+ * @param elapsedMs Elapsed time in milliseconds
+ * @returns Time base in milliseconds (≥ LIVE_SPEED_MIN_ELAPSED_MS)
+ */
+export function liveSpeedElapsedMs(elapsedMs: number): number {
+  return Math.max(elapsedMs, LIVE_SPEED_MIN_ELAPSED_MS);
+}
+
 // ─── Consistency ──────────────────────────────────────────────────────────────
 
 /**

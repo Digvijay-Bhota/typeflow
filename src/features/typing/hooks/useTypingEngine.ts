@@ -40,6 +40,19 @@
  *   deleted (so fixing a typo still costs accuracy)
  * - corrected: backspaces that deleted an incorrect character
  *
+ * ─── Live metrics ─────────────────────────────────────────────────────────────
+ *
+ * Live WPM / raw / net are measured over at least one second
+ * (liveSpeedElapsedMs), so they ramp up from 0 rather than flashing hundreds
+ * of WPM on the first frames. The completed state scores the real elapsed time.
+ *
+ * ─── Word-count completion ────────────────────────────────────────────────────
+ *
+ * A words test types only the first `wordCount` words of its passage
+ * (limitToWords), so it ends on the last character of the final word, like
+ * reaching the end of any passage. Indices are those of the full passage, so
+ * the trace reconstructs against it unchanged.
+ *
  * ─── Timed completion ─────────────────────────────────────────────────────────
  *
  * A timed test ends at its deadline even when animation frames stop (a
@@ -64,7 +77,9 @@ import {
   calculateNetWpm,
   calculateAccuracy,
   calculateConsistency,
+  liveSpeedElapsedMs,
 } from "../lib/metrics";
+import { limitToWords } from "../lib/wordLimit";
 import type {
   TypingEngineState,
   TypingEngineConfig,
@@ -189,7 +204,15 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
   // ── Derived ──
   // Stable per passage: the rAF loop re-renders every frame, and a fresh array
   // would recreate handleKey and the rendered passage lines each time.
-  const chars = useMemo(() => passage.split(""), [passage]);
+  // A words test types only its first `wordCount` words, so it ends on the
+  // last character of the final word (see Word-count completion).
+  const chars = useMemo(
+    () =>
+      (mode === "words" && wordCount ? limitToWords(passage, wordCount) : passage).split(
+        ""
+      ),
+    [passage, mode, wordCount]
+  );
   const durationMs = (duration ?? 0) * 1000;
 
   // ─── rAF loop ──────────────────────────────────────────────────────────────
@@ -208,9 +231,12 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
     const total = totalCharsRef.current;
     const uncorrected = uncorrectedErrorsRef.current;
 
-    const wpm = calculateWpm(correct, elapsedMs);
-    const rawWpm = calculateRawWpm(total, elapsedMs);
-    const netWpm = calculateNetWpm(wpm, uncorrected, elapsedMs);
+    // Live speeds use a floored time base so the first frames do not spike
+    // (see Live metrics); finishInternal scores the real elapsed time.
+    const speedMs = liveSpeedElapsedMs(elapsedMs);
+    const wpm = calculateWpm(correct, speedMs);
+    const rawWpm = calculateRawWpm(total, speedMs);
+    const netWpm = calculateNetWpm(wpm, uncorrected, speedMs);
     const accuracy = calculateAccuracy(correct, total);
     const consistency = calculateConsistency(intervalWpmsRef.current) ?? 0;
 
@@ -560,23 +586,12 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
         currentWordIndexRef.current += 1;
       }
 
-      // Word-count mode: check completion
-      if (mode === "words" && wordCount) {
-        const wordsTyped = currentWordIndexRef.current;
-        const lastCharIsSpace = expectedChar === " ";
-        const atEnd = currentIndexRef.current >= chars.length;
-        if (atEnd || (!lastCharIsSpace && wordsTyped >= wordCount)) {
-          finishInternal();
-          return;
-        }
-      }
-
-      // End of passage
+      // End of passage (a words test's passage ends with its final word)
       if (currentIndexRef.current >= chars.length) {
         finishInternal();
       }
     },
-    [chars, mode, wordCount, activate, finishInternal]
+    [chars, activate, finishInternal]
   );
 
   // ─── handleBackspace ────────────────────────────────────────────────────────

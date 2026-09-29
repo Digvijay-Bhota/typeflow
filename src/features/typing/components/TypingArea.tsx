@@ -6,10 +6,12 @@ import {
   useLayoutEffect,
   useRef,
   useMemo,
+  useState,
   type KeyboardEvent,
 } from "react";
 import { cn } from "@/lib/utils";
 import { nextActiveLineScrollTop } from "../lib/activeLineScroll";
+import { detectApplePlatform, isShortcutKey } from "../lib/keyInput";
 import type { ErrorMap, EngineStatus } from "@/types/typing";
 
 interface TypingAreaProps {
@@ -187,10 +189,18 @@ export function TypingArea({
     };
   }, []);
 
+  // Not rendered, so the server's value (false) never reaches the markup.
+  const isApplePlatform = useMemo(() => detectApplePlatform(), []);
+
+  // Keystrokes only land while the area has focus. A test keeps running when
+  // it loses focus, so an overlay says where to click to carry on.
+  const [focused, setFocused] = useState(false);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
       if (status === "completed") return;
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Browser shortcuts pass through; AltGr / Option characters are typed.
+      if (isShortcutKey(e, isApplePlatform)) return;
 
       // Prevent browser shortcuts kicking in unexpectedly, except specific ones
       if (e.key === "Tab") {
@@ -219,8 +229,17 @@ export function TypingArea({
         onKey(e.key);
       }
     },
-    [status, onStart, onKey, onBackspace]
+    [status, onStart, onKey, onBackspace, isApplePlatform]
   );
+
+  const overlayMessage =
+    status === "idle"
+      ? focused
+        ? "Start typing"
+        : "Click to start typing"
+      : status === "active" && !focused
+        ? "Click to continue typing"
+        : null;
 
   const focusContainer = () => {
     containerRef.current?.focus();
@@ -233,6 +252,8 @@ export function TypingArea({
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onClick={focusContainer}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       className={cn(
         "relative cursor-text font-mono text-xl leading-relaxed outline-none select-none md:text-2xl",
         "h-[220px] overflow-hidden rounded-2xl p-6 transition-all",
@@ -242,10 +263,13 @@ export function TypingArea({
         className
       )}
     >
-      {status === "idle" && (
+      {overlayMessage && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <span className="bg-background/90 text-foreground border-border animate-pulse rounded-xl border px-4 py-2 font-bold shadow-sm">
-            Click to start typing
+          <span
+            data-testid="typing-overlay"
+            className="bg-background/90 text-foreground border-border animate-pulse rounded-xl border px-4 py-2 font-bold shadow-sm"
+          >
+            {overlayMessage}
           </span>
         </div>
       )}
