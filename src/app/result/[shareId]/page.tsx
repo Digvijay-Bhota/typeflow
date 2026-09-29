@@ -42,14 +42,20 @@ export default async function ResultPage({
 
   let comparison: any = null;
 
-  if (result.session.mode === "PRACTICE" && result.userId) {
+  if (result.userId) {
     const recent = await prisma.testResult.findMany({
       where: {
         userId: result.userId,
         createdAt: { lt: result.createdAt },
         session: {
-          mode: { not: "PRACTICE" },
+          mode:
+            result.session.mode === "PRACTICE"
+              ? { not: "PRACTICE" }
+              : result.session.mode,
           language: result.session.language,
+          ...(result.session.mode !== "PRACTICE" && result.session.duration
+            ? { duration: result.session.duration }
+            : {}),
         },
       },
       orderBy: { createdAt: "desc" },
@@ -63,6 +69,8 @@ export default async function ResultPage({
       comparison = {
         beforeWpm: Math.round(avgWpm),
         beforeAccuracy: Math.round(avgAcc * 100),
+        type: result.session.mode === "PRACTICE" ? "PRACTICE" : "TREND",
+        count: recent.length,
       };
     }
   }
