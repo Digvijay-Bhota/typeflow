@@ -14,7 +14,7 @@ export default defineConfig({
     // the test database. Independently validated — see tests/setup/global-db.ts.
     globalSetup: ["./tests/setup/global-db.ts"],
     include: [
-      "tests/unit/**/*.test.ts",
+      "tests/unit/**/*.test.{ts,tsx}",
       "tests/integration/**/*.test.ts",
       "src/**/*.test.ts",
     ],

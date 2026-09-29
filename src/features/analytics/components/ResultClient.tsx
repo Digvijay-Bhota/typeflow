@@ -10,6 +10,8 @@ import {
 import { CertificateCheckoutButton } from "@/features/payment/components/CertificateCheckoutButton";
 import { CertificatePreparingActions } from "@/features/payment/components/CertificatePreparingActions";
 import { GuestClaimBanner } from "@/features/auth/components/GuestClaimBanner";
+import { KeyboardHeatmap } from "@/features/analytics/components/KeyboardHeatmap";
+import { Sparkline } from "@/features/analytics/components/Sparkline";
 import {
   canStartCheckout,
   certificateVerifyPath,
@@ -100,8 +102,25 @@ export function ResultClient({
   }
 
   // Extract Weak Keys from errorMap
-  let weakKeys: { key: string; count: number }[] = [];
-  if (Array.isArray(result.weakKeys)) {
+  let weakKeys: {
+    key: string;
+    count: number;
+    corrected: number;
+    uncorrected: number;
+    total: number;
+  }[] = [];
+  if (result.errorMap && typeof result.errorMap === "object") {
+    weakKeys = Object.values(result.errorMap)
+      .map((v: any) => ({
+        key: v.expected,
+        count: v.count,
+        corrected: v.corrected,
+        uncorrected: v.uncorrected,
+        total: v.count,
+      }))
+      .sort((a, b) => b.count - a.count);
+  } else if (Array.isArray(result.weakKeys)) {
+    // Fallback for older format if ever needed
     weakKeys = result.weakKeys;
   }
 
@@ -320,25 +339,8 @@ export function ResultClient({
             </h2>
             {weakKeys.length > 0 ? (
               <>
-                <div className="space-y-3">
-                  {weakKeys.map((wk, i) => (
-                    <div
-                      key={i}
-                      className="bg-background border-border hover:border-warning/50 flex items-center justify-between rounded-2xl border p-3.5 transition-colors"
-                    >
-                      <kbd className="bg-surface-elevated border-border text-foreground rounded-lg border px-4 py-1.5 font-mono text-xl font-black shadow-sm">
-                        {wk.key === " " ? "Space" : wk.key}
-                      </kbd>
-                      <div className="flex flex-col items-end">
-                        <span className="text-foreground text-sm font-bold">
-                          {wk.count}
-                        </span>
-                        <span className="text-muted text-[10px] font-bold tracking-widest uppercase">
-                          misses
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="space-y-4">
+                  <KeyboardHeatmap errorMap={result.errorMap} />
                 </div>
                 {/* Only the owner receives result.id; practice is owner-only anyway. */}
                 {result.id && (
@@ -398,43 +400,48 @@ export function ResultClient({
 
       {/* DETERMINISTIC INSIGHTS */}
       {chartData.length > 0 && (
-        <div className="bg-accent/5 border-accent/20 text-foreground flex items-center gap-4 rounded-3xl border p-6 shadow-sm">
-          <Activity className="text-accent h-6 w-6" />
-          <div>
-            <h3 className="text-muted mb-1 text-sm font-bold tracking-widest uppercase">
-              Performance Insight
-            </h3>
-            <p className="text-lg font-medium">
-              {(() => {
-                if (chartData.length >= 9) {
-                  // Robust calculation dividing the test into thirds (Start, Middle, End)
-                  const third = Math.floor(chartData.length / 3);
+        <div className="bg-accent/5 border-accent/20 text-foreground flex flex-wrap items-center justify-between gap-4 rounded-3xl border p-6 shadow-sm">
+          <div className="flex items-center gap-4">
+            <Activity className="text-accent h-6 w-6" />
+            <div>
+              <h3 className="text-muted mb-1 text-sm font-bold tracking-widest uppercase">
+                Performance Insight
+              </h3>
+              <p className="text-lg font-medium">
+                {(() => {
+                  if (chartData.length >= 9) {
+                    // Robust calculation dividing the test into thirds (Start, Middle, End)
+                    const third = Math.floor(chartData.length / 3);
 
-                  const startSegment = chartData.slice(0, third);
-                  const endSegment = chartData.slice(chartData.length - third);
+                    const startSegment = chartData.slice(0, third);
+                    const endSegment = chartData.slice(chartData.length - third);
 
-                  const startWpm = startSegment.reduce((a, b) => a + b.wpm, 0) / third;
-                  const endWpm = endSegment.reduce((a, b) => a + b.wpm, 0) / third;
-                  const variance = Math.abs(startWpm - endWpm);
+                    const startWpm = startSegment.reduce((a, b) => a + b.wpm, 0) / third;
+                    const endWpm = endSegment.reduce((a, b) => a + b.wpm, 0) / third;
+                    const variance = Math.abs(startWpm - endWpm);
 
-                  if (variance < 3) {
-                    return `Incredible pacing. You maintained a rock-solid speed (variance < 3 WPM) throughout the entire duration.`;
+                    if (variance < 3) {
+                      return `Incredible pacing. You maintained a rock-solid speed (variance < 3 WPM) throughout the entire duration.`;
+                    }
+                    if (endWpm > startWpm + 5) {
+                      return `You accelerated significantly as you warmed up, starting at ${Math.round(startWpm)} WPM and pushing to ${Math.round(endWpm)} WPM during the final stretch.`;
+                    }
+                    if (endWpm < startWpm - 5) {
+                      return `Your stamina dropped towards the end (from ${Math.round(startWpm)} WPM down to ${Math.round(endWpm)} WPM). Try to establish a more sustainable initial rhythm.`;
+                    }
+                    return `Good consistency. Your speed remained largely stable from start to finish.`;
                   }
-                  if (endWpm > startWpm + 5) {
-                    return `You accelerated significantly as you warmed up, starting at ${Math.round(startWpm)} WPM and pushing to ${Math.round(endWpm)} WPM during the final stretch.`;
-                  }
-                  if (endWpm < startWpm - 5) {
-                    return `Your stamina dropped towards the end (from ${Math.round(startWpm)} WPM down to ${Math.round(endWpm)} WPM). Try to establish a more sustainable initial rhythm.`;
-                  }
-                  return `Good consistency. Your speed remained largely stable from start to finish.`;
-                }
 
-                // Fallback for extremely short tests
-                return accuracy === 100
-                  ? "Perfect accuracy! Now try pushing your raw speed slightly higher on the next test."
-                  : "Focus purely on hitting the correct keys—your muscle memory and speed will naturally follow.";
-              })()}
-            </p>
+                  // Fallback for extremely short tests
+                  return accuracy === 100
+                    ? "Perfect accuracy! Now try pushing your raw speed slightly higher on the next test."
+                    : "Focus purely on hitting the correct keys—your muscle memory and speed will naturally follow.";
+                })()}
+              </p>
+            </div>
+          </div>
+          <div className="ml-auto hidden shrink-0 pr-4 sm:block">
+            <Sparkline data={chartData} />
           </div>
         </div>
       )}
@@ -452,7 +459,7 @@ export function ResultClient({
           <span className="text-muted text-center text-sm">Beat your current score</span>
         </Link>
         <Link
-          href="/typing-test"
+          href={result.id ? `/practice?sourceResultId=${result.id}` : "/practice"}
           className="bg-surface hover:bg-surface-elevated border-border group flex flex-col items-center justify-center gap-3 rounded-3xl border p-8 shadow-sm transition-all"
         >
           <div className="rounded-full bg-orange-500/10 p-4 text-orange-400 transition-all group-hover:scale-110 group-hover:bg-orange-500/20">
@@ -460,7 +467,8 @@ export function ResultClient({
           </div>
           <span className="text-lg font-bold">Practice Keys</span>
           <span className="text-muted text-center text-sm">
-            Focus on {weakKeys[0]?.key || "weak"} weaknesses
+            Focus on {weakKeys[0]?.key === " " ? "Space" : weakKeys[0]?.key || "weak"}{" "}
+            weaknesses
           </span>
         </Link>
         <Link
