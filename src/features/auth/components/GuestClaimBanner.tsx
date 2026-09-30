@@ -8,7 +8,13 @@ import Link from "next/link";
  * (another device, or the session ended) the result cannot be claimed here, so
  * `fallback` is rendered instead of leaving the viewer without an action.
  */
-export function GuestClaimBanner({ fallback }: { fallback?: React.ReactNode } = {}) {
+export function GuestClaimBanner({
+  shareId,
+  fallback,
+}: {
+  shareId: string;
+  fallback?: React.ReactNode;
+}) {
   const [claim, setClaim] = useState<{ checked: boolean; token: string | null }>({
     checked: false,
     token: null,
@@ -17,12 +23,12 @@ export function GuestClaimBanner({ fallback }: { fallback?: React.ReactNode } = 
   useEffect(() => {
     let token: string | null = null;
     try {
-      token = sessionStorage.getItem("tf_claim_token");
+      token = sessionStorage.getItem(`tf_claim_token_${shareId}`);
     } catch {
       // Storage unavailable: treat as no token.
     }
     setClaim({ checked: true, token });
-  }, []);
+  }, [shareId]);
 
   if (!claim.checked) return null;
   if (!claim.token) return <>{fallback ?? null}</>;

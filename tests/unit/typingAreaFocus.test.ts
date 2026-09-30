@@ -57,7 +57,13 @@ describe("TypingArea — focus overlay", () => {
     act(() => textbox.focus());
     setStatus("active");
 
-    act(() => textbox.blur());
+    act(() => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      } else {
+        textbox.blur();
+      }
+    });
     expect(overlay()).toBe("Click to continue typing");
 
     act(() => textbox.focus());
