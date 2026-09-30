@@ -21,13 +21,19 @@ export async function GET(req: NextRequest) {
     // Gated Pro endpoint enforcement
     await requirePro(user.id);
 
-    // Simulated advanced analytics response
+    const { db } = await import("@/server/db");
+    const stats = await db.userKeyStat.findMany({
+      where: { userId: user.id, totalOccurrences: { gte: 10 } },
+      orderBy: [{ accuracyRate: "asc" }, { errorCount: "desc" }, { key: "asc" }],
+      take: 10,
+    });
+
     return NextResponse.json({
       success: true,
-      weakKeys: [
-        { key: "p", errorRate: 0.12 },
-        { key: "x", errorRate: 0.08 },
-      ],
+      weakKeys: stats.map((s) => ({
+        key: s.key,
+        errorRate: 1.0 - s.accuracyRate,
+      })),
     });
   } catch (err: unknown) {
     const error = err as Error;

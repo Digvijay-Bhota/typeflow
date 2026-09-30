@@ -114,26 +114,32 @@ export async function createSession(params: CreateSessionRequest) {
           .map(([k]) => k);
       }
     } else if (user) {
-      // Practice from dashboard (recent aggregate)
-      const recentResults = await db.testResult.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      });
-      const mistakeCounts: Record<string, number> = {};
-      recentResults.forEach((r) => {
-        if (r.errorMap && typeof r.errorMap === "object") {
-          Object.entries(r.errorMap as Record<string, any>).forEach(([k, v]) => {
-            if (v && typeof v.count === "number") {
-              mistakeCounts[k] = (mistakeCounts[k] || 0) + v.count;
-            }
-          });
-        }
-      });
-      weakKeys = Object.entries(mistakeCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([k]) => k);
+      // Practice from dashboard
+      const { getPersistentWeakKeys } = await import("./practice.service");
+      weakKeys = await getPersistentWeakKeys(user.id, 5);
+
+      if (weakKeys.length === 0) {
+        // Fallback to recent aggregate if no persistent stats yet
+        const recentResults = await db.testResult.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        });
+        const mistakeCounts: Record<string, number> = {};
+        recentResults.forEach((r) => {
+          if (r.errorMap && typeof r.errorMap === "object") {
+            Object.entries(r.errorMap as Record<string, any>).forEach(([k, v]) => {
+              if (v && typeof v.count === "number") {
+                mistakeCounts[k] = (mistakeCounts[k] || 0) + v.count;
+              }
+            });
+          }
+        });
+        weakKeys = Object.entries(mistakeCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([k]) => k);
+      }
     }
 
     const { generateTargetedPassage } = await import("./practice.service");
@@ -596,6 +602,51 @@ export async function submitResult(
               data: { status: "DISQUALIFIED", resultId: result.id, updatedAt: now },
             });
           }
+        }
+      }
+
+      if (session.userId && integrityStatus === "VERIFIED") {
+        // Accumulate user key stats only if we have an authoritative event trace
+        // to prevent silently writing inaccurate totalOccurrences.
+        if (
+          scoringSource === "SERVER_RECONSTRUCTED" &&
+          diagnostics &&
+          params.eventTrace?.events
+        ) {
+          const { accumulateUserKeyStats } = await import("./practice.service");
+          await accumulateUserKeyStats(
+            session.userId,
+            session.passage.content,
+            diagnostics.keyErrors as any,
+            params.eventTrace.events,
+            tx
+          );
+        }
+
+        // Save PracticeSession if this was a practice test
+        if (session.mode === "PRACTICE") {
+          let focusKeys: string[] = [];
+          if (
+            session.passage.sourceAttribution?.startsWith("Generated for weak keys: ")
+          ) {
+            focusKeys = session.passage.sourceAttribution
+              .replace("Generated for weak keys: ", "")
+              .split(",")
+              .map((k) => k.trim().toLowerCase())
+              .filter((k) => k.length > 0);
+          }
+
+          await tx.practiceSession.create({
+            data: {
+              userId: session.userId,
+              mode: "PRACTICE",
+              focusKeys,
+              language: session.language,
+              exerciseType: "targeted_practice",
+              durationMs: actualElapsedMs,
+              completedAt: now,
+            },
+          });
         }
       }
 
