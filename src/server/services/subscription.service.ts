@@ -7,13 +7,17 @@
  *
  * Provider state → Local SubscriptionStatus mapping:
  *
- * created / authenticated → TRIALING (if trial) | ACTIVE
+ * created / authenticated → TRIALING (awaiting first payment; no trial is offered)
  * active               → ACTIVE
  * halted               → PAST_DUE
  * cancelled            → CANCELLED
  * completed            → EXPIRED (all billing cycles done)
  * expired              → EXPIRED
  * pending              → TRIALING (awaiting first payment)
+ *
+ * TRIALING is an unpaid state: it never confers Pro. Only a payment event
+ * (subscription.activated / subscription.charged) moves a subscription to
+ * ACTIVE and sets the paid period (currentPeriodStart / currentPeriodEnd).
  *
  * Transitions:
  * TRIALING  → ACTIVE       (first payment succeeds)
@@ -30,10 +34,10 @@
  * A user has active Pro entitlement when ALL of:
  * 1. User is authenticated
  * 2. subscription.plan === "PRO"
- * 3. subscription.status IN (ACTIVE, TRIALING, PAST_DUE)
- *    — PAST_DUE retains access during grace period
- * 4. subscription.currentPeriodEnd > now()
- *    — handles the CANCELLED case where user retains until period end
+ * 3. subscription.status is ACTIVE, or PAST_DUE / CANCELLED within a paid
+ *    period (currentPeriodEnd > now()) — PAST_DUE is the grace period,
+ *    CANCELLED retains access until the paid period ends
+ * 4. Never TRIALING / PENDING_CREATION / EXPIRED: nothing has been paid for
  *
  * # Grace Period
  *
@@ -91,9 +95,8 @@ export interface SubscriptionEntitlement {
  *
  * Entitlement rules:
  * - plan === "PRO"
- * - status IN (ACTIVE, TRIALING, PAST_DUE, CANCELLED)
- *   — CANCELLED retains access until currentPeriodEnd
- * - currentPeriodEnd > now() if status is CANCELLED
+ * - status ACTIVE, or PAST_DUE / CANCELLED with currentPeriodEnd > now()
+ * - TRIALING (created / authenticated, unpaid) is never entitled
  *
  * Cache safety: entitlement is always fetched from DB per-request.
  * User-specific: no shared cache between users.
@@ -148,12 +151,16 @@ export function computeIsPro(
 ): boolean {
   if (plan !== "PRO") return false;
 
-  // Active and trialing always have entitlement
-  if (status === "ACTIVE" || status === "TRIALING") return true;
+  // Active: a payment event (activated / charged) confirmed the subscription.
+  if (status === "ACTIVE") return true;
 
-  // PAST_DUE: grace period — retain access until currentPeriodEnd
+  // TRIALING: created or authenticated but not yet paid — no trial is
+  // offered, so it falls through to "no entitlement" below.
+
+  // PAST_DUE: grace period — retain access until the paid period ends. No
+  // period end means no payment ever set one: nothing to retain.
   if (status === "PAST_DUE") {
-    if (!currentPeriodEnd) return true; // no period end set → retain
+    if (!currentPeriodEnd) return false;
     return currentPeriodEnd > now;
   }
 
@@ -163,7 +170,7 @@ export function computeIsPro(
     return currentPeriodEnd > now;
   }
 
-  // EXPIRED: no entitlement
+  // TRIALING, PENDING_CREATION, EXPIRED: no entitlement
   return false;
 }
 
@@ -285,16 +292,17 @@ export async function createProSubscription(
     throw error;
   }
 
-  // 3. Commit actual ID
+  // 3. Commit actual ID. The new subscription is unpaid: it has no paid
+  // period, whatever dates the creation response carries (only activated /
+  // charged establish one), and none left over from a previous subscription.
   const subscription = await db.subscription.update({
     where: { userId },
     data: {
       providerSubscriptionId: rzpSub.id,
       status: "TRIALING",
-      currentPeriodStart: rzpSub.currentStart
-        ? new Date(rzpSub.currentStart * 1000)
-        : null,
-      currentPeriodEnd: rzpSub.currentEnd ? new Date(rzpSub.currentEnd * 1000) : null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      cancelAt: null,
     },
   });
 
@@ -398,7 +406,8 @@ export async function cancelProSubscription(userId: string): Promise<void> {
  * - subscription.completed    → EXPIRED (all billing cycles done)
  * - subscription.pending      → TRIALING (awaiting first payment)
  *
- * Idempotency: providerEventId is unique. Duplicate events are silently ignored.
+ * Idempotency: providerEventId is unique. A duplicate of a processed event is
+ * ignored; a redelivery of an event whose processing failed is processed.
  *
  * Signature verification: uses raw body + HMAC-SHA256 + webhook secret.
  */
@@ -431,10 +440,13 @@ export async function processSubscriptionWebhook(
   // time-based, so a redelivery can't slip past the unique providerEventId.
   const providerEventId = razorpayEventKey(eventIdHeader, payloadRawString);
 
-  // 1. Atomic Claim (Idempotency Strategy)
-  let subscriptionEvent;
+  // 1. Record the delivery (idempotency). The unique providerEventId makes a
+  // redelivery collide with its first row: a processed row is a genuine
+  // duplicate; an unprocessed one (its processing failed, so the first
+  // delivery got a 500 and Razorpay retried) is processed now.
+  let subscriptionEventId: string;
   try {
-    subscriptionEvent = await db.subscriptionEvent.create({
+    const created = await db.subscriptionEvent.create({
       data: {
         provider: "RAZORPAY",
         providerEventId,
@@ -444,16 +456,22 @@ export async function processSubscriptionWebhook(
         receivedAt: new Date(),
       },
     });
+    subscriptionEventId = created.id;
   } catch (err: unknown) {
     const error = err as { code?: string };
-    if (error.code === "P2002") {
-      // Duplicate delivery — already claimed
-      return;
-    }
-    throw err;
+    if (error.code !== "P2002") throw err;
+
+    const existing = await db.subscriptionEvent.findUnique({
+      where: { providerEventId },
+      select: { id: true, processedAt: true },
+    });
+    if (!existing || existing.processedAt) return; // Duplicate delivery
+    subscriptionEventId = existing.id;
   }
 
-  // 2. Processing (with reconciliation fallback)
+  // 2. Processing (with reconciliation fallback). Marking the event processed
+  // and applying its transition commit together: if anything fails, both roll
+  // back and the row stays unprocessed for the retry to pick up.
   await db.$transaction(async (tx) => {
     const sub = await tx.subscription.findUnique({
       where: { providerSubscriptionId },
@@ -465,13 +483,16 @@ export async function processSubscriptionWebhook(
       return;
     }
 
-    await tx.subscriptionEvent.update({
-      where: { id: subscriptionEvent.id },
+    // Conditional claim: concurrent deliveries of one event serialize on this
+    // row, and only the one that sets processedAt applies the transition.
+    const claimed = await tx.subscriptionEvent.updateMany({
+      where: { id: subscriptionEventId, processedAt: null },
       data: {
         subscriptionId: sub.id,
         processedAt: new Date(),
       },
     });
+    if (claimed.count === 0) return;
 
     // Apply state transition
     await applySubscriptionStateTransition(tx, sub, eventType, entity);
@@ -545,12 +566,20 @@ async function applySubscriptionStateTransition(
     return;
   }
 
+  // Only a payment event (activated / charged → ACTIVE) establishes a paid
+  // period. Unpaid events (authenticated, pending, halted, cancelled, …) carry
+  // period dates too, but must not create or extend the window PAST_DUE and
+  // CANCELLED stay entitled for.
+  const paidPeriod = targetStatus === "ACTIVE";
+
   await tx.subscription.update({
     where: { id: sub.id },
     data: {
       status: targetStatus as SubscriptionStatus,
-      ...(currentStart ? { currentPeriodStart: currentStart } : {}),
-      ...(currentEnd ? { currentPeriodEnd: currentEnd, cancelAt: currentEnd } : {}),
+      ...(paidPeriod && currentStart ? { currentPeriodStart: currentStart } : {}),
+      ...(paidPeriod && currentEnd
+        ? { currentPeriodEnd: currentEnd, cancelAt: currentEnd }
+        : {}),
       ...(targetStatus === "CANCELLED" && sub.status !== "CANCELLED"
         ? { cancelledAt: new Date() }
         : {}),
