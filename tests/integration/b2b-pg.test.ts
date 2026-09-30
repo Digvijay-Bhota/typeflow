@@ -206,4 +206,21 @@ describe("B2B PostgreSQL Integration Tests", () => {
       expect((candidate.result as any).integritySignals).toBeUndefined();
     }
   });
+
+  it("Security: DISQUALIFIED candidate is blocked from starting new attempts despite maxAttempts allowance", async () => {
+    const token = randomBytes(32).toString("hex");
+    const hashed = createHash("sha256").update(token).digest("hex");
+
+    await db.assessmentCandidate.create({
+      data: {
+        assessmentId: assessmentB.id, // maxAttempts = 2
+        email: `disqualified_${Date.now()}@test.com`,
+        inviteTokenHash: hashed,
+        status: "DISQUALIFIED",
+      },
+    });
+
+    // Even though attempts count is 0 and maxAttempts is 2, it should throw
+    await expect(startCandidateAttempt(token)).rejects.toThrow("CANDIDATE_DISQUALIFIED");
+  });
 });
