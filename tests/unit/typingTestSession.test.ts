@@ -130,10 +130,7 @@ describe("Guest Claim Tokens", () => {
     expect(shareIdA).not.toBe(shareIdB);
 
     // Verify sessionStorage has both tokens separately stored
-    expect(sessionStorage.getItem(`tf_claim_token_${shareIdA}`)).toBeDefined();
-    expect(sessionStorage.getItem(`tf_claim_token_${shareIdB}`)).toBeDefined();
-    expect(sessionStorage.getItem(`tf_claim_token_${shareIdA}`)).not.toBe(
-      sessionStorage.getItem(`tf_claim_token_${shareIdB}`)
-    );
+    expect(sessionStorage.getItem(`tf_claim_token_${shareIdA}`)).toBe("claim_token_1");
+    expect(sessionStorage.getItem(`tf_claim_token_${shareIdB}`)).toBe("claim_token_2");
   });
 });
