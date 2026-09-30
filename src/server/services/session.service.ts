@@ -15,6 +15,7 @@ import {
   calculateAccuracy,
 } from "@/features/typing/lib/metrics";
 import { calculateCodeMetrics } from "@/features/typing/lib/codeMetrics";
+import { countWords } from "@/features/typing/lib/wordLimit";
 import {
   deriveTraceDiagnostics,
   type TraceDiagnostics,
@@ -150,6 +151,7 @@ export async function createSession(params: CreateSessionRequest) {
     );
   } else {
     // Normal passage selection
+    const wordsTarget = params.mode === "words" ? params.wordCount : undefined;
     const passages = await db.passage.findMany({
       where: {
         language: params.language.toUpperCase() as Language,
@@ -163,14 +165,23 @@ export async function createSession(params: CreateSessionRequest) {
         ...(trustTier === "CERTIFICATE"
           ? { charCount: { gte: CERTIFICATE_MIN_PASSAGE_CHARS } }
           : {}),
+        // A words test types the passage's first `wordCount` words, so a
+        // shorter passage would end the test early, below its target.
+        ...(wordsTarget ? { wordCount: { gte: wordsTarget } } : {}),
       },
     });
 
-    if (passages.length === 0) {
+    // The stored count is not trusted on its own: the target must be met by
+    // the text itself, counted exactly as the client's limitToWords cuts it.
+    const eligible = wordsTarget
+      ? passages.filter((p) => countWords(p.content) >= wordsTarget)
+      : passages;
+
+    if (eligible.length === 0) {
       throw new Error("No passages found for the requested criteria");
     }
 
-    passage = passages[Math.floor(Math.random() * passages.length)];
+    passage = eligible[Math.floor(Math.random() * eligible.length)];
   }
 
   const integrityToken = randomBytes(32).toString("hex");

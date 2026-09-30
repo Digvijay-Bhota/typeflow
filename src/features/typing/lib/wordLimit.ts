@@ -31,3 +31,25 @@ export function limitToWords(passage: string, wordCount: number): string {
   }
   return passage;
 }
+
+/**
+ * Words in a passage, counted the way limitToWords cuts them.
+ *
+ * Formula: (number of spaces) + 1, or 0 for empty text
+ *
+ * A passage supports a words test of `n` words exactly when
+ * countWords(passage) ≥ n: limitToWords then returns a prefix of exactly `n`
+ * words instead of the whole (shorter) passage.
+ *
+ * @param passage The passage text
+ * @returns The number of space-separated words
+ */
+export function countWords(passage: string): number {
+  if (passage.length === 0) return 0;
+
+  let spaces = 0;
+  for (let i = 0; i < passage.length; i++) {
+    if (passage[i] === " ") spaces += 1;
+  }
+  return spaces + 1;
+}
