@@ -38,7 +38,7 @@ export function isShortcutKey(e: KeyModifiers, isApplePlatform: boolean): boolea
   if (e.metaKey) return true;
   if (e.key.length !== 1) return true;
 
-  const altGraph = e.getModifierState?.("AltGraph") === true || (e.ctrlKey && e.altKey);
+  const altGraph = e.getModifierState?.("AltGraph") === true;
   if (altGraph) return false;
   if (e.altKey && !e.ctrlKey) return !isApplePlatform;
   return true;

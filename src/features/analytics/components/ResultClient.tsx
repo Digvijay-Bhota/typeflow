@@ -99,7 +99,7 @@ export function ResultClient({
   let chartData: any[] = [];
   if (Array.isArray(result.intervalWpms)) {
     chartData = result.intervalWpms.map((val: number, i: number) => ({
-      second: i + 1,
+      second: (i + 1) * 5,
       wpm: Math.round(val),
     }));
   }

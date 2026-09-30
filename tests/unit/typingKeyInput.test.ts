@@ -43,10 +43,18 @@ describe("isShortcutKey", () => {
     expect(isShortcutKey(key("@", { metaKey: true, altKey: true }), true)).toBe(true);
   });
 
-  it("types AltGr characters, reported as Ctrl+Alt or the AltGraph state", () => {
-    expect(isShortcutKey(key("@", { ctrlKey: true, altKey: true }), false)).toBe(false);
+  it("types AltGr characters, exposed as the AltGraph state", () => {
+    // A genuine AltGr keystroke has AltGraph modifier state
     expect(isShortcutKey(key("{", { altKey: true }, true), false)).toBe(false);
     expect(isShortcutKey(key("\\", {}, true), false)).toBe(false);
+    expect(isShortcutKey(key("@", { ctrlKey: true, altKey: true }, true), false)).toBe(
+      false
+    );
+  });
+
+  it("leaves physical Ctrl+Alt shortcuts to the browser", () => {
+    // Ctrl+Alt without AltGraph is a shortcut
+    expect(isShortcutKey(key("c", { ctrlKey: true, altKey: true }), false)).toBe(true);
   });
 
   it("types Option characters on Apple platforms only", () => {
