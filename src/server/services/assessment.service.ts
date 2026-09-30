@@ -161,6 +161,10 @@ export async function startCandidateAttempt(inviteToken: string) {
     throw new Error("ASSESSMENT_NOT_ACTIVE");
   }
 
+  if (candidate.status === "DISQUALIFIED") {
+    throw new Error("CANDIDATE_DISQUALIFIED");
+  }
+
   const now = new Date();
   if (candidate.expiresAt && candidate.expiresAt < now) {
     throw new Error("INVITATION_EXPIRED");
@@ -176,8 +180,14 @@ export async function startCandidateAttempt(inviteToken: string) {
 
   // Create the attempt inside a transaction to strictly enforce max attempts
   return await db.$transaction(async (tx) => {
-    // Acquire a row-level lock on the candidate to strictly serialize attempt creations
-    await tx.$executeRaw`SELECT id FROM assessment_candidates WHERE id = ${candidate.id}::uuid FOR UPDATE`;
+    // Acquire a row-level lock on the candidate and re-read its status to serialize creations safely
+    const lockedRows = await tx.$queryRaw<
+      { status: string }[]
+    >`SELECT status FROM assessment_candidates WHERE id = ${candidate.id}::uuid FOR UPDATE`;
+
+    if (lockedRows[0]?.status === "DISQUALIFIED") {
+      throw new Error("CANDIDATE_DISQUALIFIED");
+    }
 
     const currentAttempts = await tx.assessmentAttempt.count({
       where: { candidateId: candidate.id },
