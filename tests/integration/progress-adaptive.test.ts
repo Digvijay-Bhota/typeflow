@@ -14,6 +14,21 @@ vi.mock("@/server/db", () => ({
   },
 }));
 
+/**
+ * The single upsert's parameters, per key: accumulateUserKeyStats writes every
+ * key in one statement, with parallel arrays [keys, errors, corrected, totals].
+ */
+function rowsWritten(userId: string) {
+  const calls = (db.$executeRaw as any).mock.calls.filter((c: any) => c[1] === userId);
+  expect(calls).toHaveLength(1);
+  const [sqlParts, , keys, errors, corrected, totals] = calls[0];
+  const rows: Record<string, { errors: number; corrected: number; total: number }> = {};
+  (keys as string[]).forEach((key, i) => {
+    rows[key] = { errors: errors[i], corrected: corrected[i], total: totals[i] };
+  });
+  return { rows, keys: keys as string[], sql: (sqlParts as string[]).join("?") };
+}
+
 describe("Phase 9: Progress & Adaptive Foundation (Mock)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -34,21 +49,9 @@ describe("Phase 9: Progress & Adaptive Foundation (Mock)", () => {
 
     await accumulateUserKeyStats("user-1", passage, errorMap, events, db);
 
-    expect(db.$executeRaw).toHaveBeenCalled();
-    const calls = (db.$executeRaw as any).mock.calls;
-
-    const aCall = calls.find((c: any) => c[1] === "user-1" && c[2] === "a");
-    expect(aCall).toBeDefined();
-
-    const bCall = calls.find((c: any) => c[1] === "user-1" && c[2] === "b");
-    expect(bCall).toBeDefined();
-
-    const bErrors = bCall[3]; // stat.errors
-    const bCorrected = bCall[4]; // stat.corrected
-    const bTotal = bCall[5]; // stat.total
-    expect(bErrors).toBe(1);
-    expect(bCorrected).toBe(1);
-    expect(bTotal).toBe(1);
+    const { rows } = rowsWritten("user-1");
+    expect(rows.a).toBeDefined();
+    expect(rows.b).toEqual({ errors: 1, corrected: 1, total: 1 });
   });
 
   it("should handle multiple repeated keys and uncorrected mistakes", async () => {
@@ -75,17 +78,11 @@ describe("Phase 9: Progress & Adaptive Foundation (Mock)", () => {
 
     await accumulateUserKeyStats("user-2", passage, errorMap, events, db);
 
-    const calls = (db.$executeRaw as any).mock.calls;
-
-    const lCall = calls.find((c: any) => c[1] === "user-2" && c[2] === "l");
-    expect(lCall[3]).toBe(2); // errors
-    expect(lCall[4]).toBe(1); // corrected
-    expect(lCall[5]).toBe(2); // total occurrences
-
-    const oCall = calls.find((c: any) => c[1] === "user-2" && c[2] === "o");
-    expect(oCall[3]).toBe(1); // errors
-    expect(oCall[4]).toBe(0); // corrected
-    expect(oCall[5]).toBe(1); // total occurrences
+    const { rows, keys } = rowsWritten("user-2");
+    expect(rows.l).toEqual({ errors: 2, corrected: 1, total: 2 });
+    expect(rows.o).toEqual({ errors: 1, corrected: 0, total: 1 });
+    // Written in sorted key order (the lock order that prevents deadlocks).
+    expect(keys).toEqual(["e", "h", "l", "o"]);
 
     // Verify no zero-denominator rows
     // Every call must have totalOccurrences >= 0. Since we filter stat.total === 0 && stat.errors === 0,
@@ -112,28 +109,17 @@ describe("Phase 9: Progress & Adaptive Foundation (Mock)", () => {
 
     await accumulateUserKeyStats("user-repeat", passage, errorMap, events, db);
 
-    const calls = (db.$executeRaw as any).mock.calls;
-    const aCall = calls.find((c: any) => c[1] === "user-repeat" && c[2] === "a");
-
-    expect(aCall).toBeDefined();
-    const errors = aCall[3];
-    const corrected = aCall[4];
-    const total = aCall[5];
-
-    expect(errors).toBe(2);
-    expect(corrected).toBe(2);
-    expect(total).toBe(1);
+    const { rows, sql: rawSql } = rowsWritten("user-repeat");
+    expect(rows.a).toEqual({ errors: 2, corrected: 2, total: 1 });
 
     // Verify the SQL uses the corrected accuracyRate logic, rather than just recalculating it
-    const sqlParts = aCall[0] as string[];
-    const rawSql = sqlParts.join("?");
 
     // Protect against the old formula: 1.0 - (errors / totalOccurrences)
     expect(rawSql).not.toContain("GREATEST(0.0, 1.0 - (");
 
-    // Verify the new successfulAttempts / totalAttempts logic is embedded for VALUES
+    // Verify the new successfulAttempts / totalAttempts logic is embedded for new rows
     expect(rawSql).toContain(
-      "LEAST(1.0, GREATEST(0.0, (? - ? + ?)::float / GREATEST(1, ? + ?)))"
+      'LEAST(1.0, GREATEST(0.0, (v."total" - v."errors" + v."corrected")::float / GREATEST(1, v."total" + v."corrected")))'
     );
 
     // Verify the DO UPDATE SET clause also uses the new semantics

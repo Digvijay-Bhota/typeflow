@@ -157,30 +157,42 @@ export async function accumulateUserKeyStats(
     stat.corrected += err.corrected || 0;
   }
 
-  // To prevent deadlocks in concurrent updates, sort keys before updating
-  const sortedKeys = Array.from(stats.keys())
+  // Rows are written in sorted key order, so concurrent submissions for the
+  // same user lock their rows in the same order and cannot deadlock.
+  const keys = Array.from(stats.keys())
     .filter((k) => k.length <= 10)
-    .sort();
+    .sort()
+    .filter((k) => {
+      const stat = stats.get(k)!;
+      return !(stat.total === 0 && stat.errors === 0);
+    });
 
-  for (const key of sortedKeys) {
-    const stat = stats.get(key)!;
-    if (stat.total === 0 && stat.errors === 0) continue;
+  if (keys.length === 0) return;
 
-    await txClient.$executeRaw`
-      INSERT INTO "user_key_stats" (id, "userId", "key", "errorCount", "correctedCount", "totalOccurrences", "accuracyRate", "updatedAt")
-      VALUES (gen_random_uuid(), ${userId}::uuid, ${key}, ${stat.errors}, ${stat.corrected}, ${stat.total},
-              LEAST(1.0, GREATEST(0.0, (${stat.total} - ${stat.errors} + ${stat.corrected})::float / GREATEST(1, ${stat.total} + ${stat.corrected}))), now())
-      ON CONFLICT ("userId", "key") DO UPDATE
-      SET "errorCount" = "user_key_stats"."errorCount" + EXCLUDED."errorCount",
-          "correctedCount" = "user_key_stats"."correctedCount" + EXCLUDED."correctedCount",
-          "totalOccurrences" = "user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences",
-          "accuracyRate" = LEAST(1.0, GREATEST(0.0,
-            (("user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences") - ("user_key_stats"."errorCount" + EXCLUDED."errorCount") + ("user_key_stats"."correctedCount" + EXCLUDED."correctedCount"))::float
-            / GREATEST(1, ("user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences") + ("user_key_stats"."correctedCount" + EXCLUDED."correctedCount"))
-          )),
-          "updatedAt" = now();
-    `;
-  }
+  const errors = keys.map((k) => stats.get(k)!.errors);
+  const corrected = keys.map((k) => stats.get(k)!.corrected);
+  const totals = keys.map((k) => stats.get(k)!.total);
+
+  // One statement for every key, not one round trip per key: it runs inside the
+  // result transaction, which it would otherwise hold open for ~30-45 extra
+  // round trips. WITH ORDINALITY + ORDER BY keeps the sorted order above.
+  await txClient.$executeRaw`
+    INSERT INTO "user_key_stats" (id, "userId", "key", "errorCount", "correctedCount", "totalOccurrences", "accuracyRate", "updatedAt")
+    SELECT gen_random_uuid(), ${userId}::uuid, v."key", v."errors", v."corrected", v."total",
+           LEAST(1.0, GREATEST(0.0, (v."total" - v."errors" + v."corrected")::float / GREATEST(1, v."total" + v."corrected"))), now()
+    FROM unnest(${keys}::text[], ${errors}::int[], ${corrected}::int[], ${totals}::int[])
+         WITH ORDINALITY AS v("key", "errors", "corrected", "total", "ord")
+    ORDER BY v."ord"
+    ON CONFLICT ("userId", "key") DO UPDATE
+    SET "errorCount" = "user_key_stats"."errorCount" + EXCLUDED."errorCount",
+        "correctedCount" = "user_key_stats"."correctedCount" + EXCLUDED."correctedCount",
+        "totalOccurrences" = "user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences",
+        "accuracyRate" = LEAST(1.0, GREATEST(0.0,
+          (("user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences") - ("user_key_stats"."errorCount" + EXCLUDED."errorCount") + ("user_key_stats"."correctedCount" + EXCLUDED."correctedCount"))::float
+          / GREATEST(1, ("user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences") + ("user_key_stats"."correctedCount" + EXCLUDED."correctedCount"))
+        )),
+        "updatedAt" = now();
+  `;
 }
 
 export async function getPersistentWeakKeys(
