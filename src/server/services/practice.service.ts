@@ -169,12 +169,15 @@ export async function accumulateUserKeyStats(
     await txClient.$executeRaw`
       INSERT INTO "user_key_stats" (id, "userId", "key", "errorCount", "correctedCount", "totalOccurrences", "accuracyRate", "updatedAt")
       VALUES (gen_random_uuid(), ${userId}::uuid, ${key}, ${stat.errors}, ${stat.corrected}, ${stat.total},
-              GREATEST(0.0, 1.0 - (${stat.errors}::float / GREATEST(1, ${stat.total}))), now())
+              LEAST(1.0, GREATEST(0.0, (${stat.total} - ${stat.errors} + ${stat.corrected})::float / GREATEST(1, ${stat.total} + ${stat.corrected}))), now())
       ON CONFLICT ("userId", "key") DO UPDATE
       SET "errorCount" = "user_key_stats"."errorCount" + EXCLUDED."errorCount",
           "correctedCount" = "user_key_stats"."correctedCount" + EXCLUDED."correctedCount",
           "totalOccurrences" = "user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences",
-          "accuracyRate" = GREATEST(0.0, 1.0 - (("user_key_stats"."errorCount" + EXCLUDED."errorCount")::float / GREATEST(1, "user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences"))),
+          "accuracyRate" = LEAST(1.0, GREATEST(0.0,
+            (("user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences") - ("user_key_stats"."errorCount" + EXCLUDED."errorCount") + ("user_key_stats"."correctedCount" + EXCLUDED."correctedCount"))::float
+            / GREATEST(1, ("user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences") + ("user_key_stats"."correctedCount" + EXCLUDED."correctedCount"))
+          )),
           "updatedAt" = now();
     `;
   }

@@ -97,6 +97,52 @@ describe("Phase 9: Progress & Adaptive Foundation (Mock)", () => {
     expect(db.$executeRaw).not.toHaveBeenCalled();
   });
 
+  it("should handle repeated wrong attempts at one passage position", async () => {
+    const passage = "a";
+    const errorMap = {
+      a: { expected: "a", count: 2, corrected: 2, uncorrected: 0 },
+    };
+    const events = [
+      [100, 0, 0, "x"], // wrong 1
+      [200, 1, 0], // backspace
+      [300, 0, 0, "y"], // wrong 2
+      [400, 1, 0], // backspace
+      [500, 0, 0, "a"], // correct
+    ];
+
+    await accumulateUserKeyStats("user-repeat", passage, errorMap, events, db);
+
+    const calls = (db.$executeRaw as any).mock.calls;
+    const aCall = calls.find((c: any) => c[1] === "user-repeat" && c[2] === "a");
+
+    expect(aCall).toBeDefined();
+    const errors = aCall[3];
+    const corrected = aCall[4];
+    const total = aCall[5];
+
+    expect(errors).toBe(2);
+    expect(corrected).toBe(2);
+    expect(total).toBe(1);
+
+    // Verify the SQL uses the corrected accuracyRate logic, rather than just recalculating it
+    const sqlParts = aCall[0] as string[];
+    const rawSql = sqlParts.join("?");
+
+    // Protect against the old formula: 1.0 - (errors / totalOccurrences)
+    expect(rawSql).not.toContain("GREATEST(0.0, 1.0 - (");
+
+    // Verify the new successfulAttempts / totalAttempts logic is embedded for VALUES
+    expect(rawSql).toContain(
+      "LEAST(1.0, GREATEST(0.0, (? - ? + ?)::float / GREATEST(1, ? + ?)))"
+    );
+
+    // Verify the DO UPDATE SET clause also uses the new semantics
+    expect(rawSql).toContain('"accuracyRate" = LEAST(1.0, GREATEST(0.0,');
+    expect(rawSql).toContain(
+      '("user_key_stats"."totalOccurrences" + EXCLUDED."totalOccurrences") - ("user_key_stats"."errorCount" + EXCLUDED."errorCount") + ("user_key_stats"."correctedCount" + EXCLUDED."correctedCount")'
+    );
+  });
+
   it("should get persistent weak keys sensibly", async () => {
     (db.userKeyStat.findMany as any).mockResolvedValueOnce([
       { key: "z", errorCount: 8, accuracyRate: 0.2, totalOccurrences: 10 },
