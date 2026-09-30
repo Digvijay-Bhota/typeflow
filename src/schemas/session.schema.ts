@@ -4,6 +4,7 @@ import {
   LANGUAGES,
   CODE_LANGUAGES,
   TEST_DURATIONS,
+  WORD_COUNTS,
   CERTIFICATE_MIN_DURATION,
 } from "@/lib/constants";
 
@@ -53,6 +54,18 @@ export const CreateSessionSchema = z
     {
       message: `Duration must be one of ${TEST_DURATIONS.join(", ")} seconds`,
       path: ["duration"],
+    }
+  )
+  .refine(
+    // Only the word counts the product offers: every one of them is met by the
+    // passages a words test can be served (see createSession).
+    (data) =>
+      data.mode !== "words" ||
+      data.wordCount === undefined ||
+      (WORD_COUNTS as readonly number[]).includes(data.wordCount),
+    {
+      message: `Word count must be one of ${WORD_COUNTS.join(", ")}`,
+      path: ["wordCount"],
     }
   )
   .refine(
