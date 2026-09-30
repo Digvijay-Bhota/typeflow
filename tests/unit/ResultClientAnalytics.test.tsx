@@ -8,6 +8,19 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href, ...rest }, children),
 }));
 
+vi.mock("recharts", async (importOriginal) => {
+  const mod = await importOriginal<any>();
+  return {
+    ...mod,
+    ResponsiveContainer: ({ children }: any) => children,
+    LineChart: ({ data }: any) =>
+      React.createElement("div", {
+        "data-testid": "line-chart",
+        "data-chart": JSON.stringify(data),
+      }),
+  };
+});
+
 describe("ResultClient Analytics improvements", () => {
   const baseResult = {
     shareId: "s1",
@@ -110,5 +123,19 @@ describe("ResultClient Analytics improvements", () => {
     expect(html).toContain(
       "Great job! You improved your speed and accuracy on your weak keys."
     );
+  });
+
+  it("maps chart data points to 5-second intervals", () => {
+    const resultWithIntervals = {
+      ...baseResult,
+      intervalWpms: [40, 50, 60],
+    };
+
+    const html = renderToStaticMarkup(<ResultClient result={resultWithIntervals} />);
+
+    // We expect the array mapped to have seconds 5, 10, 15
+    expect(html).toContain("{&quot;second&quot;:5,&quot;wpm&quot;:40}");
+    expect(html).toContain("{&quot;second&quot;:10,&quot;wpm&quot;:50}");
+    expect(html).toContain("{&quot;second&quot;:15,&quot;wpm&quot;:60}");
   });
 });
