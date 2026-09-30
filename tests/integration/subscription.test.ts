@@ -36,6 +36,7 @@ vi.mock("@/server/db", () => {
       findMany: vi.fn().mockResolvedValue([]),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
   return { db };
@@ -93,12 +94,22 @@ describe("computeIsPro", () => {
     expect(computeIsPro("PRO", "ACTIVE", future, now)).toBe(true);
   });
 
-  it("returns true for PRO TRIALING", () => {
-    expect(computeIsPro("PRO", "TRIALING", future, now)).toBe(true);
+  // TRIALING is the unpaid created/authenticated state (no trial is offered).
+  it("returns false for PRO TRIALING (created, not yet paid)", () => {
+    expect(computeIsPro("PRO", "TRIALING", future, now)).toBe(false);
+    expect(computeIsPro("PRO", "TRIALING", null, now)).toBe(false);
+  });
+
+  it("returns false for PRO PENDING_CREATION", () => {
+    expect(computeIsPro("PRO", "PENDING_CREATION", future, now)).toBe(false);
   });
 
   it("returns true for PRO PAST_DUE within period (grace period)", () => {
     expect(computeIsPro("PRO", "PAST_DUE", future, now)).toBe(true);
+  });
+
+  it("returns false for PRO PAST_DUE with no paid period", () => {
+    expect(computeIsPro("PRO", "PAST_DUE", null, now)).toBe(false);
   });
 
   it("returns false for PRO PAST_DUE after period expired", () => {
@@ -488,9 +499,40 @@ describe("processSubscriptionWebhook", () => {
     (db.subscriptionEvent.create as ReturnType<typeof vi.fn>).mockRejectedValue({
       code: "P2002",
     });
+    (db.subscriptionEvent.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "evt_row_1",
+      processedAt: new Date(),
+    });
     const payload = makePayload("subscription.activated");
     await processSubscriptionWebhook(payload, "valid_sig", "raw");
-    // Event already exists — caught gracefully, no state change
+    // Event already processed — caught gracefully, no state change
+    expect(db.subscription.update).not.toHaveBeenCalled();
+  });
+
+  it("processes a redelivered event whose first processing failed", async () => {
+    (db.subscriptionEvent.create as ReturnType<typeof vi.fn>).mockRejectedValue({
+      code: "P2002",
+    });
+    (db.subscriptionEvent.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "evt_row_1",
+      processedAt: null,
+    });
+    const payload = makePayload("subscription.activated");
+    await processSubscriptionWebhook(payload, "valid_sig", "raw");
+    expect(db.subscriptionEvent.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "evt_row_1", processedAt: null } })
+    );
+    expect(db.subscription.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "ACTIVE" }) })
+    );
+  });
+
+  it("does not apply an event another delivery already claimed", async () => {
+    (db.subscriptionEvent.updateMany as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      count: 0,
+    });
+    const payload = makePayload("subscription.activated");
+    await processSubscriptionWebhook(payload, "valid_sig", "raw");
     expect(db.subscription.update).not.toHaveBeenCalled();
   });
 
@@ -581,6 +623,33 @@ describe("processSubscriptionWebhook", () => {
         }),
       })
     );
+  });
+
+  it("does not set a paid period from an unpaid event (halted, cancelled, authenticated)", async () => {
+    for (const [event, status] of [
+      ["subscription.halted", "ACTIVE"],
+      ["subscription.cancelled", "ACTIVE"],
+      ["subscription.authenticated", "TRIALING"],
+    ] as const) {
+      vi.clearAllMocks();
+      (
+        RazorpaySubService.verifyRazorpaySubscriptionSignature as ReturnType<typeof vi.fn>
+      ).mockReturnValue(true);
+      (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+        makeSub({ status })
+      );
+      (db.subscriptionEvent.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+      await processSubscriptionWebhook(makePayload(event), "valid_sig", "raw");
+
+      const data = (db.subscription.update as ReturnType<typeof vi.fn>).mock.calls.at(
+        -1
+      )?.[0]?.data as Record<string, unknown>;
+      expect(data, event).toBeDefined();
+      expect(data, event).not.toHaveProperty("currentPeriodStart");
+      expect(data, event).not.toHaveProperty("currentPeriodEnd");
+      expect(data, event).not.toHaveProperty("cancelAt");
+    }
   });
 
   it("sets TRIALING on subscription.pending", async () => {
