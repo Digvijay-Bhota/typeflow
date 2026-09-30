@@ -67,7 +67,9 @@ describe("GET /api/result/[shareId]", () => {
   it("1. Unauthenticated viewer: response must NOT expose errorMap or codeMetrics", async () => {
     vi.mocked(getAuthenticatedUser).mockRejectedValue(new Error("Unauthorized"));
 
-    const res = await GET(makeRequest(), { params: Promise.resolve({ shareId: mockShareId }) });
+    const res = await GET(makeRequest(), {
+      params: Promise.resolve({ shareId: mockShareId }),
+    });
     expect(res.status).toBe(200);
 
     const data = await res.json();
@@ -79,7 +81,9 @@ describe("GET /api/result/[shareId]", () => {
   it("2. Authenticated non-owner: response must NOT expose errorMap or codeMetrics", async () => {
     vi.mocked(getAuthenticatedUser).mockResolvedValue({ id: "user-other-2" } as any);
 
-    const res = await GET(makeRequest(), { params: Promise.resolve({ shareId: mockShareId }) });
+    const res = await GET(makeRequest(), {
+      params: Promise.resolve({ shareId: mockShareId }),
+    });
     expect(res.status).toBe(200);
 
     const data = await res.json();
@@ -91,7 +95,9 @@ describe("GET /api/result/[shareId]", () => {
   it("3. Authenticated owner: response DOES expose errorMap and codeMetrics", async () => {
     vi.mocked(getAuthenticatedUser).mockResolvedValue({ id: mockOwnerId } as any);
 
-    const res = await GET(makeRequest(), { params: Promise.resolve({ shareId: mockShareId }) });
+    const res = await GET(makeRequest(), {
+      params: Promise.resolve({ shareId: mockShareId }),
+    });
     expect(res.status).toBe(200);
 
     const data = await res.json();
