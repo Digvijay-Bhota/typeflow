@@ -187,4 +187,48 @@ describe("TypingTest — words mode", () => {
     await waitFor(() => expect(textbox.textContent).toContain(TEN_WORDS));
     expect(textbox.textContent).not.toContain("w10");
   });
+
+  it("decrements the word ordinal when backspacing across a space", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            sessionId: "sess_words",
+            integrityToken: "words-token",
+            passage: { id: "p-words", content: TEN_WORDS },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      })
+    );
+
+    const textbox = await renderReadyTypingTest({ mode: "words", wordCount: 10 });
+
+    // 1. Complete the first word and its space
+    act(() => {
+      fireEvent.keyDown(textbox, { key: "w" });
+      fireEvent.keyDown(textbox, { key: "0" });
+      fireEvent.keyDown(textbox, { key: " " });
+    });
+
+    // 2. Assert 2/10
+    await waitFor(() => expect(screen.getByText("2/10")).toBeDefined());
+
+    // 3. Press Backspace to cross back over the boundary
+    act(() => {
+      fireEvent.keyDown(textbox, { key: "Backspace" });
+    });
+
+    // 4. Assert 1/10
+    await waitFor(() => expect(screen.getByText("1/10")).toBeDefined());
+
+    // 5. Re-type the boundary
+    act(() => {
+      fireEvent.keyDown(textbox, { key: " " });
+    });
+
+    // 6. Verify 2/10
+    await waitFor(() => expect(screen.getByText("2/10")).toBeDefined());
+  });
 });
