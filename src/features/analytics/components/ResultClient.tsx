@@ -12,6 +12,9 @@ import { CertificatePreparingActions } from "@/features/payment/components/Certi
 import { GuestClaimBanner } from "@/features/auth/components/GuestClaimBanner";
 import { KeyboardHeatmap } from "@/features/analytics/components/KeyboardHeatmap";
 import { Sparkline } from "@/features/analytics/components/Sparkline";
+import { CodeMetricsPanel } from "@/features/analytics/components/CodeMetricsPanel";
+import { WeakKeys } from "@/features/analytics/components/WeakKeys";
+import { AccuracyPanel } from "@/features/analytics/components/AccuracyPanel";
 import {
   canStartCheckout,
   certificateVerifyPath,
@@ -283,12 +286,22 @@ export function ResultClient({
           )}
         </div>
 
-        {/* COMPARISON ANALYSIS (FOR PRACTICE) */}
-        {result.session.mode === "PRACTICE" && comparison && (
+        {/* CODE METRICS ANALYSIS */}
+        {result.session?.language === "CODE" && result.codeMetrics && (
+          <div className="lg:col-span-3">
+            <CodeMetricsPanel result={result} />
+          </div>
+        )}
+
+        {/* COMPARISON / TREND ANALYSIS */}
+        {comparison && comparison.count > 0 && (
           <div className="flex flex-col space-y-6">
             <div className="bg-surface border-border flex-1 rounded-3xl border p-8 shadow-sm">
               <h2 className="mb-6 flex items-center gap-2 text-xl font-bold">
-                <Target className="text-accent h-5 w-5" /> Practice Results
+                <Target className="text-accent h-5 w-5" />
+                {comparison.type === "PRACTICE"
+                  ? "Practice Results"
+                  : "Recent Trend (Last " + comparison.count + " Tests)"}
               </h2>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-background rounded-2xl border p-4 text-center">
@@ -311,20 +324,42 @@ export function ResultClient({
                 </div>
               </div>
               <div className="mt-6 text-center text-sm font-medium">
-                {wpm >= comparison.beforeWpm && accuracy >= comparison.beforeAccuracy ? (
+                {comparison.type === "PRACTICE" ? (
+                  wpm >= comparison.beforeWpm && accuracy >= comparison.beforeAccuracy ? (
+                    <p className="text-emerald-500">
+                      Great job! You improved your speed and accuracy on your weak keys.
+                    </p>
+                  ) : wpm >= comparison.beforeWpm ? (
+                    <p className="text-emerald-500">
+                      Your speed improved! Keep working on accuracy.
+                    </p>
+                  ) : accuracy >= comparison.beforeAccuracy ? (
+                    <p className="text-emerald-500">
+                      Your accuracy improved! Keep practicing for speed.
+                    </p>
+                  ) : (
+                    <p className="text-muted">
+                      Keep practicing to improve your weak keys.
+                    </p>
+                  )
+                ) : wpm > comparison.beforeWpm &&
+                  accuracy >= comparison.beforeAccuracy ? (
                   <p className="text-emerald-500">
-                    Great job! You improved your speed and accuracy on your weak keys.
+                    Awesome! You&#x27;re trending upwards in speed without losing
+                    accuracy.
                   </p>
-                ) : wpm >= comparison.beforeWpm ? (
+                ) : wpm > comparison.beforeWpm ? (
                   <p className="text-emerald-500">
-                    Your speed improved! Keep working on accuracy.
+                    Your speed is above your recent average. Keep an eye on accuracy!
                   </p>
-                ) : accuracy >= comparison.beforeAccuracy ? (
+                ) : accuracy > comparison.beforeAccuracy ? (
                   <p className="text-emerald-500">
-                    Your accuracy improved! Keep practicing for speed.
+                    Your accuracy is better than your recent average. Good focus.
                   </p>
                 ) : (
-                  <p className="text-muted">Keep practicing to improve your weak keys.</p>
+                  <p className="text-muted">
+                    Consistent performance. Keep practicing to push your limits.
+                  </p>
                 )}
               </div>
             </div>
@@ -340,7 +375,14 @@ export function ResultClient({
             {weakKeys.length > 0 ? (
               <>
                 <div className="space-y-4">
-                  <KeyboardHeatmap errorMap={result.errorMap} />
+                  {result.errorMap ? (
+                    <>
+                      <KeyboardHeatmap errorMap={result.errorMap} />
+                      <WeakKeys errorMap={result.errorMap} />
+                    </>
+                  ) : (
+                    <KeyboardHeatmap errorMap={result.errorMap} />
+                  )}
                 </div>
                 {/* Only the owner receives result.id; practice is owner-only anyway. */}
                 {result.id && (
@@ -364,37 +406,7 @@ export function ResultClient({
             )}
           </div>
 
-          <div className="bg-surface border-border rounded-3xl border p-8 shadow-sm">
-            <h2 className="mb-5 text-xl font-bold">Keystroke Breakdown</h2>
-            <div className="space-y-4 text-sm font-bold">
-              <div className="flex items-center justify-between py-1">
-                <span className="text-muted text-xs tracking-wider uppercase">
-                  Total Keystrokes
-                </span>
-                <span className="text-lg">
-                  {result.totalKeystrokes || result.totalChars}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-muted text-xs tracking-wider uppercase">
-                  Correct
-                </span>
-                <span className="text-lg text-emerald-500">{result.correctChars}</span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-muted text-xs tracking-wider uppercase">
-                  Incorrect
-                </span>
-                <span className="text-danger text-lg">{result.incorrectChars}</span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-muted text-xs tracking-wider uppercase">
-                  Fixed Errors
-                </span>
-                <span className="text-lg text-orange-500">{result.correctedErrors}</span>
-              </div>
-            </div>
-          </div>
+          <AccuracyPanel result={result} />
         </div>
       </div>
 

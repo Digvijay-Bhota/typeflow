@@ -40,16 +40,25 @@ export default async function ResultPage({
     notFound();
   }
 
+  const viewer = await getAuthenticatedUser().catch(() => null);
+  const isOwner = !!viewer && result.userId === viewer.id;
+
   let comparison: any = null;
 
-  if (result.session.mode === "PRACTICE" && result.userId) {
+  if (isOwner) {
     const recent = await prisma.testResult.findMany({
       where: {
         userId: result.userId,
         createdAt: { lt: result.createdAt },
         session: {
-          mode: { not: "PRACTICE" },
+          mode:
+            result.session.mode === "PRACTICE"
+              ? { not: "PRACTICE" }
+              : result.session.mode,
           language: result.session.language,
+          ...(result.session.mode !== "PRACTICE" && result.session.duration
+            ? { duration: result.session.duration }
+            : {}),
         },
       },
       orderBy: { createdAt: "desc" },
@@ -63,13 +72,16 @@ export default async function ResultPage({
       comparison = {
         beforeWpm: Math.round(avgWpm),
         beforeAccuracy: Math.round(avgAcc * 100),
+        type: result.session.mode === "PRACTICE" ? "PRACTICE" : "TREND",
+        count: recent.length,
       };
     }
   }
 
-  const viewer = await getAuthenticatedUser().catch(() => null);
-  const isOwner = !!viewer && result.userId === viewer.id;
-  const publicResult = getPublicResult(result, { includeId: isOwner });
+  const publicResult = getPublicResult(result, {
+    includeId: isOwner,
+    includeDetailedAnalytics: isOwner,
+  });
   // Authoritative purchase/certificate state, for the owner only.
   const certificate =
     isOwner && result.session.trustTier === "CERTIFICATE"
