@@ -159,7 +159,7 @@ export async function accumulateUserKeyStats(
 
   // To prevent deadlocks in concurrent updates, sort keys before updating
   const sortedKeys = Array.from(stats.keys())
-    .filter(k => k.length <= 10)
+    .filter((k) => k.length <= 10)
     .sort();
 
   for (const key of sortedKeys) {
@@ -180,16 +180,15 @@ export async function accumulateUserKeyStats(
   }
 }
 
-export async function getPersistentWeakKeys(userId: string, limit: number = 5): Promise<string[]> {
+export async function getPersistentWeakKeys(
+  userId: string,
+  limit: number = 5
+): Promise<string[]> {
   const stats = await db.userKeyStat.findMany({
     where: { userId, totalOccurrences: { gte: 10 } },
-    orderBy: [
-      { accuracyRate: "asc" },
-      { errorCount: "desc" },
-      { key: "asc" }
-    ],
-    take: limit
+    orderBy: [{ accuracyRate: "asc" }, { errorCount: "desc" }, { key: "asc" }],
+    take: limit,
   });
 
-  return stats.map(s => s.key);
+  return stats.map((s) => s.key);
 }

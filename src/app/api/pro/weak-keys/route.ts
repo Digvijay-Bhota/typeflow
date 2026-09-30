@@ -24,19 +24,15 @@ export async function GET(req: NextRequest) {
     const { db } = await import("@/server/db");
     const stats = await db.userKeyStat.findMany({
       where: { userId: user.id, totalOccurrences: { gte: 10 } },
-      orderBy: [
-        { accuracyRate: "asc" },
-        { errorCount: "desc" },
-        { key: "asc" }
-      ],
-      take: 10
+      orderBy: [{ accuracyRate: "asc" }, { errorCount: "desc" }, { key: "asc" }],
+      take: 10,
     });
 
     return NextResponse.json({
       success: true,
-      weakKeys: stats.map(s => ({
+      weakKeys: stats.map((s) => ({
         key: s.key,
-        errorRate: 1.0 - s.accuracyRate
+        errorRate: 1.0 - s.accuracyRate,
       })),
     });
   } catch (err: unknown) {

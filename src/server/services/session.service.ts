@@ -608,7 +608,11 @@ export async function submitResult(
       if (session.userId && integrityStatus === "VERIFIED") {
         // Accumulate user key stats only if we have an authoritative event trace
         // to prevent silently writing inaccurate totalOccurrences.
-        if (scoringSource === "SERVER_RECONSTRUCTED" && diagnostics && params.eventTrace?.events) {
+        if (
+          scoringSource === "SERVER_RECONSTRUCTED" &&
+          diagnostics &&
+          params.eventTrace?.events
+        ) {
           const { accumulateUserKeyStats } = await import("./practice.service");
           await accumulateUserKeyStats(
             session.userId,
@@ -622,12 +626,14 @@ export async function submitResult(
         // Save PracticeSession if this was a practice test
         if (session.mode === "PRACTICE") {
           let focusKeys: string[] = [];
-          if (session.passage.sourceAttribution?.startsWith("Generated for weak keys: ")) {
+          if (
+            session.passage.sourceAttribution?.startsWith("Generated for weak keys: ")
+          ) {
             focusKeys = session.passage.sourceAttribution
               .replace("Generated for weak keys: ", "")
               .split(",")
-              .map(k => k.trim().toLowerCase())
-              .filter(k => k.length > 0);
+              .map((k) => k.trim().toLowerCase())
+              .filter((k) => k.length > 0);
           }
 
           await tx.practiceSession.create({
@@ -643,7 +649,6 @@ export async function submitResult(
           });
         }
       }
-
 
       return {
         resultId: result.id,

@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { accumulateUserKeyStats, getPersistentWeakKeys } from "@/server/services/practice.service";
+import {
+  accumulateUserKeyStats,
+  getPersistentWeakKeys,
+} from "@/server/services/practice.service";
 import { db } from "@/server/db";
 
 vi.mock("@/server/db", () => ({
@@ -7,7 +10,7 @@ vi.mock("@/server/db", () => ({
     $executeRaw: vi.fn(),
     userKeyStat: {
       findMany: vi.fn(),
-    }
+    },
   },
 }));
 
@@ -19,27 +22,21 @@ describe("Phase 9: Progress & Adaptive Foundation (Mock)", () => {
   it("should accumulate user key stats robustly using eventTrace", async () => {
     const passage = "ab";
     const errorMap = {
-      "b": { expected: "b", count: 1, corrected: 1, uncorrected: 0 }
+      b: { expected: "b", count: 1, corrected: 1, uncorrected: 0 },
     };
-    
+
     // Trace: correct 'a', wrong 'b', backspace, stop
     const events = [
-      [100, 0, 0, "a"],     // type 'a' correctly at index 0
-      [200, 0, 1, "x"],     // type wrong char 'x' at index 1
-      [300, 1, 1],          // backspace at index 1
+      [100, 0, 0, "a"], // type 'a' correctly at index 0
+      [200, 0, 1, "x"], // type wrong char 'x' at index 1
+      [300, 1, 1], // backspace at index 1
     ];
 
-    await accumulateUserKeyStats(
-      "user-1",
-      passage,
-      errorMap,
-      events,
-      db
-    );
+    await accumulateUserKeyStats("user-1", passage, errorMap, events, db);
 
     expect(db.$executeRaw).toHaveBeenCalled();
     const calls = (db.$executeRaw as any).mock.calls;
-    
+
     const aCall = calls.find((c: any) => c[1] === "user-1" && c[2] === "a");
     expect(aCall).toBeDefined();
 
@@ -57,10 +54,10 @@ describe("Phase 9: Progress & Adaptive Foundation (Mock)", () => {
   it("should handle multiple repeated keys and uncorrected mistakes", async () => {
     const passage = "hello"; // h, e, l, l, o
     const errorMap = {
-      "l": { expected: "l", count: 2, corrected: 1, uncorrected: 1 },
-      "o": { expected: "o", count: 1, corrected: 0, uncorrected: 1 }
+      l: { expected: "l", count: 2, corrected: 1, uncorrected: 1 },
+      o: { expected: "o", count: 1, corrected: 0, uncorrected: 1 },
     };
-    
+
     // index 0: 'h' (correct)
     // index 1: 'e' (correct)
     // index 2: 'l' (wrong -> correct)
@@ -70,22 +67,16 @@ describe("Phase 9: Progress & Adaptive Foundation (Mock)", () => {
       [10, 0, 0, "h"],
       [20, 0, 1, "e"],
       [30, 0, 2, "x"], // wrong for 'l'
-      [40, 1, 2],      // backspace
+      [40, 1, 2], // backspace
       [50, 0, 2, "l"], // correct 'l'
       [60, 0, 3, "x"], // wrong for second 'l'
       [70, 0, 4, "p"], // wrong for 'o'
     ];
 
-    await accumulateUserKeyStats(
-      "user-2",
-      passage,
-      errorMap,
-      events,
-      db
-    );
+    await accumulateUserKeyStats("user-2", passage, errorMap, events, db);
 
     const calls = (db.$executeRaw as any).mock.calls;
-    
+
     const lCall = calls.find((c: any) => c[1] === "user-2" && c[2] === "l");
     expect(lCall[3]).toBe(2); // errors
     expect(lCall[4]).toBe(1); // corrected
@@ -109,7 +100,7 @@ describe("Phase 9: Progress & Adaptive Foundation (Mock)", () => {
   it("should get persistent weak keys sensibly", async () => {
     (db.userKeyStat.findMany as any).mockResolvedValueOnce([
       { key: "z", errorCount: 8, accuracyRate: 0.2, totalOccurrences: 10 },
-      { key: "y", errorCount: 2, accuracyRate: 0.9, totalOccurrences: 20 }
+      { key: "y", errorCount: 2, accuracyRate: 0.9, totalOccurrences: 20 },
     ]);
 
     const weakKeys = await getPersistentWeakKeys("user-1", 5);
