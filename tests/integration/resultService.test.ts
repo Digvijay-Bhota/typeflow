@@ -92,7 +92,7 @@ describe("Result Transformation & Mapping", () => {
         errorMap: {},
       })
     );
-    const res = await getResultByShareId("share1");
+    const res = await getResultByShareId("share1", { viewerId: "user-1" });
     expect(res?.accuracy).toBe(1);
     expect(res?.incorrectChars).toBe(0);
     expect(res?.errorMap).toEqual({});
