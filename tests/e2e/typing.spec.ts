@@ -15,21 +15,26 @@ test.describe("Typing Input", () => {
     // Focus the typing area
     await typingArea.focus();
 
-    // The current active character has a specific styling class
-    const activeChar = page.locator("span.bg-surface-elevated\\/50").first();
-    await expect(activeChar).toBeVisible();
+    // The first character in the passage has a stable DOM index.
+    // We select it specifically by structural position to avoid dynamic resolution bugs.
+    const firstChar = page
+      .locator('[data-testid="typing-viewport"] span.relative.inline')
+      .nth(0);
+
+    // Initially, it should be the active character
+    await expect(firstChar).toHaveClass(/bg-surface-elevated\/50/);
 
     // Get the initial active character's text (e.g. 't' or 'T')
-    const initialText = await activeChar.textContent();
+    const initialText = await firstChar.textContent();
     expect(initialText).toBeTruthy();
 
     // 1. Assert physical Ctrl+Alt+C shortcut is NOT inserted as typed character
     await page.keyboard.press("Control+Alt+c");
 
-    // The active character should still be visible and unchanged because the keystroke was ignored
-    const newText = await activeChar.textContent();
+    // The first character should STILL be active, and its text unchanged, because the keystroke was ignored
+    const newText = await firstChar.textContent();
     expect(newText).toBe(initialText);
-    await expect(activeChar).toBeVisible();
+    await expect(firstChar).toHaveClass(/bg-surface-elevated\/50/);
 
     // 2. Genuine AltGraph simulation assertion
     // Since Playwright headless (en-US) doesn't natively map AltGraph to a printable key,
@@ -51,6 +56,6 @@ test.describe("Typing Input", () => {
 
     // The first character should NO LONGER be active, meaning the engine processed the keystroke
     // rather than dropping it as a shortcut.
-    await expect(activeChar).not.toBeVisible();
+    await expect(firstChar).not.toHaveClass(/bg-surface-elevated\/50/);
   });
 });
