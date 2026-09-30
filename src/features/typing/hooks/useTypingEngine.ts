@@ -161,7 +161,7 @@ export interface UseTypingEngineReturn {
 }
 
 export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineReturn {
-  const { passage, mode, duration, wordCount, onComplete, onProgress } = config;
+  const { sessionId, passage, mode, duration, wordCount, onComplete, onProgress } = config;
 
   // ── React state (triggers rerenders) ──
   const [state, setState] = useState<TypingEngineState>(createInitialEngineState);
@@ -736,7 +736,7 @@ export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineRetu
   useEffect(() => {
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [passage]);
+  }, [passage, sessionId]);
 
   return {
     state,

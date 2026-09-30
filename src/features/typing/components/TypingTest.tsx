@@ -145,8 +145,9 @@ export function TypingTest({
 
         if (res.ok) {
           const data = await res.json();
-          if (data.claimToken) {
-            sessionStorage.setItem("tf_claim_token", data.claimToken);
+          if (data.claimToken && data.shareUrl) {
+            const shareId = data.shareUrl.split('/').pop();
+            sessionStorage.setItem(`tf_claim_token_${shareId}`, data.claimToken);
           }
           router.push(data.shareUrl);
         } else {
@@ -167,7 +168,8 @@ export function TypingTest({
   );
 
   // ── Engine ────────────────────────────────────────────────────────────────
-  const { state, chars, handleKey, handleBackspace } = useTypingEngine({
+  const { state, chars, handleKey, handleBackspace, pause, resume } = useTypingEngine({
+    sessionId: session?.sessionId,
     passage: session?.passage.content || "",
     mode,
     language: language.toLowerCase() as Language,
@@ -282,6 +284,8 @@ export function TypingTest({
           status={state.status}
           onKey={handleKeyWithStart}
           onBackspace={handleBackspace}
+          onPause={pause}
+          onResume={resume}
         />
       )}
 

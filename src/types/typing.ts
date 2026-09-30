@@ -150,6 +150,7 @@ export interface IntegritySignals {
 
 /** Configuration passed when initializing a typing session. */
 export interface TypingEngineConfig {
+  sessionId?: string | undefined;
   passage: string;
   mode: TypingMode;
   language: Language;

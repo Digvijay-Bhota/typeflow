@@ -21,6 +21,8 @@ interface TypingAreaProps {
   status: EngineStatus;
   onKey: (char: string) => void;
   onBackspace: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
   onStart?: () => void;
   className?: string;
   language?: string;
@@ -73,11 +75,14 @@ export function TypingArea({
   status,
   onKey,
   onBackspace,
+  onPause,
+  onResume,
   onStart,
   className,
   language,
 }: TypingAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const charRefsMap = useRef<Map<number, HTMLElement>>(new Map());
   const caretRef = useRef<HTMLDivElement>(null);
   const linesContainerRef = useRef<HTMLDivElement>(null);
@@ -242,7 +247,7 @@ export function TypingArea({
         : null;
 
   const focusContainer = () => {
-    containerRef.current?.focus();
+    inputRef.current?.focus();
   };
 
   return (
@@ -252,17 +257,49 @@ export function TypingArea({
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onClick={focusContainer}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onFocus={() => {
+        setFocused(true);
+        onResume?.();
+        if (document.activeElement !== inputRef.current) {
+          inputRef.current?.focus();
+        }
+      }}
+      onBlur={(e) => {
+        if (e.relatedTarget !== inputRef.current) {
+          setFocused(false);
+          onPause?.();
+        }
+      }}
       className={cn(
         "relative cursor-text font-mono text-xl leading-relaxed outline-none select-none md:text-2xl",
         "h-[220px] overflow-hidden rounded-2xl p-6 transition-all",
-        "focus:ring-accent/40 focus:ring-2",
+        "focus-within:ring-accent/40 focus-within:ring-2",
         !isActive && "opacity-60",
         isCode ? "bg-[#0A0A0A] text-gray-300" : "bg-surface-elevated/30",
         className
       )}
     >
+      <input
+        ref={inputRef}
+        type="text"
+        className="absolute opacity-0 pointer-events-none w-0 h-0"
+        tabIndex={-1}
+        aria-hidden="true"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="none"
+        spellCheck={false}
+        onFocus={() => {
+          setFocused(true);
+          onResume?.();
+        }}
+        onBlur={(e) => {
+          if (e.relatedTarget !== containerRef.current) {
+            setFocused(false);
+            onPause?.();
+          }
+        }}
+      />
       {overlayMessage && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <span

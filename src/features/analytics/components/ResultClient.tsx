@@ -541,7 +541,7 @@ export function ResultClient({
               </Link>
             )}
             {!result.isCertificateEligible && result.certificateEligibleAfterClaim && (
-              <GuestClaimBanner fallback={<CertificateGuestFallback />} />
+              <GuestClaimBanner shareId={result.shareId} fallback={<CertificateGuestFallback />} />
             )}
           </div>
         </div>
