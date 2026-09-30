@@ -1,11 +1,12 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Typing Input", () => {
-  test("accepts AltGr keystrokes as typing and leaves physical Ctrl+Alt shortcuts", async ({
+  test("leaves physical Ctrl+Alt shortcuts alone (AltGr simulation documented)", async ({
     page,
   }) => {
     // Go to the main typing page where the engine mounts
-    await page.goto("/");
+    const response = await page.goto("/");
+    expect(response?.status()).toBe(200);
 
     // Ensure the app loads
     const typingArea = page.getByRole("textbox");
@@ -14,14 +15,42 @@ test.describe("Typing Input", () => {
     // Focus the typing area
     await typingArea.focus();
 
-    // In a real browser, AltGraph is triggered by the AltGraph key, or Right-Alt on some layouts.
-    // Playwright supports sending genuine modifiers.
-    await page.keyboard.press("AltGraph+@");
+    // The current active character has a specific styling class
+    const activeChar = page.locator("span.bg-surface-elevated\\/50").first();
+    await expect(activeChar).toBeVisible();
 
-    // We could assert that the character was typed by checking the typing area's state or DOM.
-    // For now, this just proves the command is syntactically valid and runs in Chromium.
+    // Get the initial active character's text (e.g. 't' or 'T')
+    const initialText = await activeChar.textContent();
+    expect(initialText).toBeTruthy();
 
-    // We also want to prove that Ctrl+Alt+C does NOT type a character (it's a shortcut)
+    // 1. Assert physical Ctrl+Alt+C shortcut is NOT inserted as typed character
     await page.keyboard.press("Control+Alt+c");
+
+    // The active character should still be visible and unchanged because the keystroke was ignored
+    const newText = await activeChar.textContent();
+    expect(newText).toBe(initialText);
+    await expect(activeChar).toBeVisible();
+
+    // 2. Genuine AltGraph simulation assertion
+    // Since Playwright headless (en-US) doesn't natively map AltGraph to a printable key,
+    // we simulate the genuine browser event by dispatching a KeyboardEvent with getModifierState mocked.
+    // This proves that the AltGraph-modified printable event reaches the typing input path
+    // rather than being classified as a shortcut.
+    await typingArea.evaluate((node) => {
+      const event = new KeyboardEvent("keydown", {
+        key: "@",
+        ctrlKey: true,
+        altKey: true,
+        bubbles: true,
+      });
+      Object.defineProperty(event, "getModifierState", {
+        value: (modifier: string) => modifier === "AltGraph",
+      });
+      node.dispatchEvent(event);
+    });
+
+    // The first character should NO LONGER be active, meaning the engine processed the keystroke
+    // rather than dropping it as a shortcut.
+    await expect(activeChar).not.toBeVisible();
   });
 });
