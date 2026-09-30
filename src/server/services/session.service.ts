@@ -61,13 +61,21 @@ export async function createSession(params: CreateSessionRequest) {
       throw new ServiceError("INVALID_ATTEMPT", "FORBIDDEN", 403);
     }
 
+    const now = new Date();
+    if (candidate.expiresAt && candidate.expiresAt < now) {
+      throw new ServiceError("INVITATION_EXPIRED", "FORBIDDEN", 403);
+    }
+    if (candidate.assessment.expiresAt && candidate.assessment.expiresAt < now) {
+      throw new ServiceError("ASSESSMENT_EXPIRED", "FORBIDDEN", 403);
+    }
+
     trustTier = "B2B_ASSESSMENT";
     b2bAttemptId = attempt.id;
 
     // Server overrides candidate settings
-    params.mode = candidate.assessment.testMode === "CODE" ? "code" : "timed";
+    params.mode = candidate.assessment.testMode.toLowerCase() as any;
     params.language = candidate.assessment.language.toLowerCase() as any;
-    if (params.language === "code") {
+    if (params.mode === "code") {
       params.codeLanguage = candidate.assessment.codeLanguage?.toLowerCase() as any;
     }
     params.duration = candidate.assessment.duration;

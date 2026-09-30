@@ -161,6 +161,10 @@ export async function startCandidateAttempt(inviteToken: string) {
     throw new Error("ASSESSMENT_NOT_ACTIVE");
   }
 
+  if (candidate.status === "DISQUALIFIED") {
+    throw new Error("CANDIDATE_DISQUALIFIED");
+  }
+
   const now = new Date();
   if (candidate.expiresAt && candidate.expiresAt < now) {
     throw new Error("INVITATION_EXPIRED");

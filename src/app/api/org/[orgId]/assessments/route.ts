@@ -9,13 +9,17 @@ const Schema = z.object({
   title: z.string().min(2),
   description: z.string().optional(),
   testMode: z.enum(["TIMED", "WORDS", "CODE"]),
-  language: z.enum(["ENGLISH", "SPANISH", "FRENCH", "GERMAN"]),
+  language: z.enum(["ENGLISH", "HINDI", "CODE"]),
   codeLanguage: z.string().optional(),
   duration: z.number().int().positive(),
   maxAttempts: z.number().int().positive().default(1),
   wpmThreshold: z.number().optional(),
   accuracyThreshold: z.number().optional(),
-});
+}).refine(data => {
+  if (data.testMode === "CODE" && data.language !== "CODE") return false;
+  if (data.testMode !== "CODE" && data.language === "CODE") return false;
+  return true;
+}, { message: "CODE mode requires CODE language and vice versa" });
 
 export async function POST(
   req: Request,
