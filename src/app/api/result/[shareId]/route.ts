@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getResultByShareId } from "@/server/services/result.service";
+import { getAuthenticatedUser } from "@/server/services/auth.service";
 import { rateLimit } from "@/server/middleware/rateLimit";
 import { logRequestFailure } from "@/lib/logger";
 
@@ -40,7 +41,11 @@ export async function GET(
       );
     }
 
-    const result = await getResultByShareId(shareId);
+    const viewer = await getAuthenticatedUser().catch(() => null);
+    const result = await getResultByShareId(
+      shareId,
+      viewer ? { viewerId: viewer.id } : undefined
+    );
 
     if (!result) {
       return NextResponse.json(
