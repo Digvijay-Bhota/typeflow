@@ -161,7 +161,8 @@ export interface UseTypingEngineReturn {
 }
 
 export function useTypingEngine(config: TypingEngineConfig): UseTypingEngineReturn {
-  const { sessionId, passage, mode, duration, wordCount, onComplete, onProgress } = config;
+  const { sessionId, passage, mode, duration, wordCount, onComplete, onProgress } =
+    config;
 
   // ── React state (triggers rerenders) ──
   const [state, setState] = useState<TypingEngineState>(createInitialEngineState);

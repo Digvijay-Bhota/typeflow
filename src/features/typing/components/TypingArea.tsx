@@ -282,7 +282,7 @@ export function TypingArea({
       <input
         ref={inputRef}
         type="text"
-        className="absolute opacity-0 pointer-events-none w-0 h-0"
+        className="pointer-events-none absolute h-0 w-0 opacity-0"
         tabIndex={-1}
         aria-hidden="true"
         autoComplete="off"

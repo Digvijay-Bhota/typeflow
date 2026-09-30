@@ -10,7 +10,13 @@ afterEach(() => {
 
 function renderEngine(overrides = {}) {
   vi.useFakeTimers({
-    toFake: ["Date", "setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"],
+    toFake: [
+      "Date",
+      "setTimeout",
+      "clearTimeout",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+    ],
   });
   const onComplete = vi.fn();
   const hook = renderHook(

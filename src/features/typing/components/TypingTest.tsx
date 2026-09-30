@@ -146,7 +146,7 @@ export function TypingTest({
         if (res.ok) {
           const data = await res.json();
           if (data.claimToken && data.shareUrl) {
-            const shareId = data.shareUrl.split('/').pop();
+            const shareId = data.shareUrl.split("/").pop();
             sessionStorage.setItem(`tf_claim_token_${shareId}`, data.claimToken);
           }
           router.push(data.shareUrl);
