@@ -23,6 +23,9 @@ vi.mock("@/server/db", () => ({
     testSession: {
       create: vi.fn(),
     },
+    userKeyStat: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
@@ -66,6 +69,7 @@ describe("Targeted Practice Loop", () => {
   });
 
   it("should create a practice session correctly deriving weak keys from dashboard (recent results)", async () => {
+    (db.userKeyStat.findMany as any).mockResolvedValueOnce([]);
     (db.testResult.findMany as any).mockResolvedValueOnce([
       { errorMap: { a: { expected: "a", count: 10 }, b: { expected: "b", count: 5 } } },
       { errorMap: { c: { expected: "c", count: 20 } } },
