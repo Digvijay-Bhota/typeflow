@@ -51,17 +51,27 @@ describe("Result Transformation & Mapping", () => {
     expect(res).toBeNull();
   });
 
-  it("maps valid result correctly to public view", async () => {
+  it("maps valid result correctly to public view and strips detailed analytics by default", async () => {
     (db.testResult.findUnique as any).mockResolvedValue(getMockDbResult());
     const res = await getResultByShareId("share1");
     expect(res).not.toBeNull();
     expect(res?.shareUrl).toBe("/result/share1");
     expect(res?.mode).toBe("TIMED");
     expect(res?.language).toBe("ENGLISH");
+    expect(res?.errorMap).toBeNull();
+    expect(res?.codeMetrics).toBeUndefined();
+    expect(res?.isCertificateEligible).toBe(false); // FREE tier
+  });
+
+  it("includes detailed analytics when correct viewerId is provided", async () => {
+    (db.testResult.findUnique as any).mockResolvedValue(
+      getMockDbResult({ codeMetrics: { complexity: 1 } })
+    );
+    const res = await getResultByShareId("share1", { viewerId: "user-1" });
     expect(res?.errorMap).toEqual({
       e: { expected: "e", count: 12, corrected: 6, uncorrected: 6 },
     });
-    expect(res?.isCertificateEligible).toBe(false); // FREE tier
+    expect(res?.codeMetrics).toEqual({ complexity: 1 });
   });
 
   it("handles missing errorMap gracefully (null)", async () => {
@@ -82,7 +92,7 @@ describe("Result Transformation & Mapping", () => {
         errorMap: {},
       })
     );
-    const res = await getResultByShareId("share1");
+    const res = await getResultByShareId("share1", { viewerId: "user-1" });
     expect(res?.accuracy).toBe(1);
     expect(res?.incorrectChars).toBe(0);
     expect(res?.errorMap).toEqual({});
