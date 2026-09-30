@@ -101,7 +101,12 @@ describe("TypingArea — modified keys", () => {
     return { textbox: screen.getByRole("textbox"), onKey, onBackspace };
   }
 
-  function dispatchKey(node: HTMLElement, key: string, mods: { ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean } = {}, altGraph = false) {
+  function dispatchKey(
+    node: HTMLElement,
+    key: string,
+    mods: { ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean } = {},
+    altGraph = false
+  ) {
     const ev = new KeyboardEvent("keydown", { key, bubbles: true, ...mods });
     Object.defineProperty(ev, "getModifierState", {
       value: (mod: string) => mod === "AltGraph" && altGraph,
