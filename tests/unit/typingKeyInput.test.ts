@@ -101,17 +101,39 @@ describe("TypingArea — modified keys", () => {
     return { textbox: screen.getByRole("textbox"), onKey, onBackspace };
   }
 
-  it("types a Windows AltGr character (Ctrl+Alt)", () => {
+  function dispatchKey(
+    node: HTMLElement,
+    key: string,
+    mods: { ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean } = {},
+    altGraph = false
+  ) {
+    const ev = new KeyboardEvent("keydown", { key, bubbles: true, ...mods });
+    Object.defineProperty(ev, "getModifierState", {
+      value: (mod: string) => mod === "AltGraph" && altGraph,
+    });
+    fireEvent(node, ev);
+  }
+
+  it("types a genuine AltGraph printable character", () => {
     const { textbox, onKey } = renderArea();
-    fireEvent.keyDown(textbox, { key: "@", ctrlKey: true, altKey: true });
+    // Genuine AltGraph: ctrl=true, alt=true, getModifierState("AltGraph")=true
+    dispatchKey(textbox, "@", { ctrlKey: true, altKey: true }, true);
     expect(onKey).toHaveBeenCalledWith("@");
+  });
+
+  it("ignores a physical Ctrl+Alt shortcut without AltGraph", () => {
+    const { textbox, onKey, onBackspace } = renderArea();
+    // Physical shortcut: ctrl=true, alt=true, getModifierState("AltGraph")=false
+    dispatchKey(textbox, "c", { ctrlKey: true, altKey: true }, false);
+    expect(onKey).not.toHaveBeenCalled();
+    expect(onBackspace).not.toHaveBeenCalled();
   });
 
   it("still ignores Ctrl and Cmd shortcuts", () => {
     const { textbox, onKey, onBackspace } = renderArea();
-    fireEvent.keyDown(textbox, { key: "c", ctrlKey: true });
-    fireEvent.keyDown(textbox, { key: "a", metaKey: true });
-    fireEvent.keyDown(textbox, { key: "Backspace", ctrlKey: true });
+    dispatchKey(textbox, "c", { ctrlKey: true }, false);
+    dispatchKey(textbox, "a", { metaKey: true }, false);
+    dispatchKey(textbox, "Backspace", { ctrlKey: true }, false);
     expect(onKey).not.toHaveBeenCalled();
     expect(onBackspace).not.toHaveBeenCalled();
   });
