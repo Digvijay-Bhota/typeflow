@@ -9,7 +9,7 @@
  * `wordCount` words of the passage.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor, screen, fireEvent } from "@testing-library/react";
 import { useTypingEngine } from "@/features/typing/hooks/useTypingEngine";
 import { limitToWords } from "@/features/typing/lib/wordLimit";
 import { reconstructFinalBuffer } from "@/features/typing/lib/reconstruct";
@@ -44,6 +44,47 @@ describe("limitToWords", () => {
   it("does not limit for a non-positive or non-finite count", () => {
     expect(limitToWords("one two", 0)).toBe("one two");
     expect(limitToWords("one two", Number.NaN)).toBe("one two");
+  });
+
+  it("displays current word ordinal (1-based) during the test", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            sessionId: "sess_words",
+            integrityToken: "words-token",
+            passage: { id: "p-words", content: TEN_WORDS },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      })
+    );
+
+    const textbox = await renderReadyTypingTest({ mode: "words", wordCount: 10 });
+
+    // Press a key to activate the test and show stats
+    act(() => {
+      fireEvent.keyDown(textbox, { key: "w" });
+    });
+    await waitFor(() => expect(screen.getByText("1/10")).toBeDefined());
+
+    // Complete the first word
+    act(() => {
+      fireEvent.keyDown(textbox, { key: "0" });
+    });
+    act(() => {
+      fireEvent.keyDown(textbox, { key: " " });
+    });
+    await waitFor(() => expect(screen.getByText("2/10")).toBeDefined());
+
+    // Type all the way to the last word
+    for (const key of TEN_WORDS.slice(3, -1)) {
+      act(() => {
+        fireEvent.keyDown(textbox, { key });
+      });
+    }
+    await waitFor(() => expect(screen.getByText("10/10")).toBeDefined());
   });
 });
 

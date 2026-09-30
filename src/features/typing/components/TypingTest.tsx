@@ -232,7 +232,7 @@ export function TypingTest({
             remainingMs={state.remainingMs}
             elapsedMs={state.elapsedMs}
             mode={mode}
-            currentWord={state.currentWordIndex}
+            currentWord={state.currentWordIndex + 1}
             totalWords={mode === "words" ? wordCount : undefined}
             className={cn("justify-center", isCode && "text-gray-200")}
           />
