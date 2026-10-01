@@ -243,7 +243,7 @@ export function TypingArea({
     (e: React.FormEvent<HTMLInputElement>) => {
       if (isComposing.current) return;
       const nativeEvent = e.nativeEvent as InputEvent;
-      
+
       if (nativeEvent.inputType === "deleteContentBackward") {
         onBackspace();
       } else if (nativeEvent.data) {

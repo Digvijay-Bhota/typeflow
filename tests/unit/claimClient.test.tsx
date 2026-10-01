@@ -13,11 +13,9 @@ describe("ClaimClient", () => {
   beforeEach(() => {
     sessionStorage.clear();
     pushMock.mockClear();
-    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -44,7 +42,11 @@ describe("ClaimClient", () => {
     expect(sessionStorage.getItem(`tf_claim_token_${shareId}`)).toBeNull();
     expect(sessionStorage.getItem("tf_claim_token_other")).toBe("keep_me");
 
-    vi.runAllTimers();
-    expect(pushMock).toHaveBeenCalledWith("/result/claimed_123");
+    await waitFor(
+      () => {
+        expect(pushMock).toHaveBeenCalledWith("/result/claimed_123");
+      },
+      { timeout: 2000 }
+    );
   });
 });

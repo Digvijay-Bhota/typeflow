@@ -3,7 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function ClaimClient({ claimToken, shareId }: { claimToken: string; shareId: string }) {
+export function ClaimClient({
+  claimToken,
+  shareId,
+}: {
+  claimToken: string;
+  shareId: string;
+}) {
   const router = useRouter();
   const [status, setStatus] = useState("Claiming your result...");
   const hasRun = useRef(false);

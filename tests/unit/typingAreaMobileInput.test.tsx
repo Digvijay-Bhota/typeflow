@@ -26,12 +26,9 @@ describe("TypingArea — Mobile Input", () => {
     const input = screen.getByRole("textbox").querySelector("input")!;
 
     // Normal text insertion
-    const inputEvent = createEvent.input(input, {
-      target: { value: "h" },
-    });
-    Object.defineProperty(inputEvent, "nativeEvent", {
-      value: { data: "h", inputType: "insertText" },
-    });
+    const inputEvent = createEvent.input(input, { target: { value: "h" } });
+    Object.defineProperty(inputEvent, "data", { value: "h" });
+    Object.defineProperty(inputEvent, "inputType", { value: "insertText" });
     fireEvent(input, inputEvent);
 
     expect(onStart).toHaveBeenCalledTimes(1);
@@ -39,12 +36,9 @@ describe("TypingArea — Mobile Input", () => {
     expect(input.value).toBe("");
 
     // Multiple characters at once (e.g., from suggestion/autocomplete)
-    const multiInputEvent = createEvent.input(input, {
-      target: { value: "ello" },
-    });
-    Object.defineProperty(multiInputEvent, "nativeEvent", {
-      value: { data: "ello", inputType: "insertText" },
-    });
+    const multiInputEvent = createEvent.input(input, { target: { value: "ello" } });
+    Object.defineProperty(multiInputEvent, "data", { value: "ello" });
+    Object.defineProperty(multiInputEvent, "inputType", { value: "insertText" });
     fireEvent(input, multiInputEvent);
 
     expect(onKey).toHaveBeenCalledWith("e");
@@ -54,11 +48,10 @@ describe("TypingArea — Mobile Input", () => {
     expect(input.value).toBe("");
 
     // Backspace
-    const backspaceEvent = createEvent.input(input, {
-      target: { value: "" },
-    });
-    Object.defineProperty(backspaceEvent, "nativeEvent", {
-      value: { data: null, inputType: "deleteContentBackward" },
+    const backspaceEvent = createEvent.input(input, { target: { value: "" } });
+    Object.defineProperty(backspaceEvent, "data", { value: null });
+    Object.defineProperty(backspaceEvent, "inputType", {
+      value: "deleteContentBackward",
     });
     fireEvent(input, backspaceEvent);
 
@@ -86,18 +79,19 @@ describe("TypingArea — Mobile Input", () => {
     fireEvent.compositionStart(input);
 
     // Intermediate input (should be ignored while composing)
-    const intermediateInput = createEvent.input(input, {
-      target: { value: "a" },
-    });
-    Object.defineProperty(intermediateInput, "nativeEvent", {
-      value: { data: "a", inputType: "insertCompositionText" },
+    const intermediateInput = createEvent.input(input, { target: { value: "a" } });
+    Object.defineProperty(intermediateInput, "data", { value: "a" });
+    Object.defineProperty(intermediateInput, "inputType", {
+      value: "insertCompositionText",
     });
     fireEvent(input, intermediateInput);
 
     expect(onKey).not.toHaveBeenCalled();
 
     // End composition
-    fireEvent.compositionEnd(input, { data: "á" });
+    const compEndEvent = createEvent.compositionEnd(input);
+    Object.defineProperty(compEndEvent, "data", { value: "á" });
+    fireEvent(input, compEndEvent);
 
     expect(onKey).toHaveBeenCalledWith("á");
     expect(input.value).toBe("");

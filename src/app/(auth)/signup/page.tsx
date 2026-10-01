@@ -6,7 +6,12 @@ import { ClaimClient } from "@/features/auth/components/ClaimClient";
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; claimToken?: string; claimed?: string; shareId?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    claimToken?: string;
+    claimed?: string;
+    shareId?: string;
+  }>;
 }) {
   const params = await searchParams;
 

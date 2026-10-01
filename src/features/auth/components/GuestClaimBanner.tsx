@@ -35,7 +35,13 @@ export function GuestClaimBanner({
   return <GuestClaimActions claimToken={claim.token} shareId={shareId} />;
 }
 
-export function GuestClaimActions({ claimToken, shareId }: { claimToken: string; shareId: string }) {
+export function GuestClaimActions({
+  claimToken,
+  shareId,
+}: {
+  claimToken: string;
+  shareId: string;
+}) {
   return (
     <div className="bg-tf-primary-50 dark:bg-tf-primary-900/20 border-tf-primary-200 dark:border-tf-primary-800 flex w-full flex-col items-center justify-between gap-4 rounded-lg border p-4 sm:flex-row">
       <p className="text-tf-primary-900 dark:text-tf-primary-100 text-sm font-medium">
