@@ -69,6 +69,27 @@ describe("Login Action", () => {
     expect(nextNavigation.redirect).toHaveBeenCalledWith("/dashboard");
   });
 
+  it("should redirect to login with claimToken and shareId if login succeeds with them", async () => {
+    mockIp("198.51.100.42");
+    const mockSupabase = {
+      auth: { signInWithPassword: vi.fn().mockResolvedValue({ error: null }) },
+    };
+    vi.mocked(serverSupabase.createClient).mockResolvedValue(mockSupabase as any);
+
+    await login(
+      buildFormData({
+        email: "login-claim@test.com",
+        password: "password",
+        claimToken: "claim-token-login",
+        shareId: "share-login-123",
+      })
+    );
+
+    expect(nextNavigation.redirect).toHaveBeenCalledWith(
+      "/login?claimToken=claim-token-login&shareId=share-login-123&claimed=true"
+    );
+  });
+
   it("should redirect to /login?error on failed login (invalid credentials)", async () => {
     mockIp("198.51.100.2");
     const mockSupabase = {
@@ -338,7 +359,7 @@ describe("Signup Action", () => {
     expect(nextNavigation.redirect).toHaveBeenCalledWith("/dashboard");
   });
 
-  it("should redirect to login with claimToken if signup succeeds with claimToken", async () => {
+  it("should redirect to login with claimToken and shareId if signup succeeds with them", async () => {
     mockIp("198.51.100.104");
     const mockSupabase = {
       auth: {
@@ -356,11 +377,12 @@ describe("Signup Action", () => {
         password: "pass123",
         displayName: "Test User",
         claimToken: "claim-token-123",
+        shareId: "share-456",
       })
     );
 
     expect(nextNavigation.redirect).toHaveBeenCalledWith(
-      "/login?claimToken=claim-token-123&claimed=true"
+      "/login?claimToken=claim-token-123&shareId=share-456&claimed=true"
     );
   });
 

@@ -32,10 +32,16 @@ export function GuestClaimBanner({
 
   if (!claim.checked) return null;
   if (!claim.token) return <>{fallback ?? null}</>;
-  return <GuestClaimActions claimToken={claim.token} />;
+  return <GuestClaimActions claimToken={claim.token} shareId={shareId} />;
 }
 
-export function GuestClaimActions({ claimToken }: { claimToken: string }) {
+export function GuestClaimActions({
+  claimToken,
+  shareId,
+}: {
+  claimToken: string;
+  shareId: string;
+}) {
   return (
     <div className="bg-tf-primary-50 dark:bg-tf-primary-900/20 border-tf-primary-200 dark:border-tf-primary-800 flex w-full flex-col items-center justify-between gap-4 rounded-lg border p-4 sm:flex-row">
       <p className="text-tf-primary-900 dark:text-tf-primary-100 text-sm font-medium">
@@ -44,13 +50,13 @@ export function GuestClaimActions({ claimToken }: { claimToken: string }) {
       <div className="flex shrink-0 items-center gap-3">
         {/* We still pass it via URL to the login/signup pages because they are separate routes, but it's not exposed on the public result share URL */}
         <Link
-          href={`/login?claimToken=${claimToken}`}
+          href={`/login?claimToken=${claimToken}&shareId=${shareId}`}
           className="text-tf-primary-700 dark:text-tf-primary-300 text-sm font-semibold hover:underline"
         >
           Sign In
         </Link>
         <Link
-          href={`/signup?claimToken=${claimToken}`}
+          href={`/signup?claimToken=${claimToken}&shareId=${shareId}`}
           className="bg-accent hover:bg-tf-primary-700 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors"
         >
           Create Account

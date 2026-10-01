@@ -33,6 +33,7 @@ export async function login(formData: FormData) {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
   const claimToken = formData.get("claimToken") as string | null;
+  const shareId = formData.get("shareId") as string | null;
 
   const ip = await getClientIp();
   const emailHash = hashEmail(email);
@@ -58,8 +59,8 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  if (claimToken) {
-    redirect(`/login?claimToken=${claimToken}&claimed=true`);
+  if (claimToken && shareId) {
+    redirect(`/login?claimToken=${claimToken}&shareId=${shareId}&claimed=true`);
     return;
   }
   redirect("/dashboard");
@@ -70,6 +71,7 @@ export async function signup(formData: FormData) {
   const password = formData.get("password") as string;
   const displayName = formData.get("displayName") as string;
   const claimToken = formData.get("claimToken") as string | null;
+  const shareId = formData.get("shareId") as string | null;
 
   const ip = await getClientIp();
   const emailHash = hashEmail(email);
@@ -113,8 +115,8 @@ export async function signup(formData: FormData) {
     return;
   }
 
-  if (claimToken) {
-    redirect(`/login?claimToken=${claimToken}&claimed=true`);
+  if (claimToken && shareId) {
+    redirect(`/login?claimToken=${claimToken}&shareId=${shareId}&claimed=true`);
     return;
   }
   redirect("/dashboard");
