@@ -60,6 +60,9 @@ export async function PUT(
 
     return NextResponse.json({ candidate: updated });
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (isServiceError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status || 403 });
     }

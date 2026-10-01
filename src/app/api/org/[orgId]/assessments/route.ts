@@ -49,6 +49,9 @@ export async function POST(
     const assessment = await createAssessment(p.orgId, data as any);
     return NextResponse.json({ assessment });
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (isServiceError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status || 400 });
     }
@@ -72,6 +75,9 @@ export async function GET(
     });
     return NextResponse.json({ assessments });
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (isServiceError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status || 403 });
     }
