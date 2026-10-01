@@ -27,14 +27,12 @@ describe("B2B Invitation Rate Limit", () => {
       method: "GET",
     });
 
-    const res = await GetInviteAccess(req, { params: Promise.resolve({ inviteToken: "token123" }) });
+    const res = await GetInviteAccess(req, {
+      params: Promise.resolve({ inviteToken: "token123" }),
+    });
     expect(res.status).toBe(429);
-    
+
     // Verify it was called without "FAIL_OPEN"
-    expect(rateLimitModule.rateLimit).toHaveBeenCalledWith(
-      expect.any(String),
-      30,
-      60000
-    );
+    expect(rateLimitModule.rateLimit).toHaveBeenCalledWith(expect.any(String), 30, 60000);
   });
 });

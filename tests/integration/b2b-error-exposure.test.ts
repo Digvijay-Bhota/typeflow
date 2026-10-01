@@ -21,14 +21,14 @@ vi.mock("@/server/db", () => ({
       findUnique: vi.fn().mockResolvedValue({
         id: "cand1",
         assessmentId: "ass1",
-        assessment: { orgId: "123" }
+        assessment: { orgId: "123" },
       }),
-      update: vi.fn()
+      update: vi.fn(),
     },
     auditLog: {
-      create: vi.fn()
-    }
-  }
+      create: vi.fn(),
+    },
+  },
 }));
 
 import { db } from "@/server/db";
@@ -40,7 +40,9 @@ describe("B2B Error Exposure", () => {
 
   describe("POST /assessments", () => {
     it("does not leak Prisma internal errors to the client", async () => {
-      const prismaError = new Error("PrismaClientKnownRequestError: Unique constraint failed on the fields: (`id`)");
+      const prismaError = new Error(
+        "PrismaClientKnownRequestError: Unique constraint failed on the fields: (`id`)"
+      );
       prismaError.name = "PrismaClientKnownRequestError";
 
       vi.spyOn(assessmentService, "createAssessment").mockRejectedValueOnce(prismaError);
@@ -55,7 +57,9 @@ describe("B2B Error Exposure", () => {
         }),
       });
 
-      const res = await PostAssessment(req, { params: Promise.resolve({ orgId: "123" }) });
+      const res = await PostAssessment(req, {
+        params: Promise.resolve({ orgId: "123" }),
+      });
       expect(res.status).toBe(400);
       const json = await res.json();
 
@@ -77,7 +81,9 @@ describe("B2B Error Exposure", () => {
         }),
       });
 
-      const res = await PostAssessment(req, { params: Promise.resolve({ orgId: "123" }) });
+      const res = await PostAssessment(req, {
+        params: Promise.resolve({ orgId: "123" }),
+      });
       expect(res.status).toBe(422);
       const json = await res.json();
 
@@ -90,14 +96,19 @@ describe("B2B Error Exposure", () => {
       const prismaError = new Error("Prisma internal connection error");
       vi.spyOn(assessmentService, "addCandidate").mockRejectedValueOnce(prismaError);
 
-      const req = new Request("http://localhost/api/org/123/assessments/ass1/candidates", {
-        method: "POST",
-        body: JSON.stringify({
-          email: "test@example.com"
-        }),
-      });
+      const req = new Request(
+        "http://localhost/api/org/123/assessments/ass1/candidates",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email: "test@example.com",
+          }),
+        }
+      );
 
-      const res = await PostCandidate(req, { params: Promise.resolve({ orgId: "123", assessmentId: "ass1" }) });
+      const res = await PostCandidate(req, {
+        params: Promise.resolve({ orgId: "123", assessmentId: "ass1" }),
+      });
       expect(res.status).toBe(400);
       const json = await res.json();
 
@@ -105,17 +116,26 @@ describe("B2B Error Exposure", () => {
     });
 
     it("returns intentional ServiceError cleanly", async () => {
-      const serviceError = new ServiceError("Candidate already added", "CANDIDATE_EXISTS", 409);
+      const serviceError = new ServiceError(
+        "Candidate already added",
+        "CANDIDATE_EXISTS",
+        409
+      );
       vi.spyOn(assessmentService, "addCandidate").mockRejectedValueOnce(serviceError);
 
-      const req = new Request("http://localhost/api/org/123/assessments/ass1/candidates", {
-        method: "POST",
-        body: JSON.stringify({
-          email: "test@example.com"
-        }),
-      });
+      const req = new Request(
+        "http://localhost/api/org/123/assessments/ass1/candidates",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email: "test@example.com",
+          }),
+        }
+      );
 
-      const res = await PostCandidate(req, { params: Promise.resolve({ orgId: "123", assessmentId: "ass1" }) });
+      const res = await PostCandidate(req, {
+        params: Promise.resolve({ orgId: "123", assessmentId: "ass1" }),
+      });
       expect(res.status).toBe(409);
       const json = await res.json();
 
@@ -128,14 +148,23 @@ describe("B2B Error Exposure", () => {
       const unexpectedError = new Error("Database deadlock");
       (db.assessmentCandidate.update as any).mockRejectedValueOnce(unexpectedError);
 
-      const req = new Request("http://localhost/api/org/123/assessments/ass1/candidates/cand1/review", {
-        method: "PUT",
-        body: JSON.stringify({
-          reviewerNotes: "Good job"
+      const req = new Request(
+        "http://localhost/api/org/123/assessments/ass1/candidates/cand1/review",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            reviewerNotes: "Good job",
+          }),
+        }
+      );
+
+      const res = await PutReview(req, {
+        params: Promise.resolve({
+          orgId: "123",
+          assessmentId: "ass1",
+          candidateId: "cand1",
         }),
       });
-
-      const res = await PutReview(req, { params: Promise.resolve({ orgId: "123", assessmentId: "ass1", candidateId: "cand1" }) });
       expect(res.status).toBe(403); // The catch block in PUT uses 403 as default fallback
       const json = await res.json();
 
@@ -143,17 +172,30 @@ describe("B2B Error Exposure", () => {
     });
 
     it("returns intentional ServiceError cleanly", async () => {
-      const serviceError = new ServiceError("Not authorized to review", "AUTH_ERROR", 401);
+      const serviceError = new ServiceError(
+        "Not authorized to review",
+        "AUTH_ERROR",
+        401
+      );
       (db.assessmentCandidate.update as any).mockRejectedValueOnce(serviceError);
 
-      const req = new Request("http://localhost/api/org/123/assessments/ass1/candidates/cand1/review", {
-        method: "PUT",
-        body: JSON.stringify({
-          reviewerNotes: "Good job"
+      const req = new Request(
+        "http://localhost/api/org/123/assessments/ass1/candidates/cand1/review",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            reviewerNotes: "Good job",
+          }),
+        }
+      );
+
+      const res = await PutReview(req, {
+        params: Promise.resolve({
+          orgId: "123",
+          assessmentId: "ass1",
+          candidateId: "cand1",
         }),
       });
-
-      const res = await PutReview(req, { params: Promise.resolve({ orgId: "123", assessmentId: "ass1", candidateId: "cand1" }) });
       expect(res.status).toBe(401);
       const json = await res.json();
 
