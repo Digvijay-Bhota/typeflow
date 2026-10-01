@@ -4,6 +4,7 @@ import { addCandidate } from "@/server/services/assessment.service";
 import { requireOrganizationRole } from "@/server/services/organization.service";
 import { db } from "@/server/db";
 import { z } from "zod";
+import { isServiceError } from "@/server/errors";
 
 const Schema = z.object({
   email: z.string().email(),
@@ -26,9 +27,10 @@ export async function POST(
     const candidate = await addCandidate(p.orgId, p.assessmentId, data as any);
     return NextResponse.json({ candidate });
   } catch (error: any) {
-    const isPrisma = error.name?.includes("Prisma") || error.message?.includes("Prisma");
-    const safeMessage = isPrisma ? "Database operation failed" : error.message;
-    return NextResponse.json({ error: safeMessage }, { status: 400 });
+    if (isServiceError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status || 400 });
+    }
+    return NextResponse.json({ error: "An unexpected error occurred" }, { status: 400 });
   }
 }
 
@@ -115,8 +117,9 @@ export async function GET(
 
     return NextResponse.json({ candidates: mappedCandidates, nextCursor });
   } catch (error: any) {
-    const isPrisma = error.name?.includes("Prisma") || error.message?.includes("Prisma");
-    const safeMessage = isPrisma ? "Database operation failed" : error.message;
-    return NextResponse.json({ error: safeMessage }, { status: 403 });
+    if (isServiceError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status || 403 });
+    }
+    return NextResponse.json({ error: "An unexpected error occurred" }, { status: 403 });
   }
 }
