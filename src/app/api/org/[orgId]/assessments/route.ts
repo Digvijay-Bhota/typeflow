@@ -48,7 +48,9 @@ export async function POST(
     const assessment = await createAssessment(p.orgId, data as any);
     return NextResponse.json({ assessment });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    const isPrisma = error.name?.includes("Prisma") || error.message?.includes("Prisma");
+    const safeMessage = isPrisma ? "Database operation failed" : error.message;
+    return NextResponse.json({ error: safeMessage }, { status: 400 });
   }
 }
 
@@ -68,6 +70,8 @@ export async function GET(
     });
     return NextResponse.json({ assessments });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 403 });
+    const isPrisma = error.name?.includes("Prisma") || error.message?.includes("Prisma");
+    const safeMessage = isPrisma ? "Database operation failed" : error.message;
+    return NextResponse.json({ error: safeMessage }, { status: 403 });
   }
 }

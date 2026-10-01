@@ -12,7 +12,8 @@ export async function POST(req: Request) {
     const { success, remaining, limit, reset } = await rateLimit(
       `create_session_${ip}`,
       10,
-      60000
+      60000,
+      "FAIL_OPEN"
     );
 
     if (!success) {

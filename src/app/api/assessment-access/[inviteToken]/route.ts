@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ inviteToken: string }> }
 ) {
   const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
-  const { success } = await rateLimit(`candidate_access_${ip}`, 30, 60000);
+  const { success } = await rateLimit(`candidate_access_${ip}`, 30, 60000, "FAIL_OPEN");
   if (!success)
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 

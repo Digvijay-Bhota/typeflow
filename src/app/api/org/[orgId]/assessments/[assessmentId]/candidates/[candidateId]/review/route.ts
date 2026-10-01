@@ -59,6 +59,8 @@ export async function PUT(
 
     return NextResponse.json({ candidate: updated });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 403 });
+    const isPrisma = error.name?.includes("Prisma") || error.message?.includes("Prisma");
+    const safeMessage = isPrisma ? "Database operation failed" : error.message;
+    return NextResponse.json({ error: safeMessage }, { status: 403 });
   }
 }

@@ -26,7 +26,9 @@ export async function POST(
     const candidate = await addCandidate(p.orgId, p.assessmentId, data as any);
     return NextResponse.json({ candidate });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    const isPrisma = error.name?.includes("Prisma") || error.message?.includes("Prisma");
+    const safeMessage = isPrisma ? "Database operation failed" : error.message;
+    return NextResponse.json({ error: safeMessage }, { status: 400 });
   }
 }
 
@@ -113,6 +115,8 @@ export async function GET(
 
     return NextResponse.json({ candidates: mappedCandidates, nextCursor });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 403 });
+    const isPrisma = error.name?.includes("Prisma") || error.message?.includes("Prisma");
+    const safeMessage = isPrisma ? "Database operation failed" : error.message;
+    return NextResponse.json({ error: safeMessage }, { status: 403 });
   }
 }
