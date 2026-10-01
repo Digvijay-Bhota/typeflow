@@ -10,7 +10,6 @@ vi.mock("@/server/lib/redis", () => ({
 describe("rateLimit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.NODE_ENV = "test";
   });
 
   it("fails closed by default on Redis error", async () => {
