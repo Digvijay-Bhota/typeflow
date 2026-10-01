@@ -20,10 +20,46 @@ import {
   deriveTraceDiagnostics,
   type TraceDiagnostics,
 } from "@/features/typing/lib/traceAnalysis";
+import { assessTracePlausibility } from "@/features/typing/lib/tracePlausibility";
+import { logger } from "@/lib/logger";
 import { ServiceError } from "@/server/errors";
 
 const GRACE_PERIOD_MS = 5000; // 5 seconds grace period for submission latency
 const SESSION_VALIDITY_MS = 60 * 60 * 1000; // 1 hour overall expiry to start
+
+/**
+ * Logs when the keystroke timing of a trace looks implausible. Log-only: it
+ * never changes a result and never throws, because it runs inside the submit
+ * transaction and a failure here must not fail a submission. The thresholds
+ * are tuned from these logs before any verdict is allowed to change a result.
+ */
+function logTracePlausibility(
+  session: { id: string; mode: string; trustTier: string },
+  events: EventTrace["events"],
+  expectedDurationMs: number,
+  isPassageCompleted: boolean
+): void {
+  try {
+    const plausibility = assessTracePlausibility(events, {
+      durationMs: expectedDurationMs,
+      expectFullDuration:
+        session.mode === "TIMED" &&
+        expectedDurationMs > 0 &&
+        (session.trustTier !== "FREE" || !isPassageCompleted),
+    });
+    if (plausibility.verdict !== "OK") {
+      logger.warn("Trace plausibility flagged a result", {
+        sessionId: session.id,
+        trustTier: session.trustTier,
+        verdict: plausibility.verdict,
+        reasons: plausibility.reasons,
+        metrics: plausibility.metrics,
+      });
+    }
+  } catch (error) {
+    logger.warn("Trace plausibility check failed", { error: String(error) });
+  }
+}
 
 export async function createSession(params: CreateSessionRequest) {
   let trustTier: "FREE" | "CERTIFICATE" | "B2B_ASSESSMENT" = "FREE";
@@ -480,6 +516,13 @@ export async function submitResult(
             correctedErrors = rec.correctedErrors;
             uncorrectedErrors = rec.uncorrectedErrors;
             scoringSource = "SERVER_RECONSTRUCTED";
+
+            logTracePlausibility(
+              session,
+              params.eventTrace.events,
+              expectedDurationMs,
+              rec.isPassageCompleted
+            );
 
             // Strictly use ACTUAL elapsed time for bounds checking
             if (rec.lastEventTimeMs > actualElapsedMs + 2000) {
