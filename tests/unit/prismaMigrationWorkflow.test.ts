@@ -73,6 +73,10 @@ const APPLIED_MIGRATIONS: [string, string][] = [
     "20260926000000_lock_down_public_schema_data_api",
     "3d3c111e4cbd0bb9ca0b36aeb5fb13f4b805a608ba3c22f4d1861897eefca743",
   ],
+  [
+    "20260930000000_words_mode_passages",
+    "562ce1dc579542aac7aaed811d069add4ab3304fe2824ccd96966394c5d32962",
+  ],
 ];
 
 describe("applied migrations are immutable", () => {
