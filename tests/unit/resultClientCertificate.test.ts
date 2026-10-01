@@ -166,10 +166,10 @@ describe("ResultClient certificate panel — purchase state", () => {
 describe("guest claim actions", () => {
   it("links sign-in and sign-up with the claim token", () => {
     const html = renderToStaticMarkup(
-      React.createElement(GuestClaimActions, { claimToken: "tok_123" })
+      React.createElement(GuestClaimActions, { claimToken: "tok_123", shareId: "guest_123" })
     );
-    expect(html).toContain('href="/login?claimToken=tok_123"');
-    expect(html).toContain('href="/signup?claimToken=tok_123"');
+    expect(html).toContain('href="/login?claimToken=tok_123&amp;shareId=guest_123"');
+    expect(html).toContain('href="/signup?claimToken=tok_123&amp;shareId=guest_123"');
   });
 
   it("without a claim token, still offers sign-in and a signed-in retake (no dead end)", () => {

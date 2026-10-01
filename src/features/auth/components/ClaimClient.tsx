@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function ClaimClient({ claimToken }: { claimToken: string }) {
+export function ClaimClient({ claimToken, shareId }: { claimToken: string; shareId: string }) {
   const router = useRouter();
   const [status, setStatus] = useState("Claiming your result...");
   const hasRun = useRef(false);
@@ -23,7 +23,7 @@ export function ClaimClient({ claimToken }: { claimToken: string }) {
         if (res.ok) {
           const data = await res.json();
           setStatus("Result claimed successfully!");
-          sessionStorage.removeItem("tf_claim_token");
+          sessionStorage.removeItem(`tf_claim_token_${shareId}`);
           setTimeout(() => {
             router.push(`/result/${data.shareId}`);
           }, 1000);
@@ -38,7 +38,7 @@ export function ClaimClient({ claimToken }: { claimToken: string }) {
       }
     }
     claim();
-  }, [claimToken, router]);
+  }, [claimToken, shareId, router]);
 
   return (
     <div className="bg-background animate-fade-in fixed right-4 bottom-4 z-50 rounded-lg px-4 py-3 text-white shadow-lg">

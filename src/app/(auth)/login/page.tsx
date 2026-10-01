@@ -6,7 +6,7 @@ import { ClaimClient } from "@/features/auth/components/ClaimClient";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; claimToken?: string; claimed?: string }>;
+  searchParams: Promise<{ error?: string; claimToken?: string; claimed?: string; shareId?: string }>;
 }) {
   const params = await searchParams;
 
@@ -25,6 +25,7 @@ export default async function LoginPage({
 
         <form action={login} className="flex flex-col gap-4">
           <input type="hidden" name="claimToken" value={params.claimToken || ""} />
+          <input type="hidden" name="shareId" value={params.shareId || ""} />
 
           <div className="flex flex-col gap-1">
             <label className="text-tf-text-700 dark:text-tf-text-300 text-sm font-medium">
@@ -62,7 +63,9 @@ export default async function LoginPage({
           Don&apos;t have an account?{" "}
           <Link
             href={
-              params.claimToken ? `/signup?claimToken=${params.claimToken}` : "/signup"
+              params.claimToken
+                ? `/signup?claimToken=${params.claimToken}&shareId=${params.shareId || ""}`
+                : "/signup"
             }
             className="text-accent hover:underline"
           >
@@ -71,8 +74,8 @@ export default async function LoginPage({
         </div>
       </div>
 
-      {params.claimed === "true" && params.claimToken && (
-        <ClaimClient claimToken={params.claimToken} />
+      {params.claimed === "true" && params.claimToken && params.shareId && (
+        <ClaimClient claimToken={params.claimToken} shareId={params.shareId} />
       )}
     </div>
   );

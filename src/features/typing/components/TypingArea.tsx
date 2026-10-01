@@ -237,6 +237,44 @@ export function TypingArea({
     [status, onStart, onKey, onBackspace, isApplePlatform]
   );
 
+  const isComposing = useRef(false);
+
+  const handleInput = useCallback(
+    (e: React.FormEvent<HTMLInputElement>) => {
+      if (isComposing.current) return;
+      const nativeEvent = e.nativeEvent as InputEvent;
+      
+      if (nativeEvent.inputType === "deleteContentBackward") {
+        onBackspace();
+      } else if (nativeEvent.data) {
+        if (status === "idle" && onStart) onStart();
+        for (const char of nativeEvent.data) {
+          onKey(char);
+        }
+      }
+      e.currentTarget.value = "";
+    },
+    [status, onStart, onKey, onBackspace]
+  );
+
+  const handleCompositionStart = useCallback(() => {
+    isComposing.current = true;
+  }, []);
+
+  const handleCompositionEnd = useCallback(
+    (e: React.CompositionEvent<HTMLInputElement>) => {
+      isComposing.current = false;
+      if (e.data) {
+        if (status === "idle" && onStart) onStart();
+        for (const char of e.data) {
+          onKey(char);
+        }
+      }
+      e.currentTarget.value = "";
+    },
+    [status, onStart, onKey]
+  );
+
   const overlayMessage =
     status === "idle"
       ? focused
@@ -289,6 +327,9 @@ export function TypingArea({
         autoCorrect="off"
         autoCapitalize="none"
         spellCheck={false}
+        onInput={handleInput}
+        onCompositionStart={handleCompositionStart}
+        onCompositionEnd={handleCompositionEnd}
         onFocus={() => {
           setFocused(true);
           onResume?.();
