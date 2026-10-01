@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireOrganizationRole } from "@/server/services/organization.service";
 import { db } from "@/server/db";
 import { z } from "zod";
+import { isServiceError } from "@/server/errors";
 import { rateLimit } from "@/server/middleware/rateLimit";
 
 const NotesSchema = z.object({
@@ -59,6 +60,12 @@ export async function PUT(
 
     return NextResponse.json({ candidate: updated });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 403 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (isServiceError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status || 403 });
+    }
+    return NextResponse.json({ error: "An unexpected error occurred" }, { status: 403 });
   }
 }

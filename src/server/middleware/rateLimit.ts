@@ -3,10 +3,13 @@ import { getRedisClient, executeRateLimitScript } from "../lib/redis";
 const rateLimitCache = new Map<string, { count: number; resetAt: number }>();
 let isCleanupRunning = false;
 
+export type FallbackPolicy = "FAIL_CLOSED" | "FAIL_OPEN";
+
 export async function rateLimit(
   identifier: string,
   limit: number = 10,
-  windowMs: number = 60000
+  windowMs: number = 60000,
+  fallbackPolicy: FallbackPolicy = "FAIL_CLOSED"
 ): Promise<{ success: boolean; limit: number; remaining: number; reset: number }> {
   const env = process.env.NODE_ENV || "development";
   const now = Date.now();
@@ -40,7 +43,8 @@ export async function rateLimit(
           };
         }
       } else {
-        return failClosed(limit, now + windowMs);
+        console.error(`[RateLimit] Redis returned null for ${identifier}.`);
+        return handleFallback(fallbackPolicy, limit, now + windowMs);
       }
     }
   } catch (err) {
@@ -51,7 +55,8 @@ export async function rateLimit(
     ) {
       throw err;
     }
-    return failClosed(limit, now + windowMs);
+    console.error(`[RateLimit] Redis failure for ${identifier}:`, err);
+    return handleFallback(fallbackPolicy, limit, now + windowMs);
   }
 
   if (env === "production") {
@@ -74,7 +79,15 @@ export async function rateLimit(
   return { success: true, limit, remaining: limit - record.count, reset: record.resetAt };
 }
 
-function failClosed(limit: number, resetAt: number) {
+function handleFallback(policy: FallbackPolicy, limit: number, resetAt: number) {
+  if (policy === "FAIL_OPEN") {
+    return {
+      success: true,
+      limit,
+      remaining: 1,
+      reset: resetAt,
+    };
+  }
   return {
     success: false,
     limit,

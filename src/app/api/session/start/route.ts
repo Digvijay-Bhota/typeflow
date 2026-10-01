@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   const requestId = crypto.randomUUID();
   try {
     const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
-    const { success } = await rateLimit(`start_session_${ip}`, 30, 60000);
+    const { success } = await rateLimit(`start_session_${ip}`, 30, 60000, "FAIL_OPEN");
 
     if (!success) {
       return NextResponse.json(

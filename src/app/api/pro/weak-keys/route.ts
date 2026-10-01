@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
-    const { success } = await rateLimit(`weak_keys_${ip}`, 30, 60000);
+    const { success } = await rateLimit(`weak_keys_${ip}`, 30, 60000, "FAIL_OPEN");
     if (!success) {
       return NextResponse.json(
         { error: { code: "RATE_LIMITED", message: "Too many requests" } },

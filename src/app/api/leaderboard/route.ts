@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
 
   const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
-  const { success } = await rateLimit(`leaderboard_${ip}`, 30, 60000);
+  const { success } = await rateLimit(`leaderboard_${ip}`, 30, 60000, "FAIL_OPEN");
 
   if (!success) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });

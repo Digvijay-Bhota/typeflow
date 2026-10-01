@@ -26,7 +26,7 @@ export async function GET(
     }
 
     const ip = req.headers.get("x-forwarded-for") || "127.0.0.1";
-    const { success } = await rateLimit(`get_result_${ip}`, 60, 60000);
+    const { success } = await rateLimit(`get_result_${ip}`, 60, 60000, "FAIL_OPEN");
 
     if (!success) {
       return NextResponse.json(

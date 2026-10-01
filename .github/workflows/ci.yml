@@ -197,3 +197,78 @@ jobs:
           name: nextjs-build
           path: .next/
           retention-days: 1
+
+  # ─── E2E Tests ──────────────────────────────────────────────────────────────
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: typeflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Migrate Database
+        run: |
+          npx prisma db execute --schema prisma/schema.prisma --file tests/setup/supabase-roles.sql
+          npx prisma migrate deploy
+        env:
+          DATABASE_URL: "postgresql://postgres:password@localhost:5432/typeflow_test"
+          DIRECT_URL: "postgresql://postgres:password@localhost:5432/typeflow_test"
+
+      - name: Run Playwright tests
+        run: npm run test:e2e
+        env:
+          NODE_ENV: "test"
+          SUPABASE_URL: "http://localhost:54321"
+          SUPABASE_ANON_KEY: "test-only-supabase-anon-key"
+          SUPABASE_SERVICE_ROLE_KEY: "test-only-supabase-service-role-key"
+          DATABASE_URL: "postgresql://postgres:password@localhost:5432/typeflow_test"
+          DIRECT_URL: "postgresql://postgres:password@localhost:5432/typeflow_test"
+          RAZORPAY_KEY_ID: "rzp_test_placeholder"
+          RAZORPAY_KEY_SECRET: "test-only-razorpay-key-secret"
+          RAZORPAY_WEBHOOK_SECRET: "test-only-razorpay-webhook-secret"
+          APP_URL: "http://localhost:3000"
+          SESSION_SECRET: "test-only-session-secret-not-for-production"
+          CERTIFICATE_SIGNING_SECRET: "test-only-certificate-signing-secret-not-for-production"
+          REDIS_URL: "redis://localhost:6379"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
