@@ -145,13 +145,16 @@ function peakWindowWpm(times: readonly number[], windowMs: number): number {
   return peak / CHARS_PER_WORD / (windowMs / 60_000);
 }
 
-function shareWhere(values: readonly number[], test: (value: number) => boolean): number {
+function shareWhere(
+  values: readonly number[],
+  predicate: (value: number) => boolean
+): number {
   if (values.length === 0) {
     return 0;
   }
   let matching = 0;
   for (const value of values) {
-    if (test(value)) {
+    if (predicate(value)) {
       matching++;
     }
   }
@@ -159,7 +162,11 @@ function shareWhere(values: readonly number[], test: (value: number) => boolean)
 }
 
 /** Share of fixed-size time buckets in [0, durationMs) with a key press. */
-function coverageOf(times: readonly number[], durationMs: number, bucketMs: number): number {
+function coverageOf(
+  times: readonly number[],
+  durationMs: number,
+  bucketMs: number
+): number {
   const buckets = Math.max(1, Math.ceil(durationMs / bucketMs));
   const hit = new Set<number>();
   for (const time of times) {
@@ -184,8 +191,7 @@ function gapVariation(
   if (mean === 0) {
     return 0;
   }
-  const variance =
-    used.reduce((sum, gap) => sum + (gap - mean) ** 2, 0) / used.length;
+  const variance = used.reduce((sum, gap) => sum + (gap - mean) ** 2, 0) / used.length;
   return Math.sqrt(variance) / mean;
 }
 
