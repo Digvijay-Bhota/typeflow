@@ -1,6 +1,6 @@
 import { db } from "@/server/db";
 import { requireOrganizationRole } from "./organization.service";
-import { AssessmentStatus, Language, TypingMode } from "@prisma/client";
+import { AssessmentStatus, Language, Prisma, TypingMode } from "@prisma/client";
 import { randomBytes, createHash } from "crypto";
 
 export async function createAssessment(
@@ -136,22 +136,60 @@ export async function addCandidate(
   return { ...candidate, inviteToken };
 }
 
+/**
+ * Everything the public invite lookup may return. Anyone holding an invite
+ * link receives this object (GET /api/assessment-access/[inviteToken]), so it
+ * is an allowlist: a column added to these models stays private until it is
+ * listed here. Deliberately absent: the assessment's pass thresholds
+ * (wpmThreshold, accuracyThreshold), every organization field but its name
+ * (ownerId, plan, domain, slug, ids), reviewerNotes, inviteTokenHash, resultId
+ * and the attempts' session ids.
+ */
+const CANDIDATE_INVITE_SELECT = {
+  id: true,
+  assessmentId: true,
+  email: true,
+  name: true,
+  status: true,
+  expiresAt: true,
+  assessment: {
+    select: {
+      title: true,
+      description: true,
+      testMode: true,
+      language: true,
+      codeLanguage: true,
+      duration: true,
+      maxAttempts: true,
+      status: true,
+      expiresAt: true,
+      organization: { select: { name: true } },
+    },
+  },
+  attempts: {
+    select: {
+      id: true,
+      attemptNumber: true,
+      status: true,
+      startedAt: true,
+      completedAt: true,
+    },
+  },
+} satisfies Prisma.AssessmentCandidateSelect;
+
 export async function getCandidateByInviteToken(inviteToken: string) {
   const inviteTokenHash = createHash("sha256").update(inviteToken).digest("hex");
   // Public access - candidate side
   const candidate = await db.assessmentCandidate.findUnique({
     where: { inviteTokenHash },
-    include: { assessment: { include: { organization: true } }, attempts: true },
+    select: CANDIDATE_INVITE_SELECT,
   });
 
   if (!candidate) {
     throw new Error("INVALID_INVITATION");
   }
 
-  // Remove private reviewer notes before returning to the candidate
-  const { reviewerNotes: _reviewerNotes, ...safeCandidate } = candidate;
-
-  return safeCandidate;
+  return candidate;
 }
 
 export async function startCandidateAttempt(inviteToken: string) {
