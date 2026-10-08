@@ -14,6 +14,8 @@ import {
   PRO_YEARLY_PRICE_PAISE,
   PRO_MONTHLY_PERIOD,
   PRO_YEARLY_PERIOD,
+  PRO_MONTHLY_TOTAL_COUNT,
+  PRO_YEARLY_TOTAL_COUNT,
   type SubscriptionInterval,
 } from "@/lib/constants";
 
@@ -88,6 +90,16 @@ export function getSubscriptionPeriodMonths(interval: SubscriptionInterval): num
   throw new Error(`Unknown subscription interval: ${interval as string}`);
 }
 
+/**
+ * Returns the number of billing cycles (Razorpay `total_count`) for a billing
+ * interval: Razorpay's 100-year maximum, never 0. See PRO_MONTHLY_TOTAL_COUNT.
+ */
+export function getSubscriptionTotalCount(interval: SubscriptionInterval): number {
+  if (interval === "monthly") return PRO_MONTHLY_TOTAL_COUNT;
+  if (interval === "yearly") return PRO_YEARLY_TOTAL_COUNT;
+  throw new Error(`Unknown subscription interval: ${interval as string}`);
+}
+
 // ─── Razorpay API calls ───────────────────────────────────────────────────────
 
 export interface RazorpaySubscriptionResult {
@@ -102,15 +114,23 @@ export interface RazorpaySubscriptionResult {
 /**
  * Create a Razorpay subscription.
  *
+ * The number of billing cycles comes from the interval, never from the
+ * caller: Razorpay rejects `total_count: 0`, so there is no default to fall
+ * back to.
+ *
  * @param planId   Server-resolved Razorpay plan ID (never from client)
  * @param userId   Internal user ID (for notes/tracking only, not trust-critical)
- * @param totalCount Number of billing cycles (0 = unlimited)
+ * @param interval Billing interval of the plan; decides `total_count`
  */
 export async function createRazorpaySubscription(
   planId: string,
   userId: string,
-  totalCount: number = 0
+  interval: SubscriptionInterval
 ): Promise<RazorpaySubscriptionResult> {
+  const totalCount = getSubscriptionTotalCount(interval);
+  if (!Number.isInteger(totalCount) || totalCount < 1) {
+    throw new Error(`Invalid subscription total_count: ${totalCount}`);
+  }
   const rzp = getRazorpayClient();
 
   const sub = await rzp.subscriptions.create({

@@ -158,6 +158,27 @@ export const PRO_MONTHLY_PERIOD = 1 as const;
 export const PRO_YEARLY_PERIOD = 12 as const;
 
 /**
+ * Number of billing cycles a Pro subscription is created with (Razorpay
+ * `total_count`). Razorpay requires a positive count when no `end_at` is sent
+ * and rejects 0 ("The total count must be at least 1").
+ *
+ * Pro is a normal recurring subscription that continues until the customer
+ * cancels. Razorpay has no "until cancelled" option, so both intervals use
+ * the longest horizon Razorpay supports (subscriptions of at most 100 years):
+ * - Monthly: 1200 cycles × 1 month  = 100 years
+ * - Yearly:   100 cycles × 12 months = 100 years
+ *
+ * This is a practical, Razorpay-compatible upper bound that exists only to
+ * avoid `total_count: 0`. It is NOT a customer-facing promise of a 100-year
+ * contract: the customer can cancel at any time, and cancellation is the
+ * expected way a subscription ends.
+ */
+export const PRO_MONTHLY_TOTAL_COUNT = 1200 as const;
+
+/** Billing cycles for Pro Yearly: 100 × 12 months = 100 years. See PRO_MONTHLY_TOTAL_COUNT. */
+export const PRO_YEARLY_TOTAL_COUNT = 100 as const;
+
+/**
  * PRO_PLAN_IDS maps interval → Razorpay plan ID.
  * Set via environment variables; validated at startup.
  * These are not hardcoded here to avoid committing IDs to source.
