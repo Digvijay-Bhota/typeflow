@@ -321,7 +321,34 @@ describe("createProSubscription", () => {
 
     expect(RazorpaySubService.createRazorpaySubscription).toHaveBeenCalledWith(
       "server_controlled_plan_id",
-      "user_1"
+      "user_1",
+      "monthly"
+    );
+  });
+
+  it("passes the requested interval to Razorpay, which decides total_count from it", async () => {
+    (db.subscription.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (
+      RazorpaySubService.resolveRazorpayPlanId as ReturnType<typeof vi.fn>
+    ).mockReturnValue("plan_yearly");
+    (
+      RazorpaySubService.createRazorpaySubscription as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      id: "sub_rzp_yearly",
+      status: "created",
+      planId: "plan_yearly",
+      shortUrl: "https://rzp.io/i/yearly",
+      currentStart: null,
+      currentEnd: null,
+    });
+
+    await createProSubscription("user_1", "yearly");
+
+    expect(RazorpaySubService.resolveRazorpayPlanId).toHaveBeenCalledWith("yearly");
+    expect(RazorpaySubService.createRazorpaySubscription).toHaveBeenCalledWith(
+      "plan_yearly",
+      "user_1",
+      "yearly"
     );
   });
 
@@ -717,7 +744,8 @@ describe("Security: subscription spoofing prevention", () => {
     // Razorpay subscription uses server-verified user ID in notes
     expect(RazorpaySubService.createRazorpaySubscription).toHaveBeenCalledWith(
       "plan_rzp",
-      "server_verified_user_id"
+      "server_verified_user_id",
+      "monthly"
     );
   });
 

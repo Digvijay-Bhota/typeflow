@@ -282,7 +282,7 @@ export async function createProSubscription(
   // 2. Create Razorpay subscription (External API Call)
   let rzpSub;
   try {
-    rzpSub = await createRazorpaySubscription(planId, userId);
+    rzpSub = await createRazorpaySubscription(planId, userId, interval);
   } catch (error) {
     // If Razorpay fails, revert local state to CANCELLED to free the lock
     await db.subscription.update({
