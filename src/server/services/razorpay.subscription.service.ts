@@ -92,7 +92,7 @@ export function getSubscriptionPeriodMonths(interval: SubscriptionInterval): num
 
 /**
  * Returns the number of billing cycles (Razorpay `total_count`) for a billing
- * interval: a finite 10-year horizon, never 0. See PRO_MONTHLY_TOTAL_COUNT.
+ * interval: Razorpay's 100-year maximum, never 0. See PRO_MONTHLY_TOTAL_COUNT.
  */
 export function getSubscriptionTotalCount(interval: SubscriptionInterval): number {
   if (interval === "monthly") return PRO_MONTHLY_TOTAL_COUNT;

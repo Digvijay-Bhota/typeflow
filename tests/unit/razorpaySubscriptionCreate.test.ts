@@ -4,7 +4,8 @@
  * Regression: it used to default `total_count` to 0, which Razorpay rejects
  * ("The total count must be at least 1"), so every Pro checkout failed after
  * the local PENDING_CREATION row was written. The billing cycle count now comes
- * from the interval: 120 monthly or 10 yearly cycles, a finite 10-year horizon.
+ * from the interval: 1200 monthly or 100 yearly cycles, Razorpay's 100-year
+ * maximum (a practical upper bound, not a promised contract length).
  * The SDK is mocked; no request leaves the process.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -50,19 +51,19 @@ beforeEach(() => {
 });
 
 describe("getSubscriptionTotalCount", () => {
-  it("is 120 cycles for monthly and 10 cycles for yearly", () => {
-    expect(PRO_MONTHLY_TOTAL_COUNT).toBe(120);
-    expect(PRO_YEARLY_TOTAL_COUNT).toBe(10);
-    expect(getSubscriptionTotalCount("monthly")).toBe(120);
-    expect(getSubscriptionTotalCount("yearly")).toBe(10);
+  it("is 1200 cycles for monthly and 100 cycles for yearly", () => {
+    expect(PRO_MONTHLY_TOTAL_COUNT).toBe(1200);
+    expect(PRO_YEARLY_TOTAL_COUNT).toBe(100);
+    expect(getSubscriptionTotalCount("monthly")).toBe(1200);
+    expect(getSubscriptionTotalCount("yearly")).toBe(100);
   });
 
   it.each(SUBSCRIPTION_INTERVALS)(
-    "%s spans a finite 10-year (120-month) horizon",
+    "%s spans exactly Razorpay's 100-year (1200-month) maximum, no more",
     (interval) => {
       const months =
         getSubscriptionTotalCount(interval) * getSubscriptionPeriodMonths(interval);
-      expect(months).toBe(120);
+      expect(months).toBe(1200);
     }
   );
 
@@ -75,8 +76,8 @@ describe("getSubscriptionTotalCount", () => {
 
 describe("createRazorpaySubscription", () => {
   it.each([
-    ["monthly", 120],
-    ["yearly", 10],
+    ["monthly", 1200],
+    ["yearly", 100],
   ] as const)("sends total_count %s → %i", async (interval, totalCount) => {
     await createRazorpaySubscription("plan_FAKE00000001", "user_1", interval);
 
