@@ -111,7 +111,7 @@ function DraftNotice() {
       aria-label="Draft notice"
       className="border-warning/40 bg-warning/10 text-foreground rounded-card border p-4 text-sm"
     >
-      <p className="font-semibold">Draft — awaiting confirmation</p>
+      <p className="font-semibold">Draft — pending legal review</p>
       <p className="text-secondary mt-1">
         This policy is a working draft and has not been reviewed by a lawyer.
       </p>

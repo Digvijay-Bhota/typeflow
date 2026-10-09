@@ -113,6 +113,8 @@ describe.each(LEGAL_PAGES.map((p) => [p.href, p] as const))("%s", (href, page) =
     render(h(LegalPage, { href }));
 
     const notice = screen.getByRole("note", { name: "Draft notice" });
+    expect(within(notice).getByText("Draft — pending legal review")).toBeTruthy();
+    expect(notice.textContent).not.toMatch(/awaiting confirmation/);
     expect(notice.textContent).toMatch(/has not been reviewed by a lawyer/);
     // The operator confirmed the support email (and that its inbox is
     // monitored) and the full correspondence address with its PIN code.
