@@ -261,3 +261,63 @@ describe("Pro entitlement — paid subscriptions", () => {
     }
   });
 });
+
+describe("Re-subscribing after a cancellation", () => {
+  // Regression: createProSubscription reused the CANCELLED row without clearing
+  // cancelledAt, so the billing page showed "Cancelled on …" beside the new plan.
+  it("clears the previous subscription's cancellation date", async () => {
+    const s = await startCheckout();
+    await deliver(
+      s.providerSubscriptionId,
+      "subscription.activated",
+      { status: "active", current_start: nowSec(), current_end: nowSec() + 30 * DAY },
+      `evt_act_${s.tag}`
+    );
+    await deliver(
+      s.providerSubscriptionId,
+      "subscription.cancelled",
+      { status: "cancelled" },
+      `evt_cancel_${s.tag}`
+    );
+    const cancelled = await db.subscription.findUniqueOrThrow({
+      where: { userId: s.userId },
+    });
+    expect(cancelled.status).toBe("CANCELLED");
+    expect(cancelled.cancelledAt).not.toBeNull();
+
+    const nextSubscriptionId = `sub_ent_${s.tag}_2`;
+    createRazorpaySubscription.mockResolvedValueOnce({
+      id: nextSubscriptionId,
+      status: "created",
+      planId: "plan_test_monthly",
+      shortUrl: `https://rzp.io/i/${s.tag}2`,
+      currentStart: null,
+      currentEnd: null,
+    });
+    await createProSubscription(s.userId, "monthly");
+
+    const renewed = await db.subscription.findUniqueOrThrow({
+      where: { userId: s.userId },
+    });
+    expect(renewed.id).toBe(cancelled.id);
+    expect(renewed.providerSubscriptionId).toBe(nextSubscriptionId);
+    expect(renewed.status).toBe("TRIALING");
+    expect(renewed.cancelledAt).toBeNull();
+    expect(renewed.cancelAt).toBeNull();
+    expect(renewed.currentPeriodEnd).toBeNull();
+    expect(await isPro(s.userId)).toBe(false);
+
+    await deliver(
+      nextSubscriptionId,
+      "subscription.activated",
+      { status: "active", current_start: nowSec(), current_end: nowSec() + 30 * DAY },
+      `evt_act2_${s.tag}`
+    );
+    const active = await db.subscription.findUniqueOrThrow({
+      where: { userId: s.userId },
+    });
+    expect(active.status).toBe("ACTIVE");
+    expect(active.cancelledAt).toBeNull();
+    expect(await isPro(s.userId)).toBe(true);
+  });
+});
