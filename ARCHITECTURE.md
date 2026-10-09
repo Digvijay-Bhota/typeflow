@@ -128,6 +128,7 @@ Pricing is strictly server-authoritative to prevent manipulation:
 - Server configuration (`src/lib/constants.ts`) defines price amounts (e.g., `PRO_MONTHLY_PRICE_PAISE`).
 - Environment variables map billing intervals to specific provider plan IDs (e.g., `RAZORPAY_PLAN_ID_PRO_MONTHLY`).
 - The client only specifies the `interval` (`monthly` or `yearly`).
+- The billing cycle count (`total_count`) is server-side too: `PRO_MONTHLY_TOTAL_COUNT` (468) and `PRO_YEARLY_TOTAL_COUNT` (39), a 39-year horizon. Razorpay has no "until cancelled" option and rejects `total_count: 0`, and its hosted checkout refuses subscriptions expiring 40 or more years out ("expire_at cannot be more than 40 years"). The horizon is not a contract length; customers cancel at any time.
 
 ### Cancellation Behavior
 
