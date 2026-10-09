@@ -11,6 +11,7 @@ import {
   Trophy,
   type LucideIcon,
 } from "lucide-react";
+import { LEGAL_PAGES } from "@/features/legal/legalPages";
 
 /** A navigation destination. Every href is an existing route. */
 export type NavItem = {
@@ -70,6 +71,10 @@ export const FOOTER_NAV: { title: string; items: { href: string; label: string }
       { href: "/pricing", label: "Pricing" },
       { href: "/dashboard", label: "Dashboard" },
     ],
+  },
+  {
+    title: "Legal",
+    items: LEGAL_PAGES.map(({ href, label }) => ({ href, label })),
   },
 ];
 
