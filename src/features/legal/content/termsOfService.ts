@@ -1,6 +1,8 @@
 // TERMS_OF_SERVICE.md from the operator's legal pages pack (9 October 2026), verbatim.
 // Support email corrected by the operator to xvshady585@gmail.com, and confirmed
 // as monitored (9 October 2026); the email-verification notes say so.
+// Correspondence address completed with its PIN code (140307) and confirmed by
+// the operator (9 October 2026); the PIN-code notes are removed.
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -17,7 +19,7 @@ By creating an account, accessing a paid feature, or using the Services, you agr
 TypeFlow is operated by **Digvijay Bhota**, an individual operator based in Mohali, Punjab, India. TypeFlow is not represented as a separately incorporated company. Do not interpret the TypeFlow name or branding as a representation that a company has been incorporated.
 
 **Contact:** xvshady585@gmail.com
-**Correspondence address:** 266, White City, near Rai Farms, Sector 114, Mohali, Punjab, India. *(The operator should confirm the full postal address and PIN code before public launch.)*
+**Correspondence address:** 266, White City, near Rai Farms, Sector 114, Mohali, Punjab 140307, India.
 
 ## 2. Eligibility and accounts
 

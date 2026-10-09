@@ -4,6 +4,8 @@
 // product's actual behaviour.
 // Support email corrected by the operator to xvshady585@gmail.com, and confirmed
 // as monitored (9 October 2026); the email-verification notes say so.
+// Correspondence address completed with its PIN code (140307) and confirmed by
+// the operator (9 October 2026); the PIN-code notes are removed.
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -16,7 +18,7 @@ This Privacy Policy explains how **Digvijay Bhota, operator of TypeFlow** (“Ty
 TypeFlow is operated by an individual and is not represented as a separately incorporated company.
 
 **Privacy contact:** xvshady585@gmail.com
-**Correspondence address:** 266, White City, near Rai Farms, Sector 114, Mohali, Punjab, India. *(Confirm the full postal address and PIN code before publication.)*
+**Correspondence address:** 266, White City, near Rai Farms, Sector 114, Mohali, Punjab 140307, India.
 
 ## 1. Scope
 

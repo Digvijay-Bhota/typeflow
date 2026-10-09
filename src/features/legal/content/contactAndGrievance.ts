@@ -1,6 +1,8 @@
 // CONTACT_AND_GRIEVANCE.md from the operator's legal pages pack (9 October 2026), verbatim.
 // Support email corrected by the operator to xvshady585@gmail.com, and confirmed
 // as monitored (9 October 2026); the email-verification notes say so.
+// Correspondence address completed with its PIN code (140307) and confirmed by
+// the operator (9 October 2026); the PIN-code notes are removed.
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -14,7 +16,7 @@ TypeFlow is operated by **Digvijay Bhota**, an individual operator based in Moha
 
 **Email:** xvshady585@gmail.com
 **Website:** https://typeflow-dusky.vercel.app
-**Correspondence address:** 266, White City, near Rai Farms, Sector 114, Mohali, Punjab, India *(full postal address/PIN code to be confirmed before publication)*
+**Correspondence address:** 266, White City, near Rai Farms, Sector 114, Mohali, Punjab 140307, India
 
 We use email as the primary support channel. Please include your TypeFlow account email and a short description of the issue. For payment, certificate or assessment issues, include the relevant payment, certificate, attempt or subscription reference if available. Do not send passwords, card security codes, UPI PINs, one-time passcodes or authentication tokens.
 
@@ -22,7 +24,7 @@ We use email as the primary support channel. Please include your TypeFlow accoun
 
 **Grievance Officer:** Digvijay Bhota
 **Email:** xvshady585@gmail.com
-**Postal address:** 266, White City, near Rai Farms, Sector 114, Mohali, Punjab, India *(confirm full postal address/PIN code before launch)*
+**Postal address:** 266, White City, near Rai Farms, Sector 114, Mohali, Punjab 140307, India
 
 You may use the same email to submit a complaint about account access, billing, refunds, certificates, assessment data or privacy. We aim to acknowledge a complaint within 48 hours and resolve it within 30 days, subject to the complexity of the issue and any different mandatory timeline under applicable law. If resolution will take longer, we aim to explain the reason and provide an update.
 
@@ -36,10 +38,11 @@ For access, correction, deletion or other privacy requests, email the address ab
 
 The operator has confirmed that **xvshady585@gmail.com** is spelled correctly, accessible and monitored (9 October 2026).
 
+The operator has confirmed the full correspondence address, including its PIN code, and is comfortable publishing it (9 October 2026).
+
 This page is not publication-ready until the operator:
 
-1. confirms the PIN code and any other missing postal details for the correspondence address (the operator has confirmed they are comfortable publishing the address itself, 9 October 2026);
-2. chooses and adds a real customer-support phone number if required by applicable consumer/e-commerce rules; do not invent a phone number;
-3. confirms the production site URL and replaces it if the public domain changes; and
-4. reviews whether any additional consumer grievance or regulatory contact requirements apply to TypeFlow's business structure and services.
+1. chooses and adds a real customer-support phone number if required by applicable consumer/e-commerce rules; do not invent a phone number;
+2. confirms the production site URL and replaces it if the public domain changes; and
+3. reviews whether any additional consumer grievance or regulatory contact requirements apply to TypeFlow's business structure and services.
 `;

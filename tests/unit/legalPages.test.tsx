@@ -114,15 +114,9 @@ describe.each(LEGAL_PAGES.map((p) => [p.href, p] as const))("%s", (href, page) =
 
     const notice = screen.getByRole("note", { name: "Draft notice" });
     expect(notice.textContent).toMatch(/has not been reviewed by a lawyer/);
-    expect(notice.textContent).toMatch(
-      /PIN code for the correspondence address shown here has not yet been confirmed/
-    );
-    // The operator confirmed they are comfortable publishing the address itself.
-    expect(notice.textContent).not.toMatch(
-      /The\s+correspondence address|including its PIN code/
-    );
-    // The operator confirmed the support email and that its inbox is monitored.
-    expect(notice.textContent).not.toMatch(/email/i);
+    // The operator confirmed the support email (and that its inbox is
+    // monitored) and the full correspondence address with its PIN code.
+    expect(notice.textContent).not.toMatch(/email|address|PIN/i);
 
     const robots = legalPageMetadata(href).robots as { index: boolean; follow: boolean };
     expect(robots.index).toBe(false);
@@ -155,9 +149,33 @@ describe("policy content", () => {
       expect(source).toContain(SUPPORT_EMAIL);
     }
     expect(LEGAL_PAGE_SOURCES["/contact"]).toContain("Important pre-publication items");
+  });
+
+  it("shows the confirmed correspondence address, with its PIN code, wherever it appears", () => {
+    const address =
+      "266, White City, near Rai Farms, Sector 114, Mohali, Punjab 140307, India";
     expect(LEGAL_PAGE_SOURCES["/terms"]).toContain(
-      "confirm the full postal address and PIN code before public launch"
+      `**Correspondence address:** ${address}.`
     );
+    expect(LEGAL_PAGE_SOURCES["/privacy"]).toContain(
+      `**Correspondence address:** ${address}.`
+    );
+    expect(LEGAL_PAGE_SOURCES["/contact"]).toContain(
+      `**Correspondence address:** ${address}`
+    );
+    expect(LEGAL_PAGE_SOURCES["/contact"]).toContain(`**Postal address:** ${address}`);
+    expect(ALL_TEXT.split(address)).toHaveLength(5); // four occurrences
+
+    // No address without its PIN code, and no note left saying it is unconfirmed.
+    expect(ALL_TEXT).not.toContain("Sector 114, Mohali, Punjab, India");
+    expect(ALL_TEXT).not.toMatch(
+      /PIN code (before|to be confirmed)|PIN code to be|address\/PIN code|confirms the PIN code/i
+    );
+    expect(LEGAL_PAGE_SOURCES["/contact"]).toContain(
+      "The operator has confirmed the full correspondence address, including its PIN code, and is comfortable publishing it"
+    );
+    const { container } = render(h(LegalPage, { href: "/contact" }));
+    expect(container.textContent).toContain(address);
   });
 
   it("records the support email as confirmed, with no note left asking to verify it", () => {
@@ -179,18 +197,14 @@ describe("policy content", () => {
     const contact = LEGAL_PAGE_SOURCES["/contact"];
     expect(contact).toContain("This page is not publication-ready until the operator:");
     for (const item of [
-      "1. confirms the PIN code and any other missing postal details for the correspondence address (the operator has confirmed they are comfortable publishing the address itself",
-      "2. chooses and adds a real customer-support phone number if required",
-      "3. confirms the production site URL",
-      "4. reviews whether any additional consumer grievance or regulatory contact requirements apply to TypeFlow's business structure",
+      "1. chooses and adds a real customer-support phone number if required",
+      "2. confirms the production site URL",
+      "3. reviews whether any additional consumer grievance or regulatory contact requirements apply to TypeFlow's business structure",
     ]) {
       expect(contact).toContain(item);
     }
-    expect(contact).toContain(
-      "full postal address/PIN code to be confirmed before publication"
-    );
-    expect(LEGAL_PAGE_SOURCES["/privacy"]).toContain(
-      "Confirm the full postal address and PIN code before publication."
+    expect(LEGAL_PAGE_SOURCES["/terms"]).toContain(
+      "Review the pre-launch checklist before publication, particularly the address, support phone, operator disclosures, refund workflow, and Indian consumer/data-protection obligations."
     );
     expect(LEGAL_PAGE_SOURCES["/privacy"]).toContain(
       "**Implementation note:** This is a privacy-policy draft, not a substitute for a data inventory or legal review."
@@ -233,7 +247,8 @@ describe("policy content", () => {
 
   it("invents no company, registration, phone number or PIN code", () => {
     expect(ALL_TEXT).not.toMatch(/Pvt\.?|Private Limited|\bLLP\b|GSTIN|Udyam|CIN:/);
-    expect(ALL_TEXT).not.toMatch(/\b\d{6}\b/); // Indian PIN code
+    // The only six-digit number is the PIN code the operator supplied.
+    expect(new Set(ALL_TEXT.match(/\b\d{6}\b/g))).toEqual(new Set(["140307"]));
     expect(ALL_TEXT).not.toMatch(/(\+91[\s-]?)?\b[6-9]\d{4}[\s-]?\d{5}\b/); // mobile number
     expect(ALL_TEXT).not.toMatch(/\b(1800|1860)[\s-]?\d{3}[\s-]?\d{4}\b/); // toll-free
   });

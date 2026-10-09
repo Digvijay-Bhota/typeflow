@@ -113,9 +113,7 @@ function DraftNotice() {
     >
       <p className="font-semibold">Draft — awaiting confirmation</p>
       <p className="text-secondary mt-1">
-        This policy is a working draft and has not been reviewed by a lawyer. The PIN code
-        for the correspondence address shown here has not yet been confirmed by the
-        operator.
+        This policy is a working draft and has not been reviewed by a lawyer.
       </p>
     </div>
   );
