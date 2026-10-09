@@ -4,8 +4,12 @@
  * Regression: it used to default `total_count` to 0, which Razorpay rejects
  * ("The total count must be at least 1"), so every Pro checkout failed after
  * the local PENDING_CREATION row was written. The billing cycle count now comes
- * from the interval: 1200 monthly or 100 yearly cycles, Razorpay's 100-year
- * maximum (a practical upper bound, not a promised contract length).
+ * from the interval: 468 monthly or 39 yearly cycles, a 39-year horizon (a
+ * practical upper bound, not a promised contract length).
+ *
+ * Regression: a 100-year horizon (1200 / 100 cycles) created the subscription,
+ * but Razorpay's hosted checkout then refused it with "expire_at cannot be
+ * more than 40 years". Both intervals must stay below 40 years.
  * The SDK is mocked; no request leaves the process.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -45,25 +49,52 @@ function sdkSubscription(over: Record<string, unknown> = {}) {
   };
 }
 
+/** Razorpay checkout rejects subscriptions whose expire_at is 40 or more years out. */
+const RAZORPAY_CHECKOUT_MAX_YEARS = 40;
+
 beforeEach(() => {
   sdk.subscriptions.create.mockReset();
   sdk.subscriptions.create.mockResolvedValue(sdkSubscription());
 });
 
 describe("getSubscriptionTotalCount", () => {
-  it("is 1200 cycles for monthly and 100 cycles for yearly", () => {
-    expect(PRO_MONTHLY_TOTAL_COUNT).toBe(1200);
-    expect(PRO_YEARLY_TOTAL_COUNT).toBe(100);
-    expect(getSubscriptionTotalCount("monthly")).toBe(1200);
-    expect(getSubscriptionTotalCount("yearly")).toBe(100);
+  it("is 468 cycles for monthly and 39 cycles for yearly", () => {
+    expect(PRO_MONTHLY_TOTAL_COUNT).toBe(468);
+    expect(PRO_YEARLY_TOTAL_COUNT).toBe(39);
+    expect(getSubscriptionTotalCount("monthly")).toBe(468);
+    expect(getSubscriptionTotalCount("yearly")).toBe(39);
+  });
+
+  it.each(SUBSCRIPTION_INTERVALS)("%s is a positive integer", (interval) => {
+    const count = getSubscriptionTotalCount(interval);
+    expect(Number.isInteger(count)).toBe(true);
+    expect(count).toBeGreaterThanOrEqual(1);
   });
 
   it.each(SUBSCRIPTION_INTERVALS)(
-    "%s spans exactly Razorpay's 100-year (1200-month) maximum, no more",
+    "%s spans 39 years, below Razorpay checkout's 40-year limit",
     (interval) => {
       const months =
         getSubscriptionTotalCount(interval) * getSubscriptionPeriodMonths(interval);
-      expect(months).toBe(1200);
+      expect(months).toBe(39 * 12);
+      expect(months).toBeLessThan(RAZORPAY_CHECKOUT_MAX_YEARS * 12);
+    }
+  );
+
+  it.each(SUBSCRIPTION_INTERVALS)(
+    "%s ends before the 40-year mark from any start date",
+    (interval) => {
+      const months =
+        getSubscriptionTotalCount(interval) * getSubscriptionPeriodMonths(interval);
+      // Month-end and leap-day starts are where calendar arithmetic drifts.
+      for (const start of ["2026-01-31", "2028-02-29", "2026-10-09"]) {
+        const startAt = new Date(`${start}T00:00:00Z`);
+        const expireAt = new Date(startAt);
+        expireAt.setUTCMonth(expireAt.getUTCMonth() + months);
+        const limit = new Date(startAt);
+        limit.setUTCFullYear(limit.getUTCFullYear() + RAZORPAY_CHECKOUT_MAX_YEARS);
+        expect(expireAt.getTime()).toBeLessThan(limit.getTime());
+      }
     }
   );
 
@@ -76,8 +107,8 @@ describe("getSubscriptionTotalCount", () => {
 
 describe("createRazorpaySubscription", () => {
   it.each([
-    ["monthly", 1200],
-    ["yearly", 100],
+    ["monthly", 468],
+    ["yearly", 39],
   ] as const)("sends total_count %s → %i", async (interval, totalCount) => {
     await createRazorpaySubscription("plan_FAKE00000001", "user_1", interval);
 
