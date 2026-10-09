@@ -115,8 +115,10 @@ describe.each(LEGAL_PAGES.map((p) => [p.href, p] as const))("%s", (href, page) =
     const notice = screen.getByRole("note", { name: "Draft notice" });
     expect(notice.textContent).toMatch(/has not been reviewed by a lawyer/);
     expect(notice.textContent).toMatch(
-      /email address and correspondence address .* not yet been confirmed/
+      /correspondence address shown here, including its PIN code, has not yet been confirmed/
     );
+    // The operator confirmed the support email and that its inbox is monitored.
+    expect(notice.textContent).not.toMatch(/email/i);
 
     const robots = legalPageMetadata(href).robots as { index: boolean; follow: boolean };
     expect(robots.index).toBe(false);

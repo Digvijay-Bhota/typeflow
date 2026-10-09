@@ -113,9 +113,9 @@ function DraftNotice() {
     >
       <p className="font-semibold">Draft — awaiting confirmation</p>
       <p className="text-secondary mt-1">
-        This policy is a working draft and has not been reviewed by a lawyer. The support
-        email address and correspondence address shown here have not yet been confirmed by
-        the operator.
+        This policy is a working draft and has not been reviewed by a lawyer. The
+        correspondence address shown here, including its PIN code, has not yet been
+        confirmed by the operator.
       </p>
     </div>
   );
