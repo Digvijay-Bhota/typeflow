@@ -186,6 +186,44 @@ describe("classification", { timeout: 30_000 }, () => {
     expect(s.attention).toEqual(["findings"]);
   });
 
+  it("2b. Razorpay active without payment evidence is not a confirmed missed activation", async () => {
+    const paid = await makeSub({ status: "TRIALING" });
+    const zero = await makeSub({ status: "TRIALING" });
+    const missing = await makeSub({ status: "TRIALING" });
+    provider(paid, { status: "active", paidCount: 1 });
+    provider(zero, { status: "active", paidCount: 0 });
+    provider(missing, { status: "active", paidCount: null });
+
+    const s = await run();
+    expect(s.counts).toEqual({ missed_activation: 1, activation_unconfirmed: 2 });
+    expect(finding(s, paid.id)?.outcomes).toEqual(["missed_activation"]);
+    expect(finding(s, zero.id)?.outcomes).toEqual(["activation_unconfirmed"]);
+    expect(finding(s, missing.id)?.outcomes).toEqual(["activation_unconfirmed"]);
+    expect(s.attention).toEqual(["findings", "anomalies"]);
+  });
+
+  it("2c. PAST_DUE is a recovered payment only with a later paid period on Razorpay", async () => {
+    const recovered = await makeSub({ status: "PAST_DUE", currentPeriodEnd: ACTIVE_END });
+    const samePeriod = await makeSub({
+      status: "PAST_DUE",
+      currentPeriodEnd: ACTIVE_END,
+    });
+    provider(recovered, {
+      status: "active",
+      paidCount: 2,
+      currentEnd: unix(new Date(ACTIVE_END.getTime() + 30 * DAY)),
+    });
+    provider(samePeriod, {
+      status: "active",
+      paidCount: 2,
+      currentEnd: unix(ACTIVE_END),
+    });
+
+    const s = await run();
+    expect(finding(s, recovered.id)?.outcomes).toEqual(["missed_activation"]);
+    expect(finding(s, samePeriod.id)?.outcomes).toEqual(["activation_unconfirmed"]);
+  });
+
   it("3. missed cancellation: local ACTIVE, Razorpay cancelled", async () => {
     const a = await makeSub({ status: "ACTIVE", currentPeriodEnd: ACTIVE_END });
     provider(a, { status: "cancelled", endedAt: unix(OLD) });

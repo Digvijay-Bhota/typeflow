@@ -71,7 +71,8 @@ describe("status matrix", () => {
     // local PAST_DUE (grace)
     ["PAST_DUE", "halted", "in_sync"],
     ["PAST_DUE", "pending", "in_sync"],
-    ["PAST_DUE", "active", "missed_activation"],
+    // same period end as the local one: no evidence of a new payment (see below)
+    ["PAST_DUE", "active", "activation_unconfirmed"],
     ["PAST_DUE", "cancelled", "missed_cancellation"],
     ["PAST_DUE", "created", "status_conflict"],
     // local CANCELLED, Razorpay ended
@@ -86,6 +87,93 @@ describe("status matrix", () => {
     expect(classify({ status: localStatus }, { status: providerStatus }).status).toBe(
       expected
     );
+  });
+});
+
+describe("missed_activation needs payment evidence", () => {
+  const later = (d: Date) => unix(new Date(d.getTime() + 30 * DAY));
+  const localEnd = new Date(NOW.getTime() + 10 * DAY);
+
+  describe("local TRIALING, Razorpay active", () => {
+    it.each([
+      [1, "missed_activation"],
+      [3, "missed_activation"],
+      [0, "activation_unconfirmed"],
+      [null, "activation_unconfirmed"],
+    ] as const)("paid_count %j → %s", (paidCount, expected) => {
+      expect(
+        classify({ status: "TRIALING" }, { status: "active", paidCount }).status
+      ).toBe(expected);
+    });
+
+    it("a paid_count that is not a number is no evidence", () => {
+      const p = { status: "active", paidCount: "1" as unknown as number };
+      expect(classify({ status: "TRIALING" }, p).status).toBe("activation_unconfirmed");
+    });
+  });
+
+  describe("local PAST_DUE, Razorpay active (recovered payment)", () => {
+    it("paid_count > 0 and a Razorpay period ending after the local one → missed_activation", () => {
+      expect(
+        classify(
+          { status: "PAST_DUE", currentPeriodEnd: localEnd },
+          { status: "active", paidCount: 2, currentEnd: later(localEnd) }
+        ).status
+      ).toBe("missed_activation");
+    });
+
+    const cases: [string, number | null, number | null][] = [
+      ["the same period end", 2, unix(localEnd)],
+      [
+        "a period end within the 1 h tolerance",
+        2,
+        unix(new Date(localEnd.getTime() + HOUR - 1000)),
+      ],
+      ["no Razorpay period end", 2, null],
+      ["paid_count 0, even with a later period", 0, later(localEnd)],
+      ["paid_count missing, even with a later period", null, later(localEnd)],
+    ];
+    it.each(cases)("%s → activation_unconfirmed", (_label, paidCount, currentEnd) => {
+      expect(
+        classify(
+          { status: "PAST_DUE", currentPeriodEnd: localEnd },
+          { status: "active", paidCount, currentEnd }
+        ).status
+      ).toBe("activation_unconfirmed");
+    });
+
+    it("no local paid period: paid_count > 0 alone is the evidence", () => {
+      expect(
+        classify(
+          { status: "PAST_DUE", currentPeriodEnd: null },
+          { status: "active", paidCount: 1 }
+        ).status
+      ).toBe("missed_activation");
+      for (const paidCount of [0, null]) {
+        expect(
+          classify(
+            { status: "PAST_DUE", currentPeriodEnd: null },
+            { status: "active", paidCount }
+          ).status
+        ).toBe("activation_unconfirmed");
+      }
+    });
+  });
+
+  it("activation_unconfirmed is an anomaly to check, not a confirmed finding", () => {
+    expect(
+      subscriptionReconcileAttention({
+        counts: { activation_unconfirmed: 1 },
+        truncated: false,
+      })
+    ).toEqual(["anomalies"]);
+  });
+
+  it("other classes do not depend on paid_count", () => {
+    expect(classify({}, { paidCount: 0 }).status).toBe("in_sync");
+    expect(
+      classify({ status: "ACTIVE" }, { status: "cancelled", paidCount: null }).status
+    ).toBe("missed_cancellation");
   });
 });
 
@@ -211,10 +299,13 @@ describe("attention", () => {
     expect(att({ [o]: 1 })).toEqual(["findings"]);
   });
 
-  it.each(["plan_mismatch", "owner_mismatch", "provider_missing", "status_conflict"])(
-    "%s is an anomaly",
-    (o) => {
-      expect(att({ [o]: 1 })).toEqual(["anomalies"]);
-    }
-  );
+  it.each([
+    "activation_unconfirmed",
+    "plan_mismatch",
+    "owner_mismatch",
+    "provider_missing",
+    "status_conflict",
+  ])("%s is an anomaly", (o) => {
+    expect(att({ [o]: 1 })).toEqual(["anomalies"]);
+  });
 });

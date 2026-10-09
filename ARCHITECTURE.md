@@ -252,22 +252,29 @@ Anomalies are `recon:anomaly:<kind>:<razorpay payment or order id>`, eventType `
 
 **Classification** (`classifySubscription`, pure). Razorpay `pending` means a charge failed and is being retried, which the webhook deliberately leaves as `ACTIVE` / `PAST_DUE`.
 
-| Outcome                     | Local                                                                                | Razorpay                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| `in_sync`                   | matches                                                                              | matches                                                                     |
-| `missed_activation`         | `TRIALING` / `PAST_DUE`                                                              | `active` (paid)                                                             |
-| `missed_cancellation`       | `TRIALING` / `ACTIVE` / `PAST_DUE`                                                   | `cancelled` / `completed` / `expired`                                       |
-| `missed_halt`               | `TRIALING` / `ACTIVE`                                                                | `halted`                                                                    |
-| `cancellation_pending`      | `CANCELLED`                                                                          | not ended, until 24 h after the local `currentPeriodEnd`: expected          |
-| `cancellation_not_honoured` | `CANCELLED`                                                                          | not ended, more than 24 h after the local `currentPeriodEnd`                |
-| `period_stale`              | `ACTIVE`                                                                             | `active`, period end more than 1 h later than the local one                 |
-| `status_conflict`           | any other combination                                                                | or an unrecognised status                                                   |
-| `plan_mismatch`             | `providerPlanId` differs from Razorpay's `plan_id` (in addition to the status class) |                                                                             |
-| `owner_mismatch`            | `userId` differs from Razorpay's `notes.userId` (in addition)                        |                                                                             |
-| `provider_missing`          | has a `sub_…` ID                                                                     | unknown to Razorpay                                                         |
-| `provider_error`            | —                                                                                    | lookup failed: `timeout`, `http_error`, `network_error`, `invalid_response` |
-| `stuck_creation`            | `PENDING_CREATION` with a `pending_` ID                                              | (no lookup)                                                                 |
-| `unmatched_events`          | `SubscriptionEvent` rows with no subscription                                        | (count and up to 10 Razorpay IDs)                                           |
+| Outcome                     | Local                                                                                | Razorpay                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `in_sync`                   | matches                                                                              | matches                                                                                |
+| `missed_activation`         | `TRIALING`, or `PAST_DUE` (recovered)                                                | `active` **with payment evidence** (see below)                                         |
+| `activation_unconfirmed`    | `TRIALING` / `PAST_DUE`                                                              | `active` without that evidence: an anomaly to check, not a confirmed missed activation |
+| `missed_cancellation`       | `TRIALING` / `ACTIVE` / `PAST_DUE`                                                   | `cancelled` / `completed` / `expired`                                                  |
+| `missed_halt`               | `TRIALING` / `ACTIVE`                                                                | `halted`                                                                               |
+| `cancellation_pending`      | `CANCELLED`                                                                          | not ended, until 24 h after the local `currentPeriodEnd`: expected                     |
+| `cancellation_not_honoured` | `CANCELLED`                                                                          | not ended, more than 24 h after the local `currentPeriodEnd`                           |
+| `period_stale`              | `ACTIVE`                                                                             | `active`, period end more than 1 h later than the local one                            |
+| `status_conflict`           | any other combination                                                                | or an unrecognised status                                                              |
+| `plan_mismatch`             | `providerPlanId` differs from Razorpay's `plan_id` (in addition to the status class) |                                                                                        |
+| `owner_mismatch`            | `userId` differs from Razorpay's `notes.userId` (in addition)                        |                                                                                        |
+| `provider_missing`          | has a `sub_…` ID                                                                     | unknown to Razorpay                                                                    |
+| `provider_error`            | —                                                                                    | lookup failed: `timeout`, `http_error`, `network_error`, `invalid_response`            |
+| `stuck_creation`            | `PENDING_CREATION` with a `pending_` ID                                              | (no lookup)                                                                            |
+| `unmatched_events`          | `SubscriptionEvent` rows with no subscription                                        | (count and up to 10 Razorpay IDs)                                                      |
+
+**Payment evidence for `missed_activation`.** Razorpay's status alone never confirms a missed activation; its `paid_count` must show a charged cycle:
+
+- Local `TRIALING`, Razorpay `active`: `paid_count` is a number greater than 0.
+- Local `PAST_DUE`, Razorpay `active` (a recovered payment): `paid_count` greater than 0 **and** Razorpay's `current_end` more than 1 hour after the local `currentPeriodEnd`, i.e. a cycle charged after the local paid period. With no local paid period, `paid_count` greater than 0 is enough. `paid_count` counts every charge the subscription ever had, so on its own it cannot show a new payment after the failure.
+- Anything less (`paid_count` 0, missing or not a number; no later Razorpay period) is `activation_unconfirmed`: Razorpay and TypeFlow disagree, but the provider data does not establish a payment. Check the subscription and its payments in the Razorpay dashboard before acting on it.
 
 **Bounds and the HTTP deadline.** At most 25 lookups and a 20 s budget per run (the route's `maxDuration` is 60 s); a lookup starts only with at least 1 s left and gets at most 8 s or the time left, whichever is less. `fetchRazorpaySubscription` uses `fetch` with `AbortSignal.timeout` over the whole exchange, response body included, because razorpay-node 2.9.8 sets no axios timeout, takes no per-request options and turns a timeout into a bare `TypeError`. At the deadline the request is aborted and its connection closed (`tests/unit/razorpaySubscriptionFetch.test.ts` shows the server side of the socket closing), so a stalled lookup does not keep running. Every other Razorpay call still uses the SDK.
 
