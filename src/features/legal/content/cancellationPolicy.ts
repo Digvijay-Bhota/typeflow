@@ -1,5 +1,6 @@
 // CANCELLATION_POLICY.md from the operator's legal pages pack (9 October 2026), verbatim.
-// Support email corrected by the operator to xvshady585@gmail.com (9 October 2026).
+// Support email corrected by the operator to xvshady585@gmail.com, and confirmed
+// as monitored (9 October 2026); the email-verification notes say so.
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -41,5 +42,5 @@ Once a subscription is cancelled or reaches the end of its paid period, Pro feat
 
 ## 7. Contact
 
-Email **xvshady585@gmail.com** for cancellation help. Verify the email’s spelling and monitoring before this Policy is published.
+Email **xvshady585@gmail.com** for cancellation help. The operator has confirmed that this email address is correct and that its inbox is monitored (9 October 2026).
 `;

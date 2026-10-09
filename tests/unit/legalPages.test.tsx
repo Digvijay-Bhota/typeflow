@@ -156,6 +156,46 @@ describe("policy content", () => {
     );
   });
 
+  it("records the support email as confirmed, with no note left asking to verify it", () => {
+    // The operator confirmed the address and that its inbox is monitored.
+    expect(ALL_TEXT).not.toMatch(
+      /verify (this|the) email|verif(y|ies) that \*\*xvshady|email’s spelling and monitoring|correctly spelled and monitored before/i
+    );
+    for (const href of ["/terms", "/privacy", "/cancellation-policy"] as const) {
+      expect(LEGAL_PAGE_SOURCES[href], href).toContain(
+        "The operator has confirmed that this email address is correct and that its inbox is monitored"
+      );
+    }
+    expect(LEGAL_PAGE_SOURCES["/contact"]).toContain(
+      `The operator has confirmed that **${SUPPORT_EMAIL}** is spelled correctly, accessible and monitored`
+    );
+  });
+
+  it("keeps every other outstanding pre-publication warning", () => {
+    const contact = LEGAL_PAGE_SOURCES["/contact"];
+    expect(contact).toContain("This page is not publication-ready until the operator:");
+    for (const item of [
+      "1. confirms the full public correspondence address and PIN code",
+      "2. chooses and adds a real customer-support phone number if required",
+      "3. confirms the production site URL",
+      "4. reviews whether any additional consumer grievance or regulatory contact requirements apply to TypeFlow's business structure",
+    ]) {
+      expect(contact).toContain(item);
+    }
+    expect(contact).toContain(
+      "full postal address/PIN code to be confirmed before publication"
+    );
+    expect(LEGAL_PAGE_SOURCES["/privacy"]).toContain(
+      "Confirm the full postal address and PIN code before publication."
+    );
+    expect(LEGAL_PAGE_SOURCES["/privacy"]).toContain(
+      "**Implementation note:** This is a privacy-policy draft, not a substitute for a data inventory or legal review."
+    );
+    expect(LEGAL_PAGE_SOURCES["/terms"]).toContain(
+      "**Important:** This is a business-specific draft, not legal advice."
+    );
+  });
+
   it("shows the corrected support email on every page, and never the earlier misspelling", () => {
     // The pack had xvshad585@gmail.com; the operator corrected it to SUPPORT_EMAIL.
     const misspelled = /xvshad585/;

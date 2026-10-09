@@ -2,7 +2,8 @@
 // the leaderboard and shared-result disclosures ("Public leaderboards and shared
 // result pages" and the two sharing bullets in section 5), written from the
 // product's actual behaviour.
-// Support email corrected by the operator to xvshady585@gmail.com (9 October 2026).
+// Support email corrected by the operator to xvshady585@gmail.com, and confirmed
+// as monitored (9 October 2026); the email-verification notes say so.
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -153,7 +154,7 @@ We may update this Policy when the Services, providers, processing activities or
 
 ## 13. Contact and grievances
 
-For privacy questions or requests, contact **xvshady585@gmail.com**. The operator should verify that the email is correctly spelled and monitored before publication. The Contact & Grievance Redressal page provides further contact and complaint information.
+For privacy questions or requests, contact **xvshady585@gmail.com**. The operator has confirmed that this email address is correct and that its inbox is monitored (9 October 2026). The Contact & Grievance Redressal page provides further contact and complaint information.
 
 ---
 

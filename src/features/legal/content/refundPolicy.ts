@@ -1,7 +1,8 @@
 // REFUND_POLICY.md from the operator's legal pages pack (9 October 2026), plus
 // the paragraph in section 3 on certificate revocation after a full refund,
 // written from the product's actual behaviour.
-// Support email corrected by the operator to xvshady585@gmail.com (9 October 2026).
+// Support email corrected by the operator to xvshady585@gmail.com, and confirmed
+// as monitored (9 October 2026).
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.

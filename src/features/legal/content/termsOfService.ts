@@ -1,5 +1,6 @@
 // TERMS_OF_SERVICE.md from the operator's legal pages pack (9 October 2026), verbatim.
-// Support email corrected by the operator to xvshady585@gmail.com (9 October 2026).
+// Support email corrected by the operator to xvshady585@gmail.com, and confirmed
+// as monitored (9 October 2026); the email-verification notes say so.
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -133,7 +134,7 @@ These Terms are governed by the laws of India. Subject to any mandatory consumer
 
 ## 15. Contact and grievances
 
-For support, privacy requests, refund requests or complaints, contact **xvshady585@gmail.com**. The operator should verify this email address before publishing the page. See the Contact & Grievance Redressal page for the operator’s address and complaint-handling process.
+For support, privacy requests, refund requests or complaints, contact **xvshady585@gmail.com**. The operator has confirmed that this email address is correct and that its inbox is monitored (9 October 2026). See the Contact & Grievance Redressal page for the operator’s address and complaint-handling process.
 
 ---
 

@@ -1,5 +1,6 @@
 // CONTACT_AND_GRIEVANCE.md from the operator's legal pages pack (9 October 2026), verbatim.
-// Support email corrected by the operator to xvshady585@gmail.com (9 October 2026).
+// Support email corrected by the operator to xvshady585@gmail.com, and confirmed
+// as monitored (9 October 2026); the email-verification notes say so.
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -33,11 +34,12 @@ For access, correction, deletion or other privacy requests, email the address ab
 
 ## Important pre-publication items
 
+The operator has confirmed that **xvshady585@gmail.com** is spelled correctly, accessible and monitored (9 October 2026).
+
 This page is not publication-ready until the operator:
 
-1. verifies that **xvshady585@gmail.com** is spelled correctly, accessible and monitored;
-2. confirms the full public correspondence address and PIN code, and is comfortable making that address public;
-3. chooses and adds a real customer-support phone number if required by applicable consumer/e-commerce rules; do not invent a phone number;
-4. confirms the production site URL and replaces it if the public domain changes; and
-5. reviews whether any additional consumer grievance or regulatory contact requirements apply to TypeFlow's business structure and services.
+1. confirms the full public correspondence address and PIN code, and is comfortable making that address public;
+2. chooses and adds a real customer-support phone number if required by applicable consumer/e-commerce rules; do not invent a phone number;
+3. confirms the production site URL and replaces it if the public domain changes; and
+4. reviews whether any additional consumer grievance or regulatory contact requirements apply to TypeFlow's business structure and services.
 `;
