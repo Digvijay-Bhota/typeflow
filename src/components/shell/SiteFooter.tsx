@@ -16,7 +16,7 @@ export function SiteFooter() {
             Practice, measure and prove your typing speed with server-verified results.
           </p>
         </div>
-        <nav aria-label="Footer" className="grid grid-cols-2 gap-8 sm:grid-cols-3">
+        <nav aria-label="Footer" className="grid grid-cols-2 gap-8 lg:grid-cols-4">
           {FOOTER_NAV.map((group) => (
             <div key={group.title} className="flex flex-col gap-3">
               <h2 className="text-foreground text-sm font-semibold">{group.title}</h2>

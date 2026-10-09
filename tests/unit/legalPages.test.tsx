@@ -1,0 +1,202 @@
+// @vitest-environment happy-dom
+/**
+ * Legal pages (/terms, /privacy, /refund-policy, /cancellation-policy,
+ * /contact): the operator's policy drafts rendered verbatim, flagged as
+ * unconfirmed drafts until LEGAL_PAGES_DRAFT is switched off, and linked from
+ * the footer. Route existence of the footer links is checked in shell.test.ts.
+ */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createElement as h } from "react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: unknown }) =>
+    h("a", { href, ...rest }, children as never),
+}));
+
+import { LegalPage, legalPageMetadata } from "@/features/legal/components/LegalPage";
+import { LEGAL_PAGE_SOURCES } from "@/features/legal/content";
+import { LEGAL_PAGES, LEGAL_PAGES_DRAFT } from "@/features/legal/legalPages";
+import { parseLegalMarkdown } from "@/features/legal/lib/legalMarkdown";
+import { FOOTER_NAV } from "@/components/shell/navigation";
+
+afterEach(cleanup);
+
+const ALL_TEXT = Object.values(LEGAL_PAGE_SOURCES).join("\n");
+const SUPPORT_EMAIL = "xvshad585@gmail.com";
+
+describe("parseLegalMarkdown", () => {
+  it("parses headings with unique ids, lists, line breaks, emphasis and rules", () => {
+    const blocks = parseLegalMarkdown(
+      [
+        "# Title",
+        "",
+        "**Contact:** a@b.c",
+        "**Address:** Somewhere *(confirm)*",
+        "",
+        "## 1. Scope",
+        "",
+        "- one",
+        "- **two**",
+        "",
+        "1. first",
+        "2. second",
+        "",
+        "## 1. Scope",
+        "",
+        "---",
+      ].join("\n")
+    );
+
+    expect(blocks.map((b) => b.type)).toEqual([
+      "heading",
+      "paragraph",
+      "heading",
+      "list",
+      "list",
+      "heading",
+      "rule",
+    ]);
+    expect(blocks[0]).toMatchObject({ level: 1, id: "title", text: "Title" });
+    expect(blocks[2]).toMatchObject({ level: 2, id: "1-scope" });
+    expect(blocks[5]).toMatchObject({ id: "1-scope-2" });
+    expect(blocks[1]).toEqual({
+      type: "paragraph",
+      lines: [
+        [
+          { type: "strong", children: [{ type: "text", text: "Contact:" }] },
+          { type: "text", text: " a@b.c" },
+        ],
+        [
+          { type: "strong", children: [{ type: "text", text: "Address:" }] },
+          { type: "text", text: " Somewhere " },
+          { type: "em", children: [{ type: "text", text: "(confirm)" }] },
+        ],
+      ],
+    });
+    expect(blocks[3]).toMatchObject({ type: "list", ordered: false });
+    expect(blocks[4]).toMatchObject({ type: "list", ordered: true });
+  });
+
+  it("treats HTML and link syntax as plain text", () => {
+    const text = '<img src=x onerror="x()"> [a](javascript:x)';
+    expect(parseLegalMarkdown(text)).toEqual([
+      { type: "paragraph", lines: [[{ type: "text", text }]] },
+    ]);
+  });
+});
+
+describe.each(LEGAL_PAGES.map((p) => [p.href, p] as const))("%s", (href, page) => {
+  it("renders one h1, the policy text and links to every other legal page", () => {
+    render(h(LegalPage, { href }));
+
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByText(/^Last updated: 9 October 2026$/)).toBeTruthy();
+
+    const related = screen.getByRole("navigation", { name: "Related policies" });
+    const links = within(related)
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+    expect(links.sort()).toEqual(
+      LEGAL_PAGES.filter((p) => p.href !== href)
+        .map((p) => p.href)
+        .sort()
+    );
+    expect(page.title.length).toBeGreaterThan(0);
+  });
+
+  it("is flagged as an unconfirmed draft and not indexed while LEGAL_PAGES_DRAFT is on", () => {
+    expect(LEGAL_PAGES_DRAFT).toBe(true);
+    render(h(LegalPage, { href }));
+
+    const notice = screen.getByRole("note", { name: "Draft notice" });
+    expect(notice.textContent).toMatch(/has not been reviewed by a lawyer/);
+    expect(notice.textContent).toMatch(
+      /email address and correspondence address .* not yet been confirmed/
+    );
+
+    const robots = legalPageMetadata(href).robots as { index: boolean; follow: boolean };
+    expect(robots.index).toBe(false);
+    expect(robots.follow).toBe(false);
+  });
+
+  it("keeps the source page file in the App Router", () => {
+    const file = join(process.cwd(), "src/app", href.slice(1), "page.tsx");
+    expect(readFileSync(file, "utf8")).toContain(`href="${href}"`);
+  });
+});
+
+describe("policy content", () => {
+  it("long policies get a table of contents whose links point at their sections", () => {
+    for (const href of ["/terms", "/privacy"] as const) {
+      const { container } = render(h(LegalPage, { href }));
+      const toc = screen.getByRole("navigation", { name: "On this page" });
+      const targets = within(toc)
+        .getAllByRole("link")
+        .map((a) => a.getAttribute("href")!.slice(1));
+      expect(targets.length).toBeGreaterThanOrEqual(6);
+      for (const id of targets)
+        expect(container.querySelector(`h2#${id}`)).not.toBeNull();
+      cleanup();
+    }
+  });
+
+  it("names the unconfirmed support email and keeps its confirmation notes", () => {
+    for (const source of Object.values(LEGAL_PAGE_SOURCES)) {
+      expect(source).toContain(SUPPORT_EMAIL);
+    }
+    expect(LEGAL_PAGE_SOURCES["/contact"]).toContain("Important pre-publication items");
+    expect(LEGAL_PAGE_SOURCES["/terms"]).toContain(
+      "confirm the full postal address and PIN code before public launch"
+    );
+  });
+
+  it("preserves rights that cannot lawfully be excluded", () => {
+    expect(LEGAL_PAGE_SOURCES["/terms"]).toContain(
+      "Nothing in these Terms requires a consumer to give up a statutory right or remedy."
+    );
+    expect(LEGAL_PAGE_SOURCES["/terms"]).toContain(
+      "Nothing in these Terms removes consumer rights that cannot lawfully be excluded."
+    );
+    expect(LEGAL_PAGE_SOURCES["/refund-policy"]).toContain(
+      "Nothing in this Policy limits a right to a refund, cancellation, chargeback, or other remedy that cannot lawfully be excluded."
+    );
+  });
+
+  it("describes results as server-verified and unproctored", () => {
+    expect(LEGAL_PAGE_SOURCES["/terms"]).toContain(
+      "**server-verified, unproctored results**"
+    );
+    expect(ALL_TEXT).not.toMatch(/cheat-proof|tamper-proof/i);
+  });
+
+  it("invents no company, registration, phone number or PIN code", () => {
+    expect(ALL_TEXT).not.toMatch(/Pvt\.?|Private Limited|\bLLP\b|GSTIN|Udyam|CIN:/);
+    expect(ALL_TEXT).not.toMatch(/\b\d{6}\b/); // Indian PIN code
+    expect(ALL_TEXT).not.toMatch(/(\+91[\s-]?)?\b[6-9]\d{4}[\s-]?\d{5}\b/); // mobile number
+    expect(ALL_TEXT).not.toMatch(/\b(1800|1860)[\s-]?\d{3}[\s-]?\d{4}\b/); // toll-free
+  });
+
+  it("does not claim legal review or guaranteed compliance", () => {
+    expect(ALL_TEXT).not.toMatch(
+      /legally reviewed|reviewed by (a|our) lawyer|fully compliant|guarantee[sd]? (of )?compliance|ISO 27001|SOC 2|PCI[- ]DSS (certified|compliant)/i
+    );
+  });
+});
+
+describe("footer", () => {
+  it("links every legal page from a Legal group", () => {
+    const legal = FOOTER_NAV.find((group) => group.title === "Legal");
+    expect(legal?.items).toEqual(LEGAL_PAGES.map(({ href, label }) => ({ href, label })));
+  });
+
+  it("the module the client navigation imports carries no policy text", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/features/legal/legalPages.ts"),
+      "utf8"
+    );
+    expect(source).not.toMatch(/from "\.\/content/);
+  });
+});
