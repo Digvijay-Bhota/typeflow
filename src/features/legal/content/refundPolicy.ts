@@ -1,4 +1,6 @@
-// REFUND_POLICY.md from the operator's legal pages pack (9 October 2026), verbatim.
+// REFUND_POLICY.md from the operator's legal pages pack (9 October 2026), plus
+// the paragraph in section 3 on certificate revocation after a full refund,
+// written from the product's actual behaviour.
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -38,6 +40,8 @@ A certificate purchase is generally non-refundable once the certificate has been
 - a refund or other remedy is required by applicable law.
 
 A refund is not normally available merely because you dislike a valid test result, do not need the certificate after purchase, or made an incorrect selection, except where applicable law requires otherwise.
+
+**A full refund invalidates the certificate.** When a full refund of a certificate purchase is processed, that certificate is permanently revoked. Its online verification page, which its QR code and verification link open, then shows it as revoked and no longer valid, so it will no longer pass verification. This includes copies of the certificate that were downloaded or shared before the refund. A partial refund does not revoke the certificate.
 
 ## 4. Duplicate, incorrect or unauthorised payments
 

@@ -1,4 +1,7 @@
-// PRIVACY_POLICY.md from the operator's legal pages pack (9 October 2026), verbatim.
+// PRIVACY_POLICY.md from the operator's legal pages pack (9 October 2026), plus
+// the leaderboard and shared-result disclosures ("Public leaderboards and shared
+// result pages" and the two sharing bullets in section 5), written from the
+// product's actual behaviour.
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -45,6 +48,14 @@ Typing results are server-verified but unproctored. Technical plausibility check
 
 A person who receives a certificate or its verification link may be able to view the certificate information made available on that page. Consider this before sharing a certificate publicly.
 
+### Public leaderboards and shared result pages
+
+TypeFlow has public leaderboards of verified typing results, which anyone can view without an account. **By default, your results can appear on them.** For each leaderboard category and period, the leaderboards show your best verified result, including its words per minute, accuracy and date, together with your display name (the name you entered when you signed up, or “Anonymous Typist” if you did not enter one). The public leaderboard data also includes your avatar (profile picture), if your account has one. Results from organisation assessments are not shown on the leaderboards.
+
+You can opt out at any time by turning on **Hide my results from public leaderboards** in your account Settings. Your results then stop appearing on the leaderboards.
+
+Each completed typing test also has its own result page with a hard-to-guess link. **Anyone who has the link can open the result page without signing in.** It shows the result’s details, such as speed, accuracy, error counts, speed over time, the keys you mistyped most often, the type of test and the date, and the result data available through that link includes your display name. Each leaderboard entry links to its result page, so anyone viewing the leaderboards can open the result pages of the results shown there. Opting out of the leaderboards removes your results from the leaderboards, but it does not disable result pages: a result link that has already been shared or copied keeps working.
+
 ### Assessment and organisation information
 
 Where an organisation uses TypeFlow, we may process candidate names, email addresses, invitations, assessment identifiers, attempt status, results and other information supplied by the organisation or participant. The organisation may decide why the assessment is conducted and how its results are used.
@@ -87,7 +98,9 @@ We do not sell your personal information as a standalone data product. We may sh
 - **Vercel** for hosting, deployment, request handling and related service logs;
 - **Razorpay** for payment processing, subscription management and related notifications;
 - other infrastructure, security, communications or support providers used to operate the Services;
-- an organisation that invited you to an assessment, as needed to provide that assessment and its results; and
+- an organisation that invited you to an assessment, as needed to provide that assessment and its results;
+- anyone viewing the public leaderboards, for your leaderboard entries unless you opt out, as described in section 2;
+- anyone who has the link to one of your result pages, for the details available through that link, as described in section 2; and
 - public certificate-verification visitors, but only for the details made visible on the applicable verification page.
 
 We may also disclose information to a competent authority or adviser where reasonably necessary to comply with law, protect safety or rights, investigate fraud, or handle a dispute. If TypeFlow undergoes a business transfer, information may be transferred as part of that transaction subject to appropriate safeguards and applicable law.

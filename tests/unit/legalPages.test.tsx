@@ -21,6 +21,7 @@ import { LEGAL_PAGE_SOURCES } from "@/features/legal/content";
 import { LEGAL_PAGES, LEGAL_PAGES_DRAFT } from "@/features/legal/legalPages";
 import { parseLegalMarkdown } from "@/features/legal/lib/legalMarkdown";
 import { FOOTER_NAV } from "@/components/shell/navigation";
+import { VERIFICATION_MESSAGES, verificationState } from "@/lib/certificateStatus";
 
 afterEach(cleanup);
 
@@ -177,6 +178,68 @@ describe("policy content", () => {
     expect(ALL_TEXT).not.toMatch(/\b\d{6}\b/); // Indian PIN code
     expect(ALL_TEXT).not.toMatch(/(\+91[\s-]?)?\b[6-9]\d{4}[\s-]?\d{5}\b/); // mobile number
     expect(ALL_TEXT).not.toMatch(/\b(1800|1860)[\s-]?\d{3}[\s-]?\d{4}\b/); // toll-free
+  });
+
+  // The disclosures below describe product behaviour; each test also checks
+  // the code it describes, so a product change that falsifies the text fails here.
+  const repoFile = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
+
+  it("discloses the public leaderboard and its Settings opt-out", () => {
+    const privacy = LEGAL_PAGE_SOURCES["/privacy"];
+    expect(privacy).toContain("### Public leaderboards and shared result pages");
+    expect(privacy).toContain("**By default, your results can appear on them.**");
+    expect(privacy).toMatch(/your best verified result, .*display name/);
+    expect(privacy).toContain("includes your avatar (profile picture)");
+    expect(privacy).toContain(
+      "- anyone viewing the public leaderboards, for your leaderboard entries unless you opt out"
+    );
+
+    // Opt-out is off by default, filtered out by the leaderboard query, and the
+    // policy names the Settings control by its label.
+    expect(repoFile("prisma/schema.prisma")).toMatch(
+      /leaderboardOptOut\s+Boolean\s+@default\(false\)/
+    );
+    const leaderboard = repoFile("src/server/services/leaderboard.service.ts");
+    expect(leaderboard).toContain(`u."leaderboardOptOut" = false`);
+    expect(leaderboard).toContain(`avatarUrl: r.avatarUrl`);
+    expect(leaderboard).toContain(`ts."trustTier" IN ('FREE', 'CERTIFICATE')`);
+    const label = "Hide my results from public leaderboards";
+    expect(repoFile("src/app/dashboard/settings/page.tsx")).toContain(label);
+    expect(privacy).toContain(`**${label}**`);
+  });
+
+  it("discloses that result pages are open to anyone with the link and linked from the leaderboard", () => {
+    const privacy = LEGAL_PAGE_SOURCES["/privacy"];
+    expect(privacy).toContain(
+      "**Anyone who has the link can open the result page without signing in.**"
+    );
+    expect(privacy).toContain("Each leaderboard entry links to its result page");
+    expect(privacy).toContain("it does not disable result pages");
+    expect(privacy).toContain(
+      "- anyone who has the link to one of your result pages, for the details available through that link"
+    );
+
+    expect(repoFile("src/app/leaderboard/LeaderboardClient.tsx")).toContain(
+      "href={`/result/${entry.shareId}`}"
+    );
+    // The share page is not behind the dashboard auth gate.
+    expect(repoFile("src/middleware.ts")).not.toMatch(/["'`]\/result/);
+  });
+
+  it("discloses that a full certificate refund revokes the certificate", () => {
+    const refund = LEGAL_PAGE_SOURCES["/refund-policy"];
+    expect(refund).toContain("**A full refund invalidates the certificate.**");
+    expect(refund).toContain("it will no longer pass verification");
+    expect(refund).toContain("A partial refund does not revoke the certificate.");
+
+    const payment = repoFile("src/server/services/payment.service.ts");
+    expect(payment).toMatch(/applyFullRefundTx[\s\S]*?revokeCertificateTx\(/);
+    expect(payment).toContain(
+      "Partial certificate refund processed; certificate left unchanged"
+    );
+    // Revoked fails verification even when its stored verification data is valid.
+    expect(verificationState({ status: "REVOKED" }, true)).toBe("REVOKED");
+    expect(VERIFICATION_MESSAGES.REVOKED).toMatch(/revoked and is no longer valid/);
   });
 
   it("does not claim legal review or guaranteed compliance", () => {
