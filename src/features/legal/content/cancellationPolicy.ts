@@ -1,4 +1,5 @@
 // CANCELLATION_POLICY.md from the operator's legal pages pack (9 October 2026), verbatim.
+// Support email corrected by the operator to xvshady585@gmail.com (9 October 2026).
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -10,7 +11,7 @@ This Policy explains how to cancel TypeFlow Pro and what happens after cancellat
 
 ## 1. How to cancel
 
-You may cancel your Pro subscription using the billing controls available in your TypeFlow account. If you cannot access the control, email **xvshad585@gmail.com** from your account email and include your subscription reference. We will help you locate the correct subscription.
+You may cancel your Pro subscription using the billing controls available in your TypeFlow account. If you cannot access the control, email **xvshady585@gmail.com** from your account email and include your subscription reference. We will help you locate the correct subscription.
 
 Do not email passwords, one-time passcodes, full payment-card details or account tokens.
 
@@ -40,5 +41,5 @@ Once a subscription is cancelled or reaches the end of its paid period, Pro feat
 
 ## 7. Contact
 
-Email **xvshad585@gmail.com** for cancellation help. Verify the email’s spelling and monitoring before this Policy is published.
+Email **xvshady585@gmail.com** for cancellation help. Verify the email’s spelling and monitoring before this Policy is published.
 `;

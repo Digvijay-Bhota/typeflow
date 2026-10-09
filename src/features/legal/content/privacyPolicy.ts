@@ -2,6 +2,7 @@
 // the leaderboard and shared-result disclosures ("Public leaderboards and shared
 // result pages" and the two sharing bullets in section 5), written from the
 // product's actual behaviour.
+// Support email corrected by the operator to xvshady585@gmail.com (9 October 2026).
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -13,7 +14,7 @@ This Privacy Policy explains how **Digvijay Bhota, operator of TypeFlow** (“Ty
 
 TypeFlow is operated by an individual and is not represented as a separately incorporated company.
 
-**Privacy contact:** xvshad585@gmail.com
+**Privacy contact:** xvshady585@gmail.com
 **Correspondence address:** 266, White City, near Rai Farms, Sector 114, Mohali, Punjab, India. *(Confirm the full postal address and PIN code before publication.)*
 
 ## 1. Scope
@@ -130,7 +131,7 @@ You can ask us to:
 - explain a privacy concern or make a grievance; and
 - help you access account information through available account controls.
 
-Email **xvshad585@gmail.com** from the address associated with your account and explain your request. We may ask for reasonable information to verify your identity. Do not send passwords, one-time passcodes, full card details or authentication tokens. We will respond within the timelines required by applicable law and otherwise aim to respond promptly.
+Email **xvshady585@gmail.com** from the address associated with your account and explain your request. We may ask for reasonable information to verify your identity. Do not send passwords, one-time passcodes, full card details or authentication tokens. We will respond within the timelines required by applicable law and otherwise aim to respond promptly.
 
 ## 9. Children and age-related information
 
@@ -152,7 +153,7 @@ We may update this Policy when the Services, providers, processing activities or
 
 ## 13. Contact and grievances
 
-For privacy questions or requests, contact **xvshad585@gmail.com**. The operator should verify that the email is correctly spelled and monitored before publication. The Contact & Grievance Redressal page provides further contact and complaint information.
+For privacy questions or requests, contact **xvshady585@gmail.com**. The operator should verify that the email is correctly spelled and monitored before publication. The Contact & Grievance Redressal page provides further contact and complaint information.
 
 ---
 

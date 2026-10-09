@@ -26,7 +26,7 @@ import { VERIFICATION_MESSAGES, verificationState } from "@/lib/certificateStatu
 afterEach(cleanup);
 
 const ALL_TEXT = Object.values(LEGAL_PAGE_SOURCES).join("\n");
-const SUPPORT_EMAIL = "xvshad585@gmail.com";
+const SUPPORT_EMAIL = "xvshady585@gmail.com";
 
 describe("parseLegalMarkdown", () => {
   it("parses headings with unique ids, lists, line breaks, emphasis and rules", () => {
@@ -144,7 +144,7 @@ describe("policy content", () => {
     }
   });
 
-  it("names the unconfirmed support email and keeps its confirmation notes", () => {
+  it("names the support email and keeps its confirmation notes", () => {
     for (const source of Object.values(LEGAL_PAGE_SOURCES)) {
       expect(source).toContain(SUPPORT_EMAIL);
     }
@@ -152,6 +152,18 @@ describe("policy content", () => {
     expect(LEGAL_PAGE_SOURCES["/terms"]).toContain(
       "confirm the full postal address and PIN code before public launch"
     );
+  });
+
+  it("shows the corrected support email on every page, and never the earlier misspelling", () => {
+    // The pack had xvshad585@gmail.com; the operator corrected it to SUPPORT_EMAIL.
+    const misspelled = /xvshad585/;
+    expect(ALL_TEXT).not.toMatch(misspelled);
+    for (const { href } of LEGAL_PAGES) {
+      const { container } = render(h(LegalPage, { href }));
+      expect(container.textContent, href).toContain(SUPPORT_EMAIL);
+      expect(container.textContent, href).not.toMatch(misspelled);
+      cleanup();
+    }
   });
 
   it("preserves rights that cannot lawfully be excluded", () => {

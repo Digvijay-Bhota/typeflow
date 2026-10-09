@@ -1,6 +1,7 @@
 // REFUND_POLICY.md from the operator's legal pages pack (9 October 2026), plus
 // the paragraph in section 3 on certificate revocation after a full refund,
 // written from the product's actual behaviour.
+// Support email corrected by the operator to xvshady585@gmail.com (9 October 2026).
 // A working draft: see LEGAL_PAGES_DRAFT in ../legalPages.ts before publishing.
 // Rendered by parseLegalMarkdown: headings, paragraphs (each line break kept),
 // lists, **bold**, *italic* and --- only.
@@ -10,7 +11,7 @@ export const REFUND_POLICY = `# TypeFlow Refund Policy
 
 This Refund Policy applies to payments for TypeFlow Pro subscriptions, digital certificates and other paid features purchased directly through TypeFlow. Enterprise or organisation contracts may contain additional written payment terms. This Policy does not remove rights that cannot lawfully be excluded.
 
-**Support:** xvshad585@gmail.com
+**Support:** xvshady585@gmail.com
 
 ## 1. Pro subscription — initial-charge refund window
 
@@ -51,7 +52,7 @@ Never send your full card number, CVV, UPI PIN, banking password, one-time passc
 
 ## 5. How to request a refund
 
-Email **xvshad585@gmail.com** with:
+Email **xvshady585@gmail.com** with:
 
 - the email address on your TypeFlow account;
 - the date and amount of the payment;
