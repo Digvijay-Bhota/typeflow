@@ -19,9 +19,9 @@
  * - Responds with counts only: no provider payloads, no customer data.
  */
 import { NextResponse } from "next/server";
-import { createHash, timingSafeEqual } from "crypto";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { cronSecretConfigured, isCronAuthorized } from "@/server/lib/cronAuth";
 import {
   reconcileModeFromEnv,
   reconcilePayments,
@@ -30,15 +30,6 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const MIN_SECRET_LENGTH = 32;
-
-const digest = (value: string) => createHash("sha256").update(value).digest();
-
-/** Constant-time: both sides are hashed to the same length first. */
-function isAuthorized(header: string | null, secret: string): boolean {
-  return timingSafeEqual(digest(header ?? ""), digest(`Bearer ${secret}`));
-}
 
 const json = (body: unknown, status: number) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -69,7 +60,7 @@ export function HEAD() {
 export async function GET(req: Request) {
   try {
     const secret = getServerEnv().CRON_SECRET;
-    if (!secret || secret.length < MIN_SECRET_LENGTH) {
+    if (!cronSecretConfigured(secret)) {
       logger.warn("Cron request refused: CRON_SECRET is not configured", {
         route: "/api/cron/reconcile-payments",
       });
@@ -78,7 +69,7 @@ export async function GET(req: Request) {
         503
       );
     }
-    if (!isAuthorized(req.headers.get("authorization"), secret)) {
+    if (!isCronAuthorized(req.headers.get("authorization"), secret)) {
       logger.warn("Cron request refused: invalid authorization", {
         route: "/api/cron/reconcile-payments",
       });
