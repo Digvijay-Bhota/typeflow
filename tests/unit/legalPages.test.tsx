@@ -115,7 +115,11 @@ describe.each(LEGAL_PAGES.map((p) => [p.href, p] as const))("%s", (href, page) =
     const notice = screen.getByRole("note", { name: "Draft notice" });
     expect(notice.textContent).toMatch(/has not been reviewed by a lawyer/);
     expect(notice.textContent).toMatch(
-      /correspondence address shown here, including its PIN code, has not yet been confirmed/
+      /PIN code for the correspondence address shown here has not yet been confirmed/
+    );
+    // The operator confirmed they are comfortable publishing the address itself.
+    expect(notice.textContent).not.toMatch(
+      /The\s+correspondence address|including its PIN code/
     );
     // The operator confirmed the support email and that its inbox is monitored.
     expect(notice.textContent).not.toMatch(/email/i);
@@ -175,7 +179,7 @@ describe("policy content", () => {
     const contact = LEGAL_PAGE_SOURCES["/contact"];
     expect(contact).toContain("This page is not publication-ready until the operator:");
     for (const item of [
-      "1. confirms the full public correspondence address and PIN code",
+      "1. confirms the PIN code and any other missing postal details for the correspondence address (the operator has confirmed they are comfortable publishing the address itself",
       "2. chooses and adds a real customer-support phone number if required",
       "3. confirms the production site URL",
       "4. reviews whether any additional consumer grievance or regulatory contact requirements apply to TypeFlow's business structure",

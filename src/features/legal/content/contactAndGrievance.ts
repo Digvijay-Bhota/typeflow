@@ -38,7 +38,7 @@ The operator has confirmed that **xvshady585@gmail.com** is spelled correctly, a
 
 This page is not publication-ready until the operator:
 
-1. confirms the full public correspondence address and PIN code, and is comfortable making that address public;
+1. confirms the PIN code and any other missing postal details for the correspondence address (the operator has confirmed they are comfortable publishing the address itself, 9 October 2026);
 2. chooses and adds a real customer-support phone number if required by applicable consumer/e-commerce rules; do not invent a phone number;
 3. confirms the production site URL and replaces it if the public domain changes; and
 4. reviews whether any additional consumer grievance or regulatory contact requirements apply to TypeFlow's business structure and services.

@@ -2,12 +2,13 @@
  * The legal pages are working drafts until the operator confirms them.
  *
  * While true, every legal page says so above the text — the policies have not
- * been legally reviewed, and the correspondence address (with its PIN code) is
+ * been legally reviewed, and the correspondence address's PIN code is
  * unconfirmed — and asks search engines not to index it. The operator has
- * confirmed the support email and that its inbox is monitored (9 October 2026).
- * Set it to false only after the operator has confirmed the full postal
- * address with PIN code and the other pre-publication items, and has removed
- * the drafting notes from the policy text.
+ * confirmed the support email and that its inbox is monitored, and that they
+ * are comfortable publishing the correspondence address (9 October 2026).
+ * Set it to false only after the operator has confirmed the PIN code and any
+ * other missing postal details and the other pre-publication items, and has
+ * removed the drafting notes from the policy text.
  */
 export const LEGAL_PAGES_DRAFT = true;
 
