@@ -205,6 +205,7 @@ Anomalies are `recon:anomaly:<kind>:<razorpay payment or order id>`, eventType `
 - **Window.** Each run looks back over the 7-day window (stale rows only, 15-minute minimum age), so a missed or failed day is covered by the next run; Vercel does not retry a failed cron invocation.
 - **Observation.** Runtime logs are kept only briefly on Hobby: capture each run's `Payment reconciliation run` summary within about an hour (see the runbook below). `PaymentEvent` rows (`recon:*`) are the durable record of findings. The route answers 200 even when individual payments fail, so watch the summary, not the status.
 - **Stopping it:** disable Cron Jobs in the Vercel project settings (immediate), then remove the `crons` entry.
+- **While frozen:** since 9 October 2026 Production is private (Deployment Protection: All Deployments), so scheduled runs probably receive the login redirect and do nothing (unverified). Re-check the schedule when Production is made public again; see `docs/LAUNCH_CHECKLIST.md`.
 
 ### Reconciliation runbook (Phase 5C-11)
 
