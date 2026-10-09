@@ -294,7 +294,8 @@ export async function createProSubscription(
 
   // 3. Commit actual ID. The new subscription is unpaid: it has no paid
   // period, whatever dates the creation response carries (only activated /
-  // charged establish one), and none left over from a previous subscription.
+  // charged establish one), and none left over from a previous subscription —
+  // nor that subscription's cancellation date.
   const subscription = await db.subscription.update({
     where: { userId },
     data: {
@@ -303,6 +304,7 @@ export async function createProSubscription(
       currentPeriodStart: null,
       currentPeriodEnd: null,
       cancelAt: null,
+      cancelledAt: null,
     },
   });
 
