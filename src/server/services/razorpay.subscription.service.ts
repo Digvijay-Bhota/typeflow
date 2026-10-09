@@ -168,24 +168,132 @@ export async function cancelRazorpaySubscription(
   await rzp.subscriptions.cancel(providerSubscriptionId, atPeriodEnd ? true : false);
 }
 
+// ─── Read-only subscription lookup (bounded) ─────────────────────────────────
+
+const RAZORPAY_API_BASE = "https://api.razorpay.com";
+
+/** Per-lookup deadline when the caller sets none. */
+export const RAZORPAY_LOOKUP_TIMEOUT_MS = 8_000;
+
+const SUBSCRIPTION_ID = /^sub_[A-Za-z0-9]{1,64}$/;
+
+export type RazorpayLookupFailure =
+  | "not_found"
+  | "timeout"
+  | "http_error"
+  | "network_error"
+  | "invalid_response";
+
 /**
- * Fetch a Razorpay subscription by ID.
+ * A failed lookup. Carries the kind of failure and the HTTP status only, never
+ * the response body or the request (which holds the credentials).
+ */
+export class RazorpayLookupError extends Error {
+  constructor(
+    readonly kind: RazorpayLookupFailure,
+    readonly status: number | null = null
+  ) {
+    super(`Razorpay subscription lookup failed: ${kind}${status ? ` (${status})` : ""}`);
+    this.name = "RazorpayLookupError";
+  }
+}
+
+/** The fields the reconciliation compares; nothing else is kept. */
+export interface RazorpaySubscriptionSnapshot {
+  id: string;
+  status: string;
+  planId: string | null;
+  currentStart: number | null;
+  currentEnd: number | null;
+  endedAt: number | null;
+  paidCount: number | null;
+  /** notes.userId set at creation (createRazorpaySubscription). */
+  notesUserId: string | null;
+}
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const str = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : null);
+
+/**
+ * Fetch a Razorpay subscription by ID (GET /v1/subscriptions/:id), read-only.
+ *
+ * Uses fetch rather than the SDK because razorpay-node 2.9.8 has no timeout or
+ * cancellation: its axios instance is created without `timeout` or `signal`,
+ * resource methods take no per-request options, and an error without a
+ * response (a timeout) surfaces only as a TypeError. Here the whole exchange,
+ * response body included, runs under one AbortSignal.timeout, so a stalled
+ * request is aborted and its connection closed at the deadline; it is not
+ * merely stopped being awaited.
+ *
+ * Throws RazorpayLookupError: `not_found` for an unknown ID, `timeout`,
+ * `http_error`, `network_error` or `invalid_response`.
  */
 export async function fetchRazorpaySubscription(
-  providerSubscriptionId: string
-): Promise<RazorpaySubscriptionResult> {
-  const rzp = getRazorpayClient();
-  const sub = await rzp.subscriptions.fetch(providerSubscriptionId);
+  providerSubscriptionId: string,
+  options: { timeoutMs?: number; baseUrl?: string } = {}
+): Promise<RazorpaySubscriptionSnapshot> {
+  if (!SUBSCRIPTION_ID.test(providerSubscriptionId)) {
+    throw new RazorpayLookupError("not_found");
+  }
+  const env = getServerEnv();
+  const timeoutMs = Math.max(1, options.timeoutMs ?? RAZORPAY_LOOKUP_TIMEOUT_MS);
+  const signal = AbortSignal.timeout(timeoutMs);
+  const auth = Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString(
+    "base64"
+  );
 
+  let status: number;
+  let body: string;
+  try {
+    const res = await fetch(
+      `${options.baseUrl ?? RAZORPAY_API_BASE}/v1/subscriptions/${providerSubscriptionId}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Basic ${auth}`, Accept: "application/json" },
+        signal,
+        cache: "no-store",
+      }
+    );
+    status = res.status;
+    body = await res.text(); // still under the same deadline
+  } catch {
+    throw new RazorpayLookupError(signal.aborted ? "timeout" : "network_error");
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    throw new RazorpayLookupError("invalid_response", status);
+  }
+
+  if (status < 200 || status >= 300) {
+    // Razorpay answers an unknown ID with 400 BAD_REQUEST_ERROR "The id
+    // provided does not exist" (404 is treated the same).
+    const description = (data as { error?: { description?: unknown } } | null)?.error
+      ?.description;
+    const unknownId =
+      status === 404 ||
+      (status === 400 &&
+        typeof description === "string" &&
+        /does not exist/i.test(description));
+    throw new RazorpayLookupError(unknownId ? "not_found" : "http_error", status);
+  }
+
+  const sub = data as Record<string, unknown>;
+  if (sub.id !== providerSubscriptionId || typeof sub.status !== "string") {
+    throw new RazorpayLookupError("invalid_response", status);
+  }
+  const notes = sub.notes && typeof sub.notes === "object" ? sub.notes : {};
   return {
     id: sub.id,
     status: sub.status,
-    planId: sub.plan_id,
-    shortUrl: (sub as unknown as Record<string, string>).short_url ?? "",
-    currentStart:
-      (sub as unknown as Record<string, number | null | undefined>).current_start ?? null,
-    currentEnd:
-      (sub as unknown as Record<string, number | null | undefined>).current_end ?? null,
+    planId: str(sub.plan_id),
+    currentStart: num(sub.current_start),
+    currentEnd: num(sub.current_end),
+    endedAt: num(sub.ended_at),
+    paidCount: num(sub.paid_count),
+    notesUserId: str((notes as Record<string, unknown>).userId),
   };
 }
 

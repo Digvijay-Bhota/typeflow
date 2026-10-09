@@ -99,7 +99,7 @@ Do not accept a real payment until every item is checked.
 
 ## Worth doing before launch (no cost)
 
-- **Subscription reconciliation.** Nothing repairs a missed subscription webhook today. During testing, two stuck staging subscriptions had to be fixed by hand. A report-only reconciler, mirroring the payment one, would list local versus Razorpay status mismatches.
+- **Subscription reconciliation (report only).** `/api/cron/reconcile-subscriptions` lists local versus Razorpay mismatches, such as a missed activation or cancellation. It never repairs anything. It is off by default (`SUBSCRIPTION_RECONCILE_MODE`) and unscheduled. Before launch, decide whether to enable `report` for Production and how to run it. See `ARCHITECTURE.md` → _Subscription Reconciliation_.
 - **Backups while on the Free plan.** Before relying on Free-plan data, take a `pg_dump` of each database and test-restore it locally.
 
 ## Only if TypeFlow ever leaves Vercel

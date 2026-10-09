@@ -240,6 +240,48 @@ Anomalies are `recon:anomaly:<kind>:<razorpay payment or order id>`, eventType `
 
 **Apply is a separate, explicit decision.** It needs at least 7 consecutive clean report runs, every finding confirmed by hand, the webhook and auto-capture confirmed, and a controlled first run (mode change, redeploy, one observed run). The cron never switches modes.
 
+## Subscription Reconciliation (report only)
+
+`subscription.reconciliation.service.ts` + `GET /api/cron/reconcile-subscriptions` compare local Pro subscriptions with Razorpay and **report** where they disagree. They never repair anything: no Prisma writes, no state transitions, no audit rows, and no provider action (the only provider call is a read by subscription ID).
+
+**Mode** (`SUBSCRIPTION_RECONCILE_MODE`): `off` (default, and any value other than `report`) and `report`. There is no apply mode. While off, the route answers 503 `RECONCILE_DISABLED` after authorization and touches neither the database nor Razorpay.
+
+**Route:** `Authorization: Bearer <CRON_SECRET>` through the shared `src/server/lib/cronAuth.ts` (constant time; also used by `/api/cron/reconcile-payments`). Unset or short secret → 503, wrong token → 401, any query → 400, `HEAD` → 405. **Unscheduled:** it is not in `vercel.json`. Call it by hand, with the Deployment Protection bypass header while the deployment is protected.
+
+**What a run reads:** PRO subscriptions with a `sub_…` ID that are `TRIALING`, `ACTIVE` or `PAST_DUE`, or `CANCELLED` with a period end in the last 90 days, last changed more than 15 minutes ago (a webhook may still be on its way). Oldest `updatedAt` first, at most 25. Separately, without any provider call: `PENDING_CREATION` rows still holding a `pending_` placeholder, and webhook events stored without a local subscription.
+
+**Classification** (`classifySubscription`, pure). Razorpay `pending` means a charge failed and is being retried, which the webhook deliberately leaves as `ACTIVE` / `PAST_DUE`.
+
+| Outcome                     | Local                                                                                | Razorpay                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `in_sync`                   | matches                                                                              | matches                                                                                |
+| `missed_activation`         | `TRIALING`, or `PAST_DUE` (recovered)                                                | `active` **with payment evidence** (see below)                                         |
+| `activation_unconfirmed`    | `TRIALING` / `PAST_DUE`                                                              | `active` without that evidence: an anomaly to check, not a confirmed missed activation |
+| `missed_cancellation`       | `TRIALING` / `ACTIVE` / `PAST_DUE`                                                   | `cancelled` / `completed` / `expired`                                                  |
+| `missed_halt`               | `TRIALING` / `ACTIVE`                                                                | `halted`                                                                               |
+| `cancellation_pending`      | `CANCELLED`                                                                          | not ended, until 24 h after the local `currentPeriodEnd`: expected                     |
+| `cancellation_not_honoured` | `CANCELLED`                                                                          | not ended, more than 24 h after the local `currentPeriodEnd`                           |
+| `period_stale`              | `ACTIVE`                                                                             | `active`, period end more than 1 h later than the local one                            |
+| `status_conflict`           | any other combination                                                                | or an unrecognised status                                                              |
+| `plan_mismatch`             | `providerPlanId` differs from Razorpay's `plan_id` (in addition to the status class) |                                                                                        |
+| `owner_mismatch`            | `userId` differs from Razorpay's `notes.userId` (in addition)                        |                                                                                        |
+| `provider_missing`          | has a `sub_…` ID                                                                     | unknown to Razorpay                                                                    |
+| `provider_error`            | —                                                                                    | lookup failed: `timeout`, `http_error`, `network_error`, `invalid_response`            |
+| `stuck_creation`            | `PENDING_CREATION` with a `pending_` ID                                              | (no lookup)                                                                            |
+| `unmatched_events`          | `SubscriptionEvent` rows with no subscription                                        | (count and up to 10 Razorpay IDs)                                                      |
+
+**Payment evidence for `missed_activation`.** Razorpay's status alone never confirms a missed activation; its `paid_count` must show a charged cycle:
+
+- Local `TRIALING`, Razorpay `active`: `paid_count` is a number greater than 0.
+- Local `PAST_DUE`, Razorpay `active` (a recovered payment): `paid_count` greater than 0 **and** Razorpay's `current_end` more than 1 hour after the local `currentPeriodEnd`, i.e. a cycle charged after the local paid period. With no local paid period, `paid_count` greater than 0 is enough. `paid_count` counts every charge the subscription ever had, so on its own it cannot show a new payment after the failure.
+- Anything less (`paid_count` 0, missing or not a number; no later Razorpay period) is `activation_unconfirmed`: Razorpay and TypeFlow disagree, but the provider data does not establish a payment. Check the subscription and its payments in the Razorpay dashboard before acting on it.
+
+**Bounds and the HTTP deadline.** At most 25 lookups and a 20 s budget per run (the route's `maxDuration` is 60 s); a lookup starts only with at least 1 s left and gets at most 8 s or the time left, whichever is less. `fetchRazorpaySubscription` uses `fetch` with `AbortSignal.timeout` over the whole exchange, response body included, because razorpay-node 2.9.8 sets no axios timeout, takes no per-request options and turns a timeout into a bare `TypeError`. At the deadline the request is aborted and its connection closed (`tests/unit/razorpaySubscriptionFetch.test.ts` shows the server side of the socket closing), so a stalled lookup does not keep running. Every other Razorpay call still uses the SDK.
+
+**Output.** The response and one `Subscription reconciliation run` log entry (`warn` when `attention` is not empty) carry counts and, per finding, the local subscription ID, the Razorpay subscription ID, both statuses and both period ends. Never an email, name, user ID, `notes`, payload or key. Nothing is stored: on Hobby, logs are kept about an hour, so keep the response.
+
+**Limits.** Razorpay subscriptions with no local row are not found (that needs a listing of the Test account, which every environment shares). Beyond 25 eligible rows the oldest 25 are checked each run (`truncated: true`); there is no cursor. A finding is information for an operator, never permission to change data by hand without checking Razorpay first.
+
 ## Migration Workflow
 
 `prisma migrate dev` is not used. Its shadow database replays migrations without Prisma's `_prisma_migrations` table, so the applied migration `20260926000000_lock_down_public_schema_data_api` (which enables RLS on that table) fails there with P3006/P1014. That migration is deployed and stays unchanged: editing it would change its checksum, and every database that applied it would then need a reset.

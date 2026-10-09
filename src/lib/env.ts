@@ -58,6 +58,9 @@ const serverSchema = z
     CRON_SECRET: z.string().optional(),
     /// off (default) | report | apply
     PAYMENT_RECONCILE_MODE: z.string().optional(),
+    /// Subscription reconciliation: off (default) | report. Any other value is
+    /// off. There is no apply mode (subscription.reconciliation.service.ts).
+    SUBSCRIPTION_RECONCILE_MODE: z.string().optional(),
 
     /// Non-production only: the production Supabase project ref (public, not a
     /// secret), so a remote non-production database or Supabase URL can be shown
@@ -148,6 +151,7 @@ export function getServerEnv(): z.infer<typeof serverSchema> {
         TEST_REDIS_URL: process.env.TEST_REDIS_URL,
         CRON_SECRET: process.env.CRON_SECRET,
         PAYMENT_RECONCILE_MODE: process.env.PAYMENT_RECONCILE_MODE,
+        SUBSCRIPTION_RECONCILE_MODE: process.env.SUBSCRIPTION_RECONCILE_MODE,
         PRODUCTION_SUPABASE_PROJECT_REF: process.env.PRODUCTION_SUPABASE_PROJECT_REF,
       },
       "server"
